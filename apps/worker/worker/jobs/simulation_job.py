@@ -18,14 +18,14 @@ from worker.services.simulation_service import run_simulation
 log = get_logger("job.simulation")
 
 
-def execute(seed: int | None = None) -> str:
+def execute(seed: int | None = None, use_real_data: bool = False) -> str:
     """Execute a simulation job and return the run_id."""
     run = create_run(JobType.SIMULATION)
     run_id = run.run_id
 
     try:
         mark_running(run_id)
-        output = run_simulation(seed=seed)
+        output = run_simulation(seed=seed, use_real_data=use_real_data)
         output.run_id = run_id
 
         _emit_output(run_id, output)

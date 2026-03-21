@@ -63,10 +63,11 @@ def get_current_simulation() -> SimulationSnapshot:
 
     from worker.engine.simulation import run_current_simulation
 
-    # Use a seed derived from current date for daily consistency
+    # Try real data first, fall back to synthetic with daily seed
     today = datetime.now(timezone.utc)
     daily_seed = today.year * 10000 + today.month * 100 + today.day
-    result = run_current_simulation(seed=daily_seed)
+    use_real = os.environ.get("SIMUALPHA_USE_REAL_DATA", "false").lower() == "true"
+    result = run_current_simulation(seed=daily_seed, use_real_data=use_real)
 
     # Serialize engine output to dicts, then reconstruct with API schemas
     raw = result.model_dump(mode="python")

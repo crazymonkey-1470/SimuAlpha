@@ -13,9 +13,9 @@ from worker.schemas.system import SimulationOutput
 log = get_logger("svc.simulation")
 
 
-def run_simulation(seed: int | None = None) -> SimulationOutput:
+def run_simulation(seed: int | None = None, use_real_data: bool = False) -> SimulationOutput:
     """Execute a full simulation run and return the API-compatible output payload."""
-    result = run_current_simulation(seed=seed)
+    result = run_current_simulation(seed=seed, use_real_data=use_real_data)
     return _to_simulation_output(result)
 
 

@@ -4,6 +4,10 @@ This is the primary entry point for running the SimuAlpha simulation engine.
 It coordinates market state generation, agent evaluation, aggregation,
 regime classification, scenario branching, and signal generation.
 
+Supports two modes:
+- Synthetic (seeded random): for testing and when no market data available
+- Real data: builds MarketState from actual historical market data
+
 Produces a complete SimulationResult that can be:
 - Returned to the API
 - Logged for dev inspection
@@ -13,7 +17,7 @@ Produces a complete SimulationResult that can be:
 from __future__ import annotations
 
 import random
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +55,7 @@ class SimulationResult(BaseModel):
 
     timestamp: datetime
     seed: int | None = None
+    data_mode: str = Field(default="synthetic", description="'synthetic' or 'real'")
 
     # Core outputs
     regime: RegimeSnapshot
@@ -69,26 +74,37 @@ class SimulationResult(BaseModel):
 def run_current_simulation(
     seed: int | None = None,
     prior_signal: SignalSummary | None = None,
+    use_real_data: bool = False,
 ) -> SimulationResult:
     """Run a complete current-state simulation.
 
     Parameters
     ----------
     seed : int | None
-        Fixed seed for reproducibility. Falls back to config seed.
+        Fixed seed for reproducibility (synthetic mode). Falls back to config seed.
     prior_signal : SignalSummary | None
         Previous signal for computing change_vs_prior.
+    use_real_data : bool
+        If True, fetch real market data and build features. Falls back to
+        synthetic if data fetch fails.
     """
     settings = get_settings()
-    effective_seed = seed if seed is not None else settings.seed
-    rng = random.Random(effective_seed)
     ts = datetime.now(timezone.utc)
+    data_mode = "synthetic"
+    snapshot: MarketSnapshot | None = None
 
-    log.info("Starting simulation engine (seed=%s, model=%s)", effective_seed, settings.model_version)
+    if use_real_data:
+        snapshot = _try_real_data_snapshot(ts)
+        if snapshot is not None:
+            data_mode = "real"
+            log.info("Using real market data (%d instruments)", len(snapshot.states))
 
-    # 1. Generate market state
-    snapshot = generate_synthetic_snapshot(rng, ts=ts)
-    log.info("Market state generated for %d instruments", len(snapshot.states))
+    if snapshot is None:
+        effective_seed = seed if seed is not None else settings.seed
+        rng = random.Random(effective_seed)
+        log.info("Starting simulation engine (seed=%s, model=%s)", effective_seed, settings.model_version)
+        snapshot = generate_synthetic_snapshot(rng, ts=ts)
+        log.info("Market state generated for %d instruments (synthetic)", len(snapshot.states))
 
     # 2. Run all agents against the market state
     agent_outputs: list[AgentOutput] = []
@@ -142,7 +158,8 @@ def run_current_simulation(
 
     result = SimulationResult(
         timestamp=ts,
-        seed=effective_seed,
+        seed=seed if seed is not None else (get_settings().seed),
+        data_mode=data_mode,
         regime=regime,
         actors=actors,
         scenarios=scenarios,
@@ -206,3 +223,32 @@ def _instrument_note(ticker: str, state) -> str:
     vol_note = f"vol {state.volatility_regime.value}"
     trend_note = f"trend strength {state.trend_strength:+.2f}"
     return f"{ticker} {direction} ({state.return_1d:+.2%}); {vol_note}, {trend_note}"
+
+
+def _try_real_data_snapshot(ts: datetime) -> MarketSnapshot | None:
+    """Attempt to build a MarketSnapshot from real market data."""
+    try:
+        from worker.data_providers.yahoo import YahooFinanceProvider
+        from worker.engine.features import build_snapshot_for_date, compute_features
+
+        provider = YahooFinanceProvider()
+        today = date.today()
+        start = today - timedelta(days=180)
+        symbols = ["SPY", "QQQ", "TLT", "VIX", "NVDA"]
+        raw = provider.fetch_multi(symbols, start, today)
+
+        feature_data = {}
+        for sym, df in raw.items():
+            feature_data[sym] = compute_features(df, sym)
+
+        # Try today, then yesterday, then day before (in case market is closed)
+        for offset in range(4):
+            target = today - timedelta(days=offset)
+            snapshot = build_snapshot_for_date(feature_data, target.isoformat())
+            if snapshot is not None:
+                return snapshot
+
+        return None
+    except Exception as exc:
+        log.warning("Real data fetch failed, falling back to synthetic: %s", exc)
+        return None
