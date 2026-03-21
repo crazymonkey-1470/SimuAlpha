@@ -5,6 +5,11 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir .
 
-COPY . .
+COPY worker/ worker/
 
-CMD ["python", "-m", "worker.main"]
+ENV ENVIRONMENT=production
+ENV LOG_LEVEL=INFO
+ENV OUTPUT_MODE=log
+
+ENTRYPOINT ["python", "-m", "worker.main"]
+CMD ["simulate"]
