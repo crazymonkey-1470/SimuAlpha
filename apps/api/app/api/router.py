@@ -6,6 +6,7 @@ from app.api.routes import (
     calibrations,
     context,
     health,
+    jobs,
     regime,
     replay,
     replays,
@@ -29,7 +30,10 @@ api_router.include_router(replay.router, prefix="/replay", tags=["replay"])
 api_router.include_router(simulation.router, prefix="/simulation", tags=["simulation"])
 api_router.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
 
-# New persisted-data endpoints
+# Persisted-data endpoints
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"])
 api_router.include_router(replays.router, prefix="/replays", tags=["replays"])
 api_router.include_router(calibrations.router, prefix="/calibrations", tags=["calibrations"])
+
+# Job queue endpoints
+api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

@@ -19,6 +19,7 @@ class JobType(str, Enum):
     SIMULATION = "simulation"
     REPLAY = "replay"
     CALIBRATION = "calibration"
+    DATA_REFRESH = "data_refresh"
 
 
 class JobRun(BaseModel):

@@ -376,3 +376,23 @@ def mark_calibration_failed(run_id: uuid.UUID, error: str) -> None:
             session.commit()
     except Exception as exc:
         log.warning("Failed to mark calibration %s failed: %s", run_id, exc)
+
+
+# ── System status helpers ─────────────────────────────────────────────────
+
+
+def _update_data_refresh_time() -> None:
+    """Update the system_status record with the current data refresh time."""
+    if not DB_AVAILABLE:
+        return
+    try:
+        session = get_session()
+        status = session.get(SystemStatusRecord, 1)
+        if not status:
+            status = SystemStatusRecord(id=1)
+            session.add(status)
+        status.last_data_refresh = datetime.now(timezone.utc)
+        status.updated_at = datetime.now(timezone.utc)
+        session.commit()
+    except Exception as exc:
+        log.warning("Failed to update data refresh time: %s", exc)

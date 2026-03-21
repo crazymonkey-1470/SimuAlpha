@@ -7,8 +7,11 @@ Usage:
     python -m worker.main backtest [--period PERIOD]
     python -m worker.main calibrate [--period PERIOD]
     python -m worker.main fetch-data [--start DATE] [--end DATE]
-    python -m worker.main schedule
-    python -m worker.main status
+    python -m worker.main worker                    # Start RQ worker process
+    python -m worker.main scheduler                 # Start rq-scheduler process
+    python -m worker.main enqueue <job_type>        # Enqueue a job via CLI
+    python -m worker.main schedule                  # Show scheduled job definitions
+    python -m worker.main status                    # Show recent job runs
 """
 
 from __future__ import annotations
@@ -58,11 +61,28 @@ def main(argv: list[str] | None = None) -> None:
     p_fetch.add_argument("--start", type=str, default=None, help="Start date (default: 2020-01-01)")
     p_fetch.add_argument("--end", type=str, default=None, help="End date (default: today)")
 
+    # ── worker (RQ worker process) ───────────────────────────────────────
+    p_worker = sub.add_parser("worker", help="Start the RQ worker process")
+    p_worker.add_argument("--queues", type=str, default=None, help="Comma-separated queue names")
+    p_worker.add_argument("--burst", action="store_true", help="Run in burst mode (exit when queues empty)")
+
+    # ── scheduler (rq-scheduler process) ─────────────────────────────────
+    sub.add_parser("scheduler", help="Start the rq-scheduler process")
+
+    # ── enqueue (submit a job to the queue) ──────────────────────────────
+    p_enqueue = sub.add_parser("enqueue", help="Enqueue a job for async execution")
+    p_enqueue.add_argument("job_type", choices=["simulation", "replay", "calibration", "data-refresh"])
+    p_enqueue.add_argument("--seed", type=int, default=None)
+    p_enqueue.add_argument("--real", action="store_true")
+    p_enqueue.add_argument("--start", type=str, default=None)
+    p_enqueue.add_argument("--end", type=str, default=None)
+    p_enqueue.add_argument("--period", type=str, default=None)
+
     # ── schedule ─────────────────────────────────────────────────────────
     sub.add_parser("schedule", help="Show scheduled job definitions")
 
     # ── status ───────────────────────────────────────────────────────────
-    sub.add_parser("status", help="Show recent job runs")
+    sub.add_parser("status", help="Show recent job runs and queue status")
 
     args = parser.parse_args(argv)
 
@@ -82,6 +102,12 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_calibrate(args)
     elif args.command == "fetch-data":
         _cmd_fetch_data(args)
+    elif args.command == "worker":
+        _cmd_worker(args)
+    elif args.command == "scheduler":
+        _cmd_scheduler()
+    elif args.command == "enqueue":
+        _cmd_enqueue(args)
     elif args.command == "schedule":
         _cmd_schedule()
     elif args.command == "status":
@@ -202,10 +228,9 @@ def _cmd_calibrate(args: argparse.Namespace) -> None:
     args.end = None
     if not args.period:
         from worker.engine.calibration import BENCHMARK_PERIODS
+
         args.period = None  # Will default to first 2 in backtest
         # Override to run all
-        args_override = argparse.Namespace(period=None, start=None, end=None)
-        # Run _cmd_backtest with all periods
         from worker.core.logging import get_logger
         from worker.data_providers.yahoo import YahooFinanceProvider
         from worker.engine.calibration import (
@@ -266,27 +291,99 @@ def _cmd_fetch_data(args: argparse.Namespace) -> None:
     print(f"\nFetched and cached data for {len(data)} symbols.")
 
 
-def _cmd_schedule() -> None:
-    from worker.jobs.scheduled_jobs import print_schedule
+def _cmd_worker(args: argparse.Namespace) -> None:
+    """Start the RQ worker process."""
+    from rq import Worker
 
-    print_schedule()
+    from worker.queue.connection import get_all_queues, get_redis
+
+    if args.queues:
+        from rq import Queue
+        conn = get_redis()
+        queues = [Queue(q.strip(), connection=conn) for q in args.queues.split(",")]
+    else:
+        queues = get_all_queues()
+
+    queue_names = [q.name for q in queues]
+    print(f"Starting SimuAlpha RQ worker on queues: {queue_names}")
+
+    w = Worker(queues, connection=get_redis(), name=f"simualpha-worker-{__import__('os').getpid()}")
+    w.work(burst=args.burst)
+
+
+def _cmd_scheduler() -> None:
+    """Start the rq-scheduler process."""
+    from worker.queue.scheduler import run_scheduler
+
+    run_scheduler()
+
+
+def _cmd_enqueue(args: argparse.Namespace) -> None:
+    """Enqueue a job via CLI."""
+    from worker.queue.enqueue import (
+        enqueue_calibration,
+        enqueue_data_refresh,
+        enqueue_replay,
+        enqueue_simulation,
+    )
+
+    if args.job_type == "simulation":
+        result = enqueue_simulation(seed=args.seed, use_real_data=args.real)
+    elif args.job_type == "replay":
+        if not args.start or not args.end:
+            print("Error: --start and --end required for replay jobs", file=sys.stderr)
+            sys.exit(1)
+        result = enqueue_replay(start_date=args.start, end_date=args.end, seed=args.seed)
+    elif args.job_type == "calibration":
+        result = enqueue_calibration(period_name=args.period)
+    elif args.job_type == "data-refresh":
+        result = enqueue_data_refresh()
+    else:
+        print(f"Unknown job type: {args.job_type}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\nJob enqueued:")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+
+
+def _cmd_schedule() -> None:
+    from worker.queue.scheduler import get_schedule_definitions
+
+    defs = get_schedule_definitions()
+    print(f"\n{'ID':<25} {'Schedule':<20} {'Description'}")
+    print("─" * 80)
+    for d in defs:
+        print(f"{d['id']:<25} {d['cron_string']:<20} {d['description']}")
 
 
 def _cmd_status() -> None:
-    from worker.services.job_registry import get_recent_runs
+    """Show queue status and recent runs from the database."""
+    from worker.queue.connection import get_all_queues, ping_redis
 
-    runs = get_recent_runs()
-    if not runs:
-        print("No job runs recorded in this session.")
-        return
+    # Queue status
+    print("\n── Queue Status ──")
+    if ping_redis():
+        for q in get_all_queues():
+            print(f"  {q.name}: {len(q)} pending, {q.started_job_registry.count} active, {q.failed_job_registry.count} failed")
+    else:
+        print("  Redis not reachable")
 
-    print(f"\n{'Run ID':<20} {'Type':<14} {'Status':<12} {'Summary'}")
-    print("─" * 80)
-    for run in runs:
-        print(
-            f"{run.run_id:<20} {run.job_type.value:<14} {run.status.value:<12} "
-            f"{run.summary or '—'}"
-        )
+    # Recent DB runs
+    try:
+        from worker.core.db import get_session
+        from app.db.models import SimulationRun
+        session = get_session()
+        runs = session.query(SimulationRun).order_by(SimulationRun.created_at.desc()).limit(10).all()
+        if runs:
+            print(f"\n── Recent Simulation Runs ──")
+            print(f"{'ID':<38} {'Type':<14} {'Status':<12} {'Summary'}")
+            print("─" * 100)
+            for run in runs:
+                print(f"{str(run.id):<38} {run.run_type:<14} {run.status:<12} {run.summary or '—'}")
+        session.close()
+    except Exception:
+        print("\n  Database not reachable for run history.")
 
 
 if __name__ == "__main__":

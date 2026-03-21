@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Worker integration
     worker_url: str = "http://localhost:8001"
 
+    # Redis for job queue
+    redis_url: str = "redis://localhost:6379/0"
+
     model_config = {"env_prefix": "SIMUALPHA_"}
 
 

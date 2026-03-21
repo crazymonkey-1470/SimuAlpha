@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     output_mode: str = Field(default="log", description="log | json")
     output_dir: Path = Field(default=Path("./output"))
     model_version: str = Field(default="sa-sim-0.4.2")
-    redis_url: str | None = Field(default=None)
+    redis_url: str = Field(default="redis://localhost:6379/0")
     api_base_url: str | None = Field(default=None)
     seed: int | None = Field(default=None, description="Fixed seed for deterministic generation")
     database_url: str = Field(

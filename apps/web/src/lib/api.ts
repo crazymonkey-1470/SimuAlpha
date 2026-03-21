@@ -2,6 +2,10 @@ import type {
   ActorStateResponse,
   CalibrationRunListResponse,
   CrossAssetResponse,
+  JobListResponse,
+  JobStatusResponse,
+  JobSubmitResponse,
+  QueueStatusResponse,
   RegimeHistoryResponse,
   RegimeSnapshot,
   ReplayFrame,
@@ -9,10 +13,12 @@ import type {
   RunListResponse,
   RunSummary,
   ScenarioResponse,
+  ScheduleResponse,
   SignalHistoryResponse,
   SignalSummary,
   SimulationRunResponse,
   SystemStatus,
+  WorkerHealthResponse,
 } from "./types";
 import * as mock from "./mock-data";
 
@@ -95,6 +101,46 @@ export const api = {
         status: "failed",
         submitted_at: new Date().toISOString(),
         message: "Backend unavailable",
+      }),
+  },
+  // ── Job queue endpoints ─────────────────────────────────────────────────
+  jobs: {
+    list: (limit = 20, status?: string, jobType?: string) => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (status) params.set("status", status);
+      if (jobType) params.set("job_type", jobType);
+      return fetchApi<JobListResponse>(`/jobs?${params}`, { jobs: [], total: 0 });
+    },
+    get: (jobId: string) =>
+      fetchApi<JobStatusResponse>(`/jobs/${jobId}`, null as unknown as JobStatusResponse),
+    submitSimulation: (body: { seed?: number; use_real_data?: boolean } = {}) =>
+      postApi<JobSubmitResponse>("/jobs/simulation", body, null as unknown as JobSubmitResponse),
+    submitReplay: (body: { start_date: string; end_date: string }) =>
+      postApi<JobSubmitResponse>("/jobs/replay", body, null as unknown as JobSubmitResponse),
+    submitCalibration: (body: { period_name?: string } = {}) =>
+      postApi<JobSubmitResponse>("/jobs/calibration", body, null as unknown as JobSubmitResponse),
+    submitDataRefresh: () =>
+      postApi<JobSubmitResponse>("/jobs/data-refresh", {}, null as unknown as JobSubmitResponse),
+  },
+  queue: {
+    status: () =>
+      fetchApi<QueueStatusResponse>("/system/queue", {
+        redis_connected: false,
+        queues: [],
+        total_pending: 0,
+        total_active: 0,
+        total_failed: 0,
+      }),
+    workerHealth: () =>
+      fetchApi<WorkerHealthResponse>("/system/worker-health", {
+        redis_connected: false,
+        workers: [],
+        worker_count: 0,
+      }),
+    schedules: () =>
+      fetchApi<ScheduleResponse>("/system/schedules", {
+        schedules: [],
+        scheduler_running: false,
       }),
   },
 };

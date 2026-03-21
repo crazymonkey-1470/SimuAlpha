@@ -211,3 +211,74 @@ export interface SimulationRunResponse {
   submitted_at: string;
   message: string;
 }
+
+// ── Job Queue Types ───────────────────────────────────────────────────────
+
+export interface JobSubmitResponse {
+  job_id: string;
+  job_type: string;
+  status: string;
+  enqueued_at: string;
+  message: string;
+}
+
+export interface JobStatusResponse {
+  id: string;
+  job_type: string;
+  status: string;
+  symbol: string;
+  source: string;
+  summary: string | null;
+  error_message: string | null;
+  warnings: string[];
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface JobListResponse {
+  jobs: JobStatusResponse[];
+  total: number;
+}
+
+export interface QueueInfo {
+  name: string;
+  pending: number;
+  active: number;
+  failed: number;
+}
+
+export interface QueueStatusResponse {
+  redis_connected: boolean;
+  queues: QueueInfo[];
+  total_pending: number;
+  total_active: number;
+  total_failed: number;
+}
+
+export interface WorkerInfo {
+  name: string;
+  state: string;
+  current_job: string | null;
+  queues: string[];
+  birth_date: string | null;
+}
+
+export interface WorkerHealthResponse {
+  redis_connected: boolean;
+  workers: WorkerInfo[];
+  worker_count: number;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  description: string;
+  cron_string: string;
+  queue_name: string;
+}
+
+export interface ScheduleResponse {
+  schedules: ScheduleEntry[];
+  scheduler_running: boolean;
+}

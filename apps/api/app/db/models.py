@@ -35,9 +35,12 @@ class SimulationRun(Base):
     warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     config_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -158,11 +161,15 @@ class ReplayRun(Base):
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
     end_date: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="worker")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     frame_count: Mapped[int] = mapped_column(Integer, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     frames: Mapped[list[ReplayFrameRecord]] = relationship(back_populates="replay_run", cascade="all, delete-orphan")
@@ -204,11 +211,15 @@ class CalibrationRun(Base):
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
     end_date: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="worker")
     metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
