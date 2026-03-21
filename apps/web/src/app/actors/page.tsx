@@ -1,14 +1,25 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardTitle } from "@/components/ui/card";
 import { BiasBadge } from "@/components/ui/badge";
 import { ConfidenceBar } from "@/components/ui/confidence-bar";
 import { cn, formatArchetype } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
+import type { ActorState } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+export default function ActorsPage() {
+  const { data, loading } = useApiData(() => api.actors.current());
 
-export default async function ActorsPage() {
-  const data = await api.actors.current();
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="Actor Simulation" subtitle="Loading…" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -64,7 +75,7 @@ export default async function ActorsPage() {
   );
 }
 
-function ActorCard({ actor }: { actor: import("@/lib/types").ActorState }) {
+function ActorCard({ actor }: { actor: ActorState }) {
   return (
     <Card className="flex flex-col">
       <div className="flex items-start justify-between mb-3">

@@ -1,17 +1,28 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { BiasBadge } from "@/components/ui/badge";
 import { ConfidenceBar } from "@/components/ui/confidence-bar";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
 
-export const dynamic = "force-dynamic";
+export default function SignalsPage() {
+  const { data, loading } = useApiData(() =>
+    Promise.all([api.signals.current(), api.signals.history()])
+  );
 
-export default async function SignalsPage() {
-  const [signal, history] = await Promise.all([
-    api.signals.current(),
-    api.signals.history(),
-  ]);
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="Signal Output" subtitle="Directional signals and posture guidance" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
+
+  const [signal, history] = data;
 
   return (
     <>

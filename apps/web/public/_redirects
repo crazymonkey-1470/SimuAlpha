@@ -1,0 +1,2 @@
+# Serve the symbol detail SPA for any symbol
+/symbols/* /symbols/SPY.html 200

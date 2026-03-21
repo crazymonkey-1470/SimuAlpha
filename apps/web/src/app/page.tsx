@@ -1,3 +1,5 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { RegimeSummary } from "@/components/dashboard/regime-summary";
 import { ActorSummary } from "@/components/dashboard/actor-summary";
@@ -6,19 +8,31 @@ import { SignalSummaryCard } from "@/components/dashboard/signal-summary";
 import { CrossAssetTable } from "@/components/dashboard/cross-asset-table";
 import { Card, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
 
-export const dynamic = "force-dynamic";
+export default function DashboardPage() {
+  const { data, loading } = useApiData(() =>
+    Promise.all([
+      api.regime.current(),
+      api.actors.current(),
+      api.scenarios.current(),
+      api.signals.current(),
+      api.context.crossAsset(),
+      api.system.status(),
+      api.runs.list(5),
+    ])
+  );
 
-export default async function DashboardPage() {
-  const [regime, actorRes, scenarioRes, signal, context, systemStatus, runs] = await Promise.all([
-    api.regime.current(),
-    api.actors.current(),
-    api.scenarios.current(),
-    api.signals.current(),
-    api.context.crossAsset(),
-    api.system.status(),
-    api.runs.list(5),
-  ]);
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="Dashboard" subtitle="Market intelligence overview" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
+
+  const [regime, actorRes, scenarioRes, signal, context, systemStatus, runs] = data;
 
   return (
     <>

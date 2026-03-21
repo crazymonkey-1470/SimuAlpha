@@ -1,14 +1,24 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DirectionBadge, RiskBadge } from "@/components/ui/badge";
 import { cn, formatArchetype } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
 import type { ScenarioBranch } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+export default function ScenariosPage() {
+  const { data, loading } = useApiData(() => api.scenarios.current());
 
-export default async function ScenariosPage() {
-  const data = await api.scenarios.current();
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="Scenario Analysis" subtitle="Probabilistic scenario branches and actor reactions" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
 
   return (
     <>

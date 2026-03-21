@@ -1,3 +1,5 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -5,14 +7,23 @@ import { ConfidenceBar } from "@/components/ui/confidence-bar";
 import { PressureBar } from "@/components/ui/pressure-bar";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
 
-export const dynamic = "force-dynamic";
+export default function RegimePage() {
+  const { data, loading } = useApiData(() =>
+    Promise.all([api.regime.current(), api.regime.history()])
+  );
 
-export default async function RegimePage() {
-  const [regime, history] = await Promise.all([
-    api.regime.current(),
-    api.regime.history(),
-  ]);
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="Regime Analysis" subtitle="Market regime classification and drivers" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
+
+  const [regime, history] = data;
 
   return (
     <>

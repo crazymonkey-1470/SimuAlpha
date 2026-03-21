@@ -1,4 +1,8 @@
+"use client";
+
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge, BiasBadge, DirectionBadge, RiskBadge } from "@/components/ui/badge";
@@ -7,25 +11,42 @@ import { PressureBar } from "@/components/ui/pressure-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatArchetype } from "@/lib/utils";
 import { api } from "@/lib/api";
-
-export const dynamic = "force-dynamic";
+import type { ReplayFrame, ReplayRunListResponse } from "@/lib/types";
 
 const AVAILABLE_DATES = ["2025-03-18", "2025-03-19", "2025-03-20", "2025-03-21"];
 
-interface ReplayPageProps {
-  searchParams: Promise<{ date?: string }>;
-}
+function ReplayContent() {
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get("date") ?? "";
+  const date = AVAILABLE_DATES.includes(dateParam) ? dateParam : AVAILABLE_DATES[0];
 
-export default async function ReplayPage({ searchParams }: ReplayPageProps) {
-  const params = await searchParams;
-  const date = AVAILABLE_DATES.includes(params.date ?? "")
-    ? params.date!
-    : AVAILABLE_DATES[0];
+  const [frame, setFrame] = useState<ReplayFrame | null>(null);
+  const [replayRuns, setReplayRuns] = useState<ReplayRunListResponse>({ runs: [], total: 0 });
+  const [loading, setLoading] = useState(true);
 
-  const [frame, replayRuns] = await Promise.all([
-    api.replay.frame(date),
-    api.replays.list(5),
-  ]);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const [f, r] = await Promise.all([
+      api.replay.frame(date),
+      api.replays.list(5),
+    ]);
+    setFrame(f);
+    setReplayRuns(r);
+    setLoading(false);
+  }, [date]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading || !frame) {
+    return (
+      <>
+        <Topbar title="Replay Analysis" subtitle="Historical simulation snapshots and outcome evaluation" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -220,5 +241,18 @@ export default async function ReplayPage({ searchParams }: ReplayPageProps) {
         )}
       </div>
     </>
+  );
+}
+
+export default function ReplayPage() {
+  return (
+    <Suspense fallback={
+      <>
+        <Topbar title="Replay Analysis" subtitle="Historical simulation snapshots and outcome evaluation" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    }>
+      <ReplayContent />
+    </Suspense>
   );
 }

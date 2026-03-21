@@ -1,21 +1,34 @@
+"use client";
+
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useApiData } from "@/lib/use-api-data";
 
-export const dynamic = "force-dynamic";
-
-export default async function SystemPage() {
-  const [status, queueStatus, workerHealth, schedules, recentJobs] =
-    await Promise.all([
+export default function SystemPage() {
+  const { data, loading } = useApiData(() =>
+    Promise.all([
       api.system.status(),
       api.queue.status(),
       api.queue.workerHealth(),
       api.queue.schedules(),
       api.jobs.list(20),
-    ]);
+    ])
+  );
+
+  if (loading || !data) {
+    return (
+      <>
+        <Topbar title="System Status" subtitle="Operational diagnostics, queue health, and job monitoring" />
+        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
+      </>
+    );
+  }
+
+  const [status, queueStatus, workerHealth, schedules, recentJobs] = data;
 
   const statusItems = [
     {
@@ -288,10 +301,10 @@ export default async function SystemPage() {
                       <td className="px-3 py-3 text-right font-mono text-text-secondary">
                         {job.duration_seconds != null
                           ? `${job.duration_seconds.toFixed(1)}s`
-                          : "—"}
+                          : "\u2014"}
                       </td>
                       <td className="py-3 pl-3 pr-5 text-text-tertiary max-w-[280px] truncate">
-                        {job.error_message || job.summary || "—"}
+                        {job.error_message || job.summary || "\u2014"}
                       </td>
                     </tr>
                   ))}
@@ -457,7 +470,7 @@ export default async function SystemPage() {
               name="Frontend"
               provider="Cloudflare"
               status="operational"
-              detail="Next.js · Edge deployment"
+              detail="Next.js · Static export"
             />
           </div>
         </Card>
