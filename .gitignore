@@ -49,3 +49,9 @@ pnpm-debug.log*
 coverage/
 .coverage
 htmlcov/
+
+# Worker output
+output/
+
+# Database
+*.db

@@ -1,7 +1,7 @@
 """Simulation job.
 
-Runs a full simulation cycle and tracks it through the job registry.
-This is the primary job type for the worker service.
+Runs a full simulation cycle, tracks it through the job registry,
+and persists results to the database.
 """
 
 from __future__ import annotations
@@ -11,6 +11,13 @@ from pathlib import Path
 
 from worker.core.config import get_settings
 from worker.core.logging import get_logger
+from worker.persistence import (
+    create_simulation_run,
+    mark_simulation_completed,
+    mark_simulation_failed,
+    mark_simulation_running,
+    persist_simulation_results,
+)
 from worker.schemas.system import JobType
 from worker.services.job_registry import create_run, mark_completed, mark_failed, mark_running
 from worker.services.simulation_service import run_simulation
@@ -23,10 +30,33 @@ def execute(seed: int | None = None, use_real_data: bool = False) -> str:
     run = create_run(JobType.SIMULATION)
     run_id = run.run_id
 
+    # Create DB record
+    db_run_id = create_simulation_run(
+        run_type="current",
+        symbol="SPY",
+        source="worker",
+        config_snapshot={"seed": seed, "use_real_data": use_real_data},
+    )
+
     try:
         mark_running(run_id)
+        if db_run_id:
+            mark_simulation_running(db_run_id)
+
         output = run_simulation(seed=seed, use_real_data=use_real_data)
         output.run_id = run_id
+
+        # Persist to database
+        if db_run_id:
+            raw = output.model_dump(mode="python")
+            persist_simulation_results(
+                db_run_id,
+                regime_data=raw["regime"],
+                actors_data=raw["actors"],
+                scenarios_data=raw["scenarios"],
+                signal_data=raw["signal"],
+                symbol="SPY",
+            )
 
         _emit_output(run_id, output)
 
@@ -36,9 +66,13 @@ def execute(seed: int | None = None, use_real_data: bool = False) -> str:
             f"signal={output.signal.bias}"
         )
         mark_completed(run_id, summary)
+        if db_run_id:
+            mark_simulation_completed(db_run_id, summary)
 
     except Exception as exc:
         mark_failed(run_id, str(exc))
+        if db_run_id:
+            mark_simulation_failed(db_run_id, str(exc))
         log.exception("Simulation job %s failed", run_id)
         raise
 

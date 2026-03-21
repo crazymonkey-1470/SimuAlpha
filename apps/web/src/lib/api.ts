@@ -1,12 +1,17 @@
 import type {
   ActorStateResponse,
+  CalibrationRunListResponse,
   CrossAssetResponse,
   RegimeHistoryResponse,
   RegimeSnapshot,
   ReplayFrame,
+  ReplayRunListResponse,
+  RunListResponse,
+  RunSummary,
   ScenarioResponse,
   SignalHistoryResponse,
   SignalSummary,
+  SimulationRunResponse,
   SystemStatus,
 } from "./types";
 import * as mock from "./mock-data";
@@ -22,7 +27,21 @@ async function fetchApi<T>(path: string, fallback: T): Promise<T> {
     if (!res.ok) throw new Error(`API ${res.status}`);
     return (await res.json()) as T;
   } catch {
-    // Fallback to mock data when backend is unavailable
+    return fallback;
+  }
+}
+
+async function postApi<T>(path: string, body: unknown, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    return (await res.json()) as T;
+  } catch {
     return fallback;
   }
 }
@@ -51,5 +70,31 @@ export const api = {
   },
   system: {
     status: () => fetchApi<SystemStatus>("/system/status", mock.systemStatus),
+  },
+  // ── New persisted-data endpoints ──────────────────────────────────────
+  runs: {
+    list: (limit = 20) =>
+      fetchApi<RunListResponse>(`/runs?limit=${limit}`, { runs: [], total: 0 }),
+    get: (runId: string) =>
+      fetchApi<RunSummary>(`/runs/${runId}`, null as unknown as RunSummary),
+  },
+  replays: {
+    list: (limit = 20) =>
+      fetchApi<ReplayRunListResponse>(`/replays?limit=${limit}`, { runs: [], total: 0 }),
+    trigger: (startDate: string, endDate: string) =>
+      postApi<unknown>("/replays/run", { start_date: startDate, end_date: endDate }, null),
+  },
+  calibrations: {
+    list: (limit = 20) =>
+      fetchApi<CalibrationRunListResponse>(`/calibrations?limit=${limit}`, { runs: [], total: 0 }),
+  },
+  simulation: {
+    run: () =>
+      postApi<SimulationRunResponse>("/simulation/run", {}, {
+        run_id: "",
+        status: "failed",
+        submitted_at: new Date().toISOString(),
+        message: "Backend unavailable",
+      }),
   },
 };

@@ -21,7 +21,11 @@ export default async function ReplayPage({ searchParams }: ReplayPageProps) {
   const date = AVAILABLE_DATES.includes(params.date ?? "")
     ? params.date!
     : AVAILABLE_DATES[0];
-  const frame = await api.replay.frame(date);
+
+  const [frame, replayRuns] = await Promise.all([
+    api.replay.frame(date),
+    api.replays.list(5),
+  ]);
 
   return (
     <>
@@ -188,6 +192,32 @@ export default async function ReplayPage({ searchParams }: ReplayPageProps) {
             />
           )}
         </Card>
+
+        {/* Replay Run History */}
+        {replayRuns.runs.length > 0 && (
+          <Card>
+            <CardTitle className="mb-4">Replay Run History</CardTitle>
+            <div className="space-y-2">
+              {replayRuns.runs.map((run) => (
+                <div key={run.id} className="flex items-center justify-between rounded-md border border-border-subtle bg-surface-2 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-medium text-text-primary">
+                      {run.start_date} to {run.end_date}
+                    </p>
+                    <p className="text-2xs text-text-tertiary">
+                      {run.frame_count ?? 0} frames · {run.status}
+                    </p>
+                  </div>
+                  <span className="font-mono text-2xs text-text-tertiary">
+                    {new Date(run.created_at).toLocaleString("en-US", {
+                      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </>
   );

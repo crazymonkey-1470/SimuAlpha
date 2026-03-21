@@ -18,8 +18,12 @@ class Settings(BaseSettings):
     redis_url: str | None = Field(default=None)
     api_base_url: str | None = Field(default=None)
     seed: int | None = Field(default=None, description="Fixed seed for deterministic generation")
+    database_url: str = Field(
+        default="postgresql://simualpha:simualpha@localhost:5432/simualpha",
+        description="PostgreSQL connection URL for result persistence",
+    )
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "env_prefix": "SIMUALPHA_"}
 
 
 _settings: Settings | None = None

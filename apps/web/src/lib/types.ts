@@ -146,3 +146,68 @@ export interface CrossAssetResponse {
   entries: CrossAssetEntry[];
   as_of: string;
 }
+
+// ── Runs / Job Tracking ────────────────────────────────────────────────────
+
+export interface RunSummary {
+  id: string;
+  run_type: string;
+  symbol: string;
+  status: string;
+  source: string;
+  summary: string | null;
+  warnings: string[];
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface RunListResponse {
+  runs: RunSummary[];
+  total: number;
+}
+
+export interface ReplayRunSummary {
+  id: string;
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  summary: string | null;
+  frame_count: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface ReplayRunListResponse {
+  runs: ReplayRunSummary[];
+  total: number;
+}
+
+export interface CalibrationRunSummary {
+  id: string;
+  symbol: string;
+  period_name: string | null;
+  start_date: string;
+  end_date: string;
+  status: string;
+  summary: string | null;
+  metrics: Record<string, unknown> | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface CalibrationRunListResponse {
+  runs: CalibrationRunSummary[];
+  total: number;
+}
+
+// ── Simulation Run Response ────────────────────────────────────────────────
+
+export interface SimulationRunResponse {
+  run_id: string;
+  status: string;
+  submitted_at: string;
+  message: string;
+}

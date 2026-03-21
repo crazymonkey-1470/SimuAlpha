@@ -1,16 +1,21 @@
 """Replay generation job.
 
-Generates historical replay frames for a given date or range
-and tracks the run through the job registry.
+Generates historical replay frames for a given date or range,
+tracks the run through the job registry, and persists to database.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from worker.core.config import get_settings
 from worker.core.logging import get_logger
+from worker.persistence import (
+    create_replay_run,
+    mark_replay_completed,
+    mark_replay_failed,
+    persist_replay_frame,
+)
 from worker.schemas.system import JobType
 from worker.services.job_registry import create_run, mark_completed, mark_failed, mark_running
 from worker.services.replay_service import generate_date_range, generate_single_frame
@@ -23,9 +28,17 @@ def execute_single(date: str, seed: int | None = None) -> str:
     run = create_run(JobType.REPLAY)
     run_id = run.run_id
 
+    db_run_id = create_replay_run(start_date=date, end_date=date)
+
     try:
         mark_running(run_id)
         frame = generate_single_frame(date, seed=seed)
+
+        # Persist to DB
+        if db_run_id:
+            frame_dict = frame.model_dump(mode="python")
+            persist_replay_frame(db_run_id, frame_dict)
+            mark_replay_completed(db_run_id, f"Replay for {date}", 1)
 
         _emit_frame(run_id, date, frame)
 
@@ -34,6 +47,8 @@ def execute_single(date: str, seed: int | None = None) -> str:
 
     except Exception as exc:
         mark_failed(run_id, str(exc))
+        if db_run_id:
+            mark_replay_failed(db_run_id, str(exc))
         log.exception("Replay job %s failed", run_id)
         raise
 
@@ -45,9 +60,20 @@ def execute_range(start: str, end: str, seed: int | None = None) -> str:
     run = create_run(JobType.REPLAY)
     run_id = run.run_id
 
+    db_run_id = create_replay_run(start_date=start, end_date=end)
+
     try:
         mark_running(run_id)
         frames = generate_date_range(start, end, seed=seed)
+
+        # Persist to DB
+        if db_run_id:
+            for frame in frames:
+                frame_dict = frame.model_dump(mode="python")
+                persist_replay_frame(db_run_id, frame_dict)
+            mark_replay_completed(
+                db_run_id, f"Replay {start}→{end}: {len(frames)} frames", len(frames)
+            )
 
         settings = get_settings()
         if settings.output_mode == "json":
@@ -74,6 +100,8 @@ def execute_range(start: str, end: str, seed: int | None = None) -> str:
 
     except Exception as exc:
         mark_failed(run_id, str(exc))
+        if db_run_id:
+            mark_replay_failed(db_run_id, str(exc))
         log.exception("Replay job %s failed", run_id)
         raise
 

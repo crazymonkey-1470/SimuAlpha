@@ -10,12 +10,14 @@ import { api } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [regime, actorRes, scenarioRes, signal, context] = await Promise.all([
+  const [regime, actorRes, scenarioRes, signal, context, systemStatus, runs] = await Promise.all([
     api.regime.current(),
     api.actors.current(),
     api.scenarios.current(),
     api.signals.current(),
     api.context.crossAsset(),
+    api.system.status(),
+    api.runs.list(5),
   ]);
 
   return (
@@ -44,6 +46,12 @@ export default async function DashboardPage() {
             </span>
             <span>·</span>
             <span>Signal horizon: {signal.time_horizon}</span>
+            <span>·</span>
+            <span>
+              {systemStatus.last_simulation_run
+                ? `Last run: ${new Date(systemStatus.last_simulation_run).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                : "No runs recorded"}
+            </span>
           </div>
         </Card>
 
@@ -70,6 +78,26 @@ export default async function DashboardPage() {
             {signal.change_vs_prior}
           </p>
         </Card>
+
+        {/* Recent runs */}
+        {runs.runs.length > 0 && (
+          <Card>
+            <CardTitle className="mb-3">Recent Simulation Runs</CardTitle>
+            <div className="space-y-2">
+              {runs.runs.map((run) => (
+                <div key={run.id} className="flex items-center justify-between text-xs border-b border-border-subtle pb-2 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-block h-2 w-2 rounded-full ${run.status === "completed" ? "bg-accent-green" : run.status === "failed" ? "bg-accent-red" : "bg-accent-amber"}`} />
+                    <span className="text-text-secondary">{run.summary || run.status}</span>
+                  </div>
+                  <span className="font-mono text-text-tertiary">
+                    {new Date(run.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </>
   );

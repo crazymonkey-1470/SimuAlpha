@@ -3,10 +3,13 @@ from fastapi import APIRouter
 from app.api.routes import (
     actors,
     backtest,
+    calibrations,
     context,
     health,
     regime,
     replay,
+    replays,
+    runs,
     scenarios,
     signals,
     simulation,
@@ -25,3 +28,8 @@ api_router.include_router(context.router, prefix="/context", tags=["context"])
 api_router.include_router(replay.router, prefix="/replay", tags=["replay"])
 api_router.include_router(simulation.router, prefix="/simulation", tags=["simulation"])
 api_router.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
+
+# New persisted-data endpoints
+api_router.include_router(runs.router, prefix="/runs", tags=["runs"])
+api_router.include_router(replays.router, prefix="/replays", tags=["replays"])
+api_router.include_router(calibrations.router, prefix="/calibrations", tags=["calibrations"])

@@ -1,9 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import SimuAlphaError, simualpha_error_handler
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Startup: ensure DB tables exist (for dev convenience; production uses Alembic)
+    from app.db.base import Base
+    from app.db.models import *  # noqa: F401,F403 — register all models
+    from app.db.session import engine
+
+    Base.metadata.create_all(bind=engine)
+    yield
+    # Shutdown: nothing needed
 
 
 def create_app() -> FastAPI:
@@ -14,6 +28,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     application.add_middleware(

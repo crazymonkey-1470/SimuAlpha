@@ -13,7 +13,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
-    # Worker integration (future)
+    # Database
+    database_url: str = "postgresql://simualpha:simualpha@localhost:5432/simualpha"
+
+    # Worker integration
     worker_url: str = "http://localhost:8001"
 
     model_config = {"env_prefix": "SIMUALPHA_"}
