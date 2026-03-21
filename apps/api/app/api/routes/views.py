@@ -36,7 +36,7 @@ class SavedViewListResponse(BaseModel):
 
 class CreateViewRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    view_type: str = Field(default="dashboard", pattern="^(dashboard|regime|actors|scenarios|signals|replay)$")
+    view_type: str = Field(default="dashboard", pattern="^(dashboard|regime|actors|scenarios|signals|replay|symbol|compare|monitor|research)$")
     config: dict | None = None
     is_default: bool = False
 

@@ -1,3 +1,7 @@
+"use client";
+
+import { SymbolSearch } from "@/components/symbols/symbol-search";
+
 interface TopbarProps {
   title: string;
   subtitle?: string;
@@ -13,6 +17,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         )}
       </div>
       <div className="flex items-center gap-3">
+        <SymbolSearch className="hidden sm:block w-48" />
         <span className="flex items-center gap-1.5 text-2xs text-text-tertiary">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-green" />
           API Connected

@@ -1,4 +1,4 @@
-"""Watchlist CRUD endpoints — user-scoped."""
+"""Watchlist CRUD and intelligence endpoints — user-scoped."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.db.models import User, Watchlist, WatchlistItem, Workspace
 from app.db.session import get_db
+from app.schemas.symbols import WatchlistIntelligenceResponse, WatchlistSymbolIntel
 
 router = APIRouter()
 
@@ -151,3 +152,70 @@ async def remove_item(watchlist_id: str, item_id: str, user: User = Depends(get_
         raise HTTPException(status_code=404, detail="Item not found")
     db.delete(item)
     db.commit()
+
+
+@router.get("/{watchlist_id}/intelligence", response_model=WatchlistIntelligenceResponse)
+async def get_watchlist_intelligence(
+    watchlist_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Aggregate intelligence for all symbols in a watchlist."""
+    from app.api.routes.symbols import _build_symbol_overview
+
+    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    if not wl or wl.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+
+    symbol_intels: list[WatchlistSymbolIntel] = []
+    regime_dist: dict[str, int] = {}
+    signal_dist: dict[str, int] = {}
+    fragility_scores: list[tuple[str, str]] = []
+    conviction_scores: list[tuple[str, float]] = []
+    total_warns = 0
+
+    for item in wl.items:
+        overview = _build_symbol_overview(db, item.symbol)
+        regime_name = overview.regime.regime if overview.regime else "unknown"
+        signal_bias = overview.signal.bias if overview.signal else "unknown"
+
+        regime_dist[regime_name] = regime_dist.get(regime_name, 0) + 1
+        signal_dist[signal_bias] = signal_dist.get(signal_bias, 0) + 1
+        fragility_scores.append((item.symbol, overview.fragility))
+        if overview.signal:
+            conviction_scores.append((item.symbol, overview.signal.confidence))
+        total_warns += overview.warning_count
+
+        # Base scenario
+        base_sc = overview.scenarios[0] if overview.scenarios else None
+
+        symbol_intels.append(WatchlistSymbolIntel(
+            symbol=item.symbol,
+            regime=regime_name if overview.regime else None,
+            regime_confidence=overview.regime.confidence if overview.regime else None,
+            signal_bias=signal_bias if overview.signal else None,
+            signal_confidence=overview.signal.confidence if overview.signal else None,
+            fragility=overview.fragility,
+            dominant_actor=overview.dominant_actor,
+            base_scenario=base_sc.name if base_sc else None,
+            base_scenario_probability=base_sc.probability if base_sc else None,
+            warning_count=overview.warning_count,
+            risk_flags=overview.regime.risk_flags if overview.regime else [],
+            last_simulation_at=overview.last_simulation_at,
+        ))
+
+    # Sort by fragility (high first)
+    frag_order = {"high": 0, "elevated": 1, "moderate": 2, "low": 3, "unknown": 4}
+    highest_frag = [s for s, f in sorted(fragility_scores, key=lambda x: frag_order.get(x[1], 5)) if f in ("high", "elevated")]
+    strongest = [s for s, _ in sorted(conviction_scores, key=lambda x: x[1], reverse=True)[:3]]
+
+    return WatchlistIntelligenceResponse(
+        watchlist_id=str(wl.id),
+        watchlist_name=wl.name,
+        symbols=symbol_intels,
+        regime_distribution=regime_dist,
+        signal_distribution=signal_dist,
+        highest_fragility=highest_frag,
+        strongest_conviction=strongest,
+        total_warnings=total_warns,
+    )

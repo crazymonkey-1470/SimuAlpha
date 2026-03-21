@@ -13,10 +13,12 @@ const NAV_ITEMS = [
   { href: "/scenarios", label: "Scenarios", icon: BranchIcon },
   { href: "/signals", label: "Signals", icon: SignalIcon },
   { href: "/replay", label: "Replay", icon: ReplayIcon },
+  { href: "/compare", label: "Compare", icon: CompareIcon },
   { href: "/system", label: "System", icon: GearIcon },
 ];
 
 const USER_NAV_ITEMS = [
+  { href: "/monitor", label: "Monitor", icon: RadarIcon },
   { href: "/watchlists", label: "Watchlists", icon: StarIcon },
   { href: "/settings", label: "Settings", icon: SliderIcon },
 ];
@@ -264,6 +266,25 @@ function SliderIcon({ className }: { className?: string }) {
       <circle cx="5" cy="4" r="1.5" fill="currentColor" />
       <circle cx="10" cy="8" r="1.5" fill="currentColor" />
       <circle cx="7" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CompareIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <rect x="1.5" y="3" width="5" height="10" rx="1" />
+      <rect x="9.5" y="3" width="5" height="10" rx="1" />
+    </svg>
+  );
+}
+
+function RadarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" />
+      <circle cx="8" cy="8" r="2.5" />
+      <line x1="8" y1="2" x2="8" y2="5.5" />
     </svg>
   );
 }

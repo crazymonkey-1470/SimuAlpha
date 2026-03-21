@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -104,30 +105,45 @@ export default function WatchlistsPage() {
                   <CardTitle>{wl.name}</CardTitle>
                   {wl.description && <p className="text-2xs text-text-tertiary mt-0.5">{wl.description}</p>}
                 </div>
-                <button
-                  onClick={() => handleDelete(wl.id)}
-                  className="text-2xs text-text-tertiary hover:text-accent-red transition-colors"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/monitor?watchlist=${wl.id}`}
+                    className="text-2xs font-medium text-accent-blue hover:underline"
+                  >
+                    Monitor
+                  </Link>
+                  <Link
+                    href={`/compare?symbols=${wl.items.map((i) => i.symbol).join(",")}`}
+                    className="text-2xs font-medium text-accent-blue hover:underline"
+                  >
+                    Compare
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(wl.id)}
+                    className="text-2xs text-text-tertiary hover:text-accent-red transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
               </CardHeader>
 
               {/* Items */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {wl.items.map((item) => (
-                  <span
+                  <Link
                     key={item.id}
-                    className="group inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-3 py-1.5 text-xs font-mono font-medium text-text-primary"
+                    href={`/symbols/${item.symbol}`}
+                    className="group inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-3 py-1.5 text-xs font-mono font-medium text-text-primary hover:bg-surface-3 transition-colors"
                   >
                     {item.symbol}
                     <button
-                      onClick={() => handleRemoveItem(wl.id, item.id)}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemoveItem(wl.id, item.id); }}
                       className="hidden group-hover:inline text-text-tertiary hover:text-accent-red"
                       aria-label={`Remove ${item.symbol}`}
                     >
                       &times;
                     </button>
-                  </span>
+                  </Link>
                 ))}
                 {wl.items.length === 0 && (
                   <p className="text-2xs text-text-tertiary">No symbols added yet.</p>

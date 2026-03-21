@@ -4,6 +4,7 @@ import type {
   BookmarkListResponse,
   BookmarkOut,
   CalibrationRunListResponse,
+  CompareResponse,
   CrossAssetResponse,
   JobListResponse,
   JobStatusResponse,
@@ -22,9 +23,14 @@ import type {
   SignalHistoryResponse,
   SignalSummary,
   SimulationRunResponse,
+  SymbolHistoryResponse,
+  SymbolOverview,
+  SymbolReplayResponse,
+  SymbolRunsResponse,
   SystemStatus,
   UserPreferences,
   UserProfile,
+  WatchlistIntelligenceResponse,
   WatchlistListResponse,
   WatchlistOut,
   WorkerHealthResponse,
@@ -136,6 +142,8 @@ export const api = {
       postApi<unknown>(`/watchlists/${id}/items`, { symbol }, null),
     removeItem: (watchlistId: string, itemId: string) =>
       deleteApi(`/watchlists/${watchlistId}/items/${itemId}`),
+    intelligence: (id: string) =>
+      fetchApi<WatchlistIntelligenceResponse>(`/watchlists/${id}/intelligence`, null as unknown as WatchlistIntelligenceResponse),
   },
   views: {
     list: () => fetchApi<SavedViewListResponse>("/views", { views: [], total: 0 }),
@@ -146,6 +154,33 @@ export const api = {
       patchApi<SavedViewOut>(`/views/${id}`, body, null as unknown as SavedViewOut),
     delete: (id: string) => deleteApi(`/views/${id}`),
   },
+
+  // ── Symbol drilldown & compare (public) ──────────────────────────────────
+  symbols: {
+    overview: (symbol: string) =>
+      fetchApi<SymbolOverview>(`/symbols/${symbol}/overview`, { symbol, regime: null, signal: null, actors: [], scenarios: [], dominant_actor: null, fragility: "unknown", warning_count: 0, last_simulation_at: null, run_id: null }),
+    regime: (symbol: string) =>
+      fetchApi<RegimeSnapshot>(`/symbols/${symbol}/regime`, null as unknown as RegimeSnapshot),
+    actors: (symbol: string) =>
+      fetchApi<ActorStateResponse>(`/symbols/${symbol}/actors`, { actors: [], actor_count: 0 }),
+    scenarios: (symbol: string) =>
+      fetchApi<ScenarioResponse>(`/symbols/${symbol}/scenarios`, { scenarios: [], base_case_id: "" }),
+    signals: (symbol: string) =>
+      fetchApi<SignalSummary>(`/symbols/${symbol}/signals`, null as unknown as SignalSummary),
+    history: (symbol: string, limit = 30) =>
+      fetchApi<SymbolHistoryResponse>(`/symbols/${symbol}/history?limit=${limit}`, { symbol, entries: [], total: 0 }),
+    replay: (symbol: string, startDate?: string, endDate?: string) => {
+      const params = new URLSearchParams();
+      if (startDate) params.set("start_date", startDate);
+      if (endDate) params.set("end_date", endDate);
+      const qs = params.toString();
+      return fetchApi<SymbolReplayResponse>(`/symbols/${symbol}/replay${qs ? `?${qs}` : ""}`, { symbol, frames: [], total: 0 });
+    },
+    runs: (symbol: string, limit = 20) =>
+      fetchApi<SymbolRunsResponse>(`/symbols/${symbol}/runs?limit=${limit}`, { symbol, runs: [], total: 0 }),
+  },
+  compare: (symbols: string[]) =>
+    fetchApi<CompareResponse>(`/symbols/compare?symbols=${symbols.join(",")}`, { symbols: [], compared_at: new Date().toISOString() }),
 
   // ── Shared simulation data (public) ─────────────────────────────────────
   regime: {

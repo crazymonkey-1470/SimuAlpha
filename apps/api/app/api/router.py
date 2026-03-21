@@ -16,6 +16,7 @@ from app.api.routes import (
     scenarios,
     signals,
     simulation,
+    symbols,
     system,
     views,
     watchlists,
@@ -39,6 +40,9 @@ api_router.include_router(context.router, prefix="/context", tags=["context"])
 api_router.include_router(replay.router, prefix="/replay", tags=["replay"])
 api_router.include_router(simulation.router, prefix="/simulation", tags=["simulation"])
 api_router.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
+
+# Symbol drilldown & comparison (public)
+api_router.include_router(symbols.router, prefix="/symbols", tags=["symbols"])
 
 # Persisted-data endpoints
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"])

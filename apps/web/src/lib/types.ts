@@ -76,6 +76,156 @@ export interface BookmarkListResponse {
   total: number;
 }
 
+// ── Symbol Drilldown ────────────────────────────────────────────────────────
+
+export interface SymbolRegime {
+  regime: string;
+  confidence: number;
+  net_pressure: number;
+  posture: string;
+  risk_flags: string[];
+  summary: string;
+  updated_at: string;
+}
+
+export interface SymbolSignal {
+  bias: string;
+  confidence: number;
+  time_horizon: string;
+  suggested_posture: string;
+  warnings: string[];
+  change_vs_prior: string;
+}
+
+export interface SymbolActorSummary {
+  name: string;
+  archetype: string;
+  bias: string;
+  conviction: number;
+  contribution: number;
+  confidence: number;
+}
+
+export interface SymbolScenarioSummary {
+  name: string;
+  probability: number;
+  direction: string;
+  risk_level: string;
+  is_base_case: boolean;
+}
+
+export interface SymbolOverview {
+  symbol: string;
+  regime: SymbolRegime | null;
+  signal: SymbolSignal | null;
+  actors: SymbolActorSummary[];
+  scenarios: SymbolScenarioSummary[];
+  dominant_actor: string | null;
+  fragility: string;
+  warning_count: number;
+  last_simulation_at: string | null;
+  run_id: string | null;
+}
+
+export interface SymbolTimelineEntry {
+  date: string;
+  regime: string;
+  regime_confidence: number;
+  net_pressure: number;
+  signal_bias: string | null;
+  signal_confidence: number | null;
+}
+
+export interface SymbolHistoryResponse {
+  symbol: string;
+  entries: SymbolTimelineEntry[];
+  total: number;
+}
+
+export interface SymbolReplayFrame {
+  date: string;
+  regime: string;
+  regime_confidence: number;
+  net_pressure: number;
+  signal_bias: string | null;
+  notes: string | null;
+  realized_outcome: string | null;
+}
+
+export interface SymbolReplayResponse {
+  symbol: string;
+  frames: SymbolReplayFrame[];
+  total: number;
+}
+
+export interface SymbolRunSummary {
+  id: string;
+  run_type: string;
+  status: string;
+  source: string;
+  summary: string | null;
+  warnings: string[];
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface SymbolRunsResponse {
+  symbol: string;
+  runs: SymbolRunSummary[];
+  total: number;
+}
+
+// ── Watchlist Intelligence ──────────────────────────────────────────────────
+
+export interface WatchlistSymbolIntel {
+  symbol: string;
+  regime: string | null;
+  regime_confidence: number | null;
+  signal_bias: string | null;
+  signal_confidence: number | null;
+  fragility: string;
+  dominant_actor: string | null;
+  base_scenario: string | null;
+  base_scenario_probability: number | null;
+  warning_count: number;
+  risk_flags: string[];
+  last_simulation_at: string | null;
+}
+
+export interface WatchlistIntelligenceResponse {
+  watchlist_id: string;
+  watchlist_name: string;
+  symbols: WatchlistSymbolIntel[];
+  regime_distribution: Record<string, number>;
+  signal_distribution: Record<string, number>;
+  highest_fragility: string[];
+  strongest_conviction: string[];
+  total_warnings: number;
+}
+
+// ── Compare ─────────────────────────────────────────────────────────────────
+
+export interface CompareEntry {
+  symbol: string;
+  regime: string | null;
+  regime_confidence: number | null;
+  net_pressure: number | null;
+  signal_bias: string | null;
+  signal_confidence: number | null;
+  dominant_actor: string | null;
+  fragility: string;
+  base_scenario: string | null;
+  base_scenario_direction: string | null;
+  posture: string | null;
+  warning_count: number;
+  last_simulation_at: string | null;
+}
+
+export interface CompareResponse {
+  symbols: CompareEntry[];
+  compared_at: string;
+}
+
 // ── Regime ──────────────────────────────────────────────────────────────────
 
 export interface RegimeDriver {
