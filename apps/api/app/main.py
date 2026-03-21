@@ -12,7 +12,7 @@ from app.core.exceptions import SimuAlphaError, simualpha_error_handler
 async def lifespan(application: FastAPI):
     # Startup: ensure DB tables exist (for dev convenience; production uses Alembic)
     from app.db.base import Base
-    from app.db.models import *  # noqa: F401,F403 — register all models
+    import app.db.models  # noqa: F401 — register all models
     from app.db.session import engine
 
     Base.metadata.create_all(bind=engine)
