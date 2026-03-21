@@ -13,6 +13,13 @@ from app.db.models import User, Watchlist, WatchlistItem, Workspace
 from app.db.session import get_db
 from app.schemas.symbols import WatchlistIntelligenceResponse, WatchlistSymbolIntel
 
+
+def _parse_uuid(val: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(val)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
 router = APIRouter()
 
 
@@ -97,7 +104,7 @@ async def create_watchlist(body: CreateWatchlistRequest, user: User = Depends(ge
 
 @router.get("/{watchlist_id}", response_model=WatchlistOut)
 async def get_watchlist(watchlist_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
     return _to_out(wl)
@@ -105,7 +112,7 @@ async def get_watchlist(watchlist_id: str, user: User = Depends(get_current_user
 
 @router.patch("/{watchlist_id}", response_model=WatchlistOut)
 async def update_watchlist(watchlist_id: str, body: UpdateWatchlistRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
     if body.name is not None:
@@ -119,7 +126,7 @@ async def update_watchlist(watchlist_id: str, body: UpdateWatchlistRequest, user
 
 @router.delete("/{watchlist_id}", status_code=204)
 async def delete_watchlist(watchlist_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
     db.delete(wl)
@@ -128,7 +135,7 @@ async def delete_watchlist(watchlist_id: str, user: User = Depends(get_current_u
 
 @router.post("/{watchlist_id}/items", response_model=WatchlistItemOut, status_code=201)
 async def add_item(watchlist_id: str, body: AddItemRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
     existing = db.query(WatchlistItem).filter(WatchlistItem.watchlist_id == wl.id, WatchlistItem.symbol == body.symbol.upper()).first()
@@ -144,10 +151,10 @@ async def add_item(watchlist_id: str, body: AddItemRequest, user: User = Depends
 
 @router.delete("/{watchlist_id}/items/{item_id}", status_code=204)
 async def remove_item(watchlist_id: str, item_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
-    item = db.get(WatchlistItem, uuid.UUID(item_id))
+    item = db.get(WatchlistItem, _parse_uuid(item_id))
     if not item or item.watchlist_id != wl.id:
         raise HTTPException(status_code=404, detail="Item not found")
     db.delete(item)
@@ -163,7 +170,7 @@ async def get_watchlist_intelligence(
     """Aggregate intelligence for all symbols in a watchlist."""
     from app.api.routes.symbols import _build_symbol_overview
 
-    wl = db.get(Watchlist, uuid.UUID(watchlist_id))
+    wl = db.get(Watchlist, _parse_uuid(watchlist_id))
     if not wl or wl.user_id != user.id:
         raise HTTPException(status_code=404, detail="Watchlist not found")
 

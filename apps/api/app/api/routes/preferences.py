@@ -15,6 +15,13 @@ from app.db.session import get_db
 router = APIRouter()
 
 
+def _parse_uuid(val: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(val)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+
 # ── Preference Schemas ────────────────────────────────────────────────────
 
 
@@ -95,7 +102,7 @@ async def update_preferences(body: UpdatePreferenceRequest, user: User = Depends
     if body.landing_page is not None:
         prefs.landing_page = body.landing_page
     if body.default_view_id is not None:
-        prefs.default_view_id = uuid.UUID(body.default_view_id) if body.default_view_id else None
+        prefs.default_view_id = _parse_uuid(body.default_view_id) if body.default_view_id else None
 
     db.commit()
     db.refresh(prefs)
@@ -134,7 +141,7 @@ async def create_bookmark(body: CreateBookmarkRequest, user: User = Depends(get_
 
 @router.delete("/bookmarks/{bookmark_id}", status_code=204)
 async def delete_bookmark(bookmark_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    bm = db.get(ReplayBookmark, uuid.UUID(bookmark_id))
+    bm = db.get(ReplayBookmark, _parse_uuid(bookmark_id))
     if not bm or bm.user_id != user.id:
         raise HTTPException(status_code=404, detail="Bookmark not found")
     db.delete(bm)

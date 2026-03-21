@@ -6,6 +6,7 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import jwt as pyjwt
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
@@ -189,10 +190,10 @@ async def refresh(body: RefreshRequest, db: Session = Depends(get_db)) -> TokenR
     """Exchange a refresh token for a new access token."""
     try:
         payload = decode_token(body.refresh_token)
-        if payload.get("type") != "refresh":
-            raise UnauthorizedError("Invalid token type")
-    except Exception:
+    except (pyjwt.PyJWTError, ValueError, KeyError):
         raise UnauthorizedError("Invalid or expired refresh token")
+    if payload.get("type") != "refresh":
+        raise UnauthorizedError("Invalid token type")
 
     token_hash = _hash_refresh_token(body.refresh_token)
     stored = db.query(RefreshToken).filter(

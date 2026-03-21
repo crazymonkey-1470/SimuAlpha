@@ -15,6 +15,13 @@ from app.db.session import get_db
 router = APIRouter()
 
 
+def _parse_uuid(val: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(val)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────
 
 
@@ -97,7 +104,7 @@ async def create_view(body: CreateViewRequest, user: User = Depends(get_current_
 
 @router.get("/{view_id}", response_model=SavedViewOut)
 async def get_view(view_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    v = db.get(SavedView, uuid.UUID(view_id))
+    v = db.get(SavedView, _parse_uuid(view_id))
     if not v or v.user_id != user.id:
         raise HTTPException(status_code=404, detail="View not found")
     return _to_out(v)
@@ -105,7 +112,7 @@ async def get_view(view_id: str, user: User = Depends(get_current_user), db: Ses
 
 @router.patch("/{view_id}", response_model=SavedViewOut)
 async def update_view(view_id: str, body: UpdateViewRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    v = db.get(SavedView, uuid.UUID(view_id))
+    v = db.get(SavedView, _parse_uuid(view_id))
     if not v or v.user_id != user.id:
         raise HTTPException(status_code=404, detail="View not found")
     if body.name is not None:
@@ -123,7 +130,7 @@ async def update_view(view_id: str, body: UpdateViewRequest, user: User = Depend
 
 @router.delete("/{view_id}", status_code=204)
 async def delete_view(view_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    v = db.get(SavedView, uuid.UUID(view_id))
+    v = db.get(SavedView, _parse_uuid(view_id))
     if not v or v.user_id != user.id:
         raise HTTPException(status_code=404, detail="View not found")
     db.delete(v)
