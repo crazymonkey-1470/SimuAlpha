@@ -72,7 +72,7 @@ def _to_out(wl: Watchlist) -> WatchlistOut:
 def _default_workspace(db: Session, user: User) -> Workspace:
     ws = db.query(Workspace).filter(Workspace.owner_id == user.id).first()
     if not ws:
-        raise HTTPException(status_code=500, detail="No workspace found")
+        raise HTTPException(status_code=404, detail="No workspace found for user")
     return ws
 
 

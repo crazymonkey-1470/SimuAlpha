@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/topbar";
@@ -12,6 +12,14 @@ import { cn, biasColor } from "@/lib/utils";
 import type { CompareResponse } from "@/lib/types";
 
 export default function ComparePage() {
+  return (
+    <Suspense fallback={<><Topbar title="Compare" subtitle="Loading..." /><div className="p-6"><Card><p className="text-xs text-text-tertiary">Loading...</p></Card></div></>}>
+      <ComparePageInner />
+    </Suspense>
+  );
+}
+
+function ComparePageInner() {
   const searchParams = useSearchParams();
   const initialSymbols = searchParams.get("symbols")?.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) ?? [];
   const [symbols, setSymbols] = useState<string[]>(initialSymbols.length > 0 ? initialSymbols : ["SPY", "QQQ"]);

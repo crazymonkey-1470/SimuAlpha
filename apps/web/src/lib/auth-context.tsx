@@ -21,30 +21,64 @@ const AuthContext = createContext<AuthState>({
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+async function tryRefresh(): Promise<string | null> {
+  const refreshToken = localStorage.getItem("sa_refresh_token");
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const newToken = data.access_token;
+    if (newToken) {
+      localStorage.setItem("sa_access_token", newToken);
+      return newToken;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount, check if we have a valid token
   useEffect(() => {
-    const token = localStorage.getItem("sa_access_token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    fetch(`${API_BASE}/api/v1/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid");
-        return res.json();
-      })
-      .then((data) => setUser(data))
-      .catch(() => {
+    async function init() {
+      let token = localStorage.getItem("sa_access_token");
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      // Try current token
+      let res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+
+      // If expired, try refresh
+      if (res && res.status === 401) {
+        token = await tryRefresh();
+        if (token) {
+          res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => null);
+        }
+      }
+
+      if (res && res.ok) {
+        const data = await res.json();
+        setUser(data);
+      } else {
         localStorage.removeItem("sa_access_token");
         localStorage.removeItem("sa_refresh_token");
-      })
-      .finally(() => setLoading(false));
+      }
+      setLoading(false);
+    }
+    init();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

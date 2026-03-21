@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import uuid
 
+import jwt
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import UnauthorizedError
 from app.core.security import decode_token
 from app.db.session import get_db
 
@@ -20,38 +22,36 @@ def _extract_token(request: Request) -> str | None:
 
 
 def get_current_user_id(request: Request) -> uuid.UUID:
-    """Require a valid access token and return the user UUID.
-
-    Use as a dependency for protected routes.
-    """
-    from app.core.exceptions import UnauthorizedError
-
+    """Require a valid access token and return the user UUID."""
     token = _extract_token(request)
     if not token:
         raise UnauthorizedError("Missing authorization header")
     try:
         payload = decode_token(token)
-        if payload.get("type") != "access":
-            raise UnauthorizedError("Invalid token type")
-        return uuid.UUID(payload["sub"])
-    except Exception:
+    except (jwt.PyJWTError, ValueError, KeyError):
         raise UnauthorizedError("Invalid or expired token")
+    if payload.get("type") != "access":
+        raise UnauthorizedError("Invalid token type")
+    try:
+        return uuid.UUID(payload["sub"])
+    except (ValueError, KeyError):
+        raise UnauthorizedError("Malformed token payload")
 
 
 def get_optional_user_id(request: Request) -> uuid.UUID | None:
-    """Optionally resolve a user from the token. Returns None if unauthenticated.
-
-    Use for routes that work with or without auth.
-    """
+    """Optionally resolve a user from the token. Returns None if unauthenticated."""
     token = _extract_token(request)
     if not token:
         return None
     try:
         payload = decode_token(token)
-        if payload.get("type") != "access":
-            return None
+    except (jwt.PyJWTError, ValueError, KeyError):
+        return None
+    if payload.get("type") != "access":
+        return None
+    try:
         return uuid.UUID(payload["sub"])
-    except Exception:
+    except (ValueError, KeyError):
         return None
 
 
@@ -60,7 +60,6 @@ def get_current_user(
     db: Session = Depends(get_db),
 ):
     """Resolve the full User object. Requires auth."""
-    from app.core.exceptions import UnauthorizedError
     from app.db.models import User
 
     user = db.get(User, user_id)

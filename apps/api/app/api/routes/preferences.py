@@ -124,7 +124,7 @@ async def list_bookmarks(user: User = Depends(get_current_user), db: Session = D
 async def create_bookmark(body: CreateBookmarkRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ws = db.query(Workspace).filter(Workspace.owner_id == user.id).first()
     if not ws:
-        raise HTTPException(status_code=500, detail="No workspace found")
+        raise HTTPException(status_code=404, detail="No workspace found for user")
     bm = ReplayBookmark(user_id=user.id, workspace_id=ws.id, symbol=body.symbol.upper(), replay_date=body.replay_date, label=body.label, note=body.note)
     db.add(bm)
     db.commit()

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/topbar";
@@ -15,6 +15,14 @@ import { cn } from "@/lib/utils";
 import type { WatchlistIntelligenceResponse, WatchlistOut } from "@/lib/types";
 
 export default function MonitorPage() {
+  return (
+    <Suspense fallback={<><Topbar title="Monitor" subtitle="Loading..." /><div className="p-6"><Card><p className="text-xs text-text-tertiary">Loading...</p></Card></div></>}>
+      <MonitorPageInner />
+    </Suspense>
+  );
+}
+
+function MonitorPageInner() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();

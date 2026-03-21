@@ -1,4 +1,5 @@
 import secrets
+import warnings
 
 from pydantic_settings import BaseSettings
 
@@ -24,13 +25,28 @@ class Settings(BaseSettings):
     # Redis for job queue
     redis_url: str = "redis://localhost:6379/0"
 
-    # Auth / JWT
-    jwt_secret: str = secrets.token_urlsafe(32)
+    # Auth / JWT — MUST be set via SIMUALPHA_JWT_SECRET in production
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
 
     model_config = {"env_prefix": "SIMUALPHA_"}
 
+    def get_jwt_secret(self) -> str:
+        if self.jwt_secret:
+            return self.jwt_secret
+        warnings.warn(
+            "SIMUALPHA_JWT_SECRET is not set — using ephemeral secret. "
+            "Tokens will be invalidated on restart. Set it in production.",
+            stacklevel=2,
+        )
+        return secrets.token_urlsafe(32)
+
 
 settings = Settings()
+
+# Resolve the JWT secret once at startup
+_jwt_secret = settings.get_jwt_secret()
+# Patch it back so all code uses the resolved value
+settings.jwt_secret = _jwt_secret

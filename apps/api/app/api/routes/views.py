@@ -76,7 +76,7 @@ async def list_views(user: User = Depends(get_current_user), db: Session = Depen
 async def create_view(body: CreateViewRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ws = db.query(Workspace).filter(Workspace.owner_id == user.id).first()
     if not ws:
-        raise HTTPException(status_code=500, detail="No workspace found")
+        raise HTTPException(status_code=404, detail="No workspace found for user")
 
     if body.is_default:
         db.query(SavedView).filter(SavedView.user_id == user.id, SavedView.view_type == body.view_type, SavedView.is_default == True).update({"is_default": False})
