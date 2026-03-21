@@ -1,18 +1,16 @@
 """Replay generation service.
 
-Produces historical replay frames for a given date or date range.
-Uses deterministic seeded generation so the same date always
-produces the same frame.
+Thin wrapper around the engine's replay generation.
+Uses the real simulation engine to generate each frame.
 """
 
 from __future__ import annotations
 
 import random
-from datetime import date, timedelta
 
 from worker.core.config import get_settings
 from worker.core.logging import get_logger
-from worker.generators.replay_generator import generate_replay_frame
+from worker.engine.replay_engine import generate_replay_frame, generate_replay_range
 from worker.schemas.replay import ReplayFrame
 
 log = get_logger("svc.replay")
@@ -22,7 +20,7 @@ def generate_single_frame(
     target_date: str,
     seed: int | None = None,
 ) -> ReplayFrame:
-    """Generate a replay frame for a specific date."""
+    """Generate a replay frame for a specific date using the simulation engine."""
     settings = get_settings()
     effective_seed = seed if seed is not None else settings.seed
     rng = random.Random(effective_seed)
@@ -36,21 +34,9 @@ def generate_date_range(
     end: str,
     seed: int | None = None,
 ) -> list[ReplayFrame]:
-    """Generate replay frames for a range of dates (inclusive)."""
+    """Generate replay frames for a range of dates using the simulation engine."""
     settings = get_settings()
-    effective_seed = seed if seed is not None else settings.seed
-    rng = random.Random(effective_seed)
+    effective_seed = seed if seed is not None else (settings.seed or 42)
 
-    start_date = date.fromisoformat(start)
-    end_date = date.fromisoformat(end)
-    dates: list[str] = []
-    current = start_date
-    while current <= end_date:
-        # Skip weekends
-        if current.weekday() < 5:
-            dates.append(current.isoformat())
-        current += timedelta(days=1)
-
-    log.info("Generating %d replay frames (%s to %s)", len(dates), start, end)
-    frames = [generate_replay_frame(rng, d) for d in dates]
-    return frames
+    log.info("Generating replay range %s to %s (seed=%s)", start, end, effective_seed)
+    return generate_replay_range(effective_seed, start, end)

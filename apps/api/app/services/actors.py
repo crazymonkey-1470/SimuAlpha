@@ -1,19 +1,12 @@
-"""Actor state service.
+"""Actor state service — powered by the SimuAlpha simulation engine."""
 
-Currently returns seeded actor data. When the simulation engine is integrated,
-this service will read computed actor states from the simulation output pipeline.
-"""
-
-from app.data.seed import CURRENT_ACTORS
 from app.schemas.actors import ActorStateResponse
+from app.services.engine_bridge import get_current_simulation
 
 
 class ActorService:
     def get_current(self) -> ActorStateResponse:
-        return ActorStateResponse(
-            actors=CURRENT_ACTORS,
-            actor_count=len(CURRENT_ACTORS),
-        )
+        return get_current_simulation().actors
 
 
 actor_service = ActorService()

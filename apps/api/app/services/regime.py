@@ -1,17 +1,13 @@
-"""Regime analysis service.
+"""Regime analysis service — powered by the SimuAlpha simulation engine."""
 
-Currently returns seeded data. When the simulation engine is integrated,
-this service will read computed regime state from the data store or
-simulation output pipeline.
-"""
-
-from app.data.seed import CURRENT_REGIME, REGIME_HISTORY
+from app.data.seed import REGIME_HISTORY
 from app.schemas.regime import RegimeHistoryResponse, RegimeSnapshot
+from app.services.engine_bridge import get_current_simulation
 
 
 class RegimeService:
     def get_current(self) -> RegimeSnapshot:
-        return RegimeSnapshot(**CURRENT_REGIME)
+        return get_current_simulation().regime
 
     def get_history(self, limit: int = 10) -> RegimeHistoryResponse:
         entries = REGIME_HISTORY[:limit]

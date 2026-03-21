@@ -1,17 +1,13 @@
-"""Signal production service.
+"""Signal production service — powered by the SimuAlpha simulation engine."""
 
-Currently returns seeded signal data. When the simulation engine is integrated,
-signals will be derived from aggregated actor pressures, regime classification,
-and scenario probabilities.
-"""
-
-from app.data.seed import CURRENT_SIGNAL, SIGNAL_HISTORY
+from app.data.seed import SIGNAL_HISTORY
 from app.schemas.signals import SignalHistoryResponse, SignalSummary
+from app.services.engine_bridge import get_current_simulation
 
 
 class SignalService:
     def get_current(self) -> SignalSummary:
-        return SignalSummary(**CURRENT_SIGNAL)
+        return get_current_simulation().signal
 
     def get_history(self, limit: int = 10) -> SignalHistoryResponse:
         entries = SIGNAL_HISTORY[:limit]
