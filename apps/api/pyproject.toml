@@ -1,7 +1,7 @@
 [project]
 name = "simualpha-api"
 version = "0.1.0"
-description = "SimuAlpha API service"
+description = "SimuAlpha — quantitative market intelligence and simulation API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -13,10 +13,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
     "httpx>=0.28.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py311"
