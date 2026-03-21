@@ -1,3 +1,5 @@
+import secrets
+
 from pydantic_settings import BaseSettings
 
 
@@ -21,6 +23,12 @@ class Settings(BaseSettings):
 
     # Redis for job queue
     redis_url: str = "redis://localhost:6379/0"
+
+    # Auth / JWT
+    jwt_secret: str = secrets.token_urlsafe(32)
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
 
     model_config = {"env_prefix": "SIMUALPHA_"}
 

@@ -2,11 +2,13 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     actors,
+    auth,
     backtest,
     calibrations,
     context,
     health,
     jobs,
+    preferences,
     regime,
     replay,
     replays,
@@ -15,12 +17,20 @@ from app.api.routes import (
     signals,
     simulation,
     system,
+    views,
+    watchlists,
 )
 
 api_router = APIRouter()
 
+# Public / system routes
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(system.router, prefix="/system", tags=["system"])
+
+# Auth
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+
+# Shared simulation data (public)
 api_router.include_router(regime.router, prefix="/regime", tags=["regime"])
 api_router.include_router(actors.router, prefix="/actors", tags=["actors"])
 api_router.include_router(scenarios.router, prefix="/scenarios", tags=["scenarios"])
@@ -37,3 +47,8 @@ api_router.include_router(calibrations.router, prefix="/calibrations", tags=["ca
 
 # Job queue endpoints
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+
+# User-specific data (authenticated)
+api_router.include_router(watchlists.router, prefix="/watchlists", tags=["watchlists"])
+api_router.include_router(views.router, prefix="/views", tags=["views"])
+api_router.include_router(preferences.router, prefix="/me", tags=["user"])

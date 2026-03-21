@@ -1,3 +1,81 @@
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+  default_workspace_id: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user: UserProfile;
+}
+
+export interface UserPreferences {
+  default_symbol: string;
+  default_time_horizon: string;
+  preferred_signal_view: string;
+  landing_page: string;
+  default_view_id: string | null;
+}
+
+export interface WatchlistItem {
+  id: string;
+  symbol: string;
+  position: number;
+}
+
+export interface WatchlistOut {
+  id: string;
+  name: string;
+  description: string | null;
+  workspace_id: string;
+  items: WatchlistItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistListResponse {
+  watchlists: WatchlistOut[];
+  total: number;
+}
+
+export interface SavedViewOut {
+  id: string;
+  name: string;
+  view_type: string;
+  config: Record<string, unknown> | null;
+  is_default: boolean;
+  workspace_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedViewListResponse {
+  views: SavedViewOut[];
+  total: number;
+}
+
+export interface BookmarkOut {
+  id: string;
+  symbol: string;
+  replay_date: string;
+  label: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface BookmarkListResponse {
+  bookmarks: BookmarkOut[];
+  total: number;
+}
+
 // ── Regime ──────────────────────────────────────────────────────────────────
 
 export interface RegimeDriver {
