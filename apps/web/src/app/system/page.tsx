@@ -1,6 +1,7 @@
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardTitle } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -166,7 +167,7 @@ function StatusRow({
     <div className="flex items-start justify-between gap-4 border-b border-border-subtle pb-3 last:border-0 last:pb-0">
       <span className="text-xs text-text-tertiary flex-shrink-0">{label}</span>
       <span
-        className={`text-xs text-text-primary text-right ${mono ? "font-mono" : ""}`}
+        className={cn("text-xs text-text-primary text-right", mono && "font-mono")}
       >
         {value}
       </span>

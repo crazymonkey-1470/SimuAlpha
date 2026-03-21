@@ -1,17 +1,26 @@
+import Link from "next/link";
 import { Topbar } from "@/components/layout/topbar";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge, BiasBadge, DirectionBadge, RiskBadge } from "@/components/ui/badge";
 import { ConfidenceBar } from "@/components/ui/confidence-bar";
 import { PressureBar } from "@/components/ui/pressure-bar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatArchetype } from "@/lib/utils";
 import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-const AVAILABLE_DATES = ["2025-03-18"];
+const AVAILABLE_DATES = ["2025-03-18", "2025-03-19", "2025-03-20", "2025-03-21"];
 
-export default async function ReplayPage() {
-  const date = AVAILABLE_DATES[0];
+interface ReplayPageProps {
+  searchParams: Promise<{ date?: string }>;
+}
+
+export default async function ReplayPage({ searchParams }: ReplayPageProps) {
+  const params = await searchParams;
+  const date = AVAILABLE_DATES.includes(params.date ?? "")
+    ? params.date!
+    : AVAILABLE_DATES[0];
   const frame = await api.replay.frame(date);
 
   return (
@@ -23,28 +32,30 @@ export default async function ReplayPage() {
       <div className="p-6 space-y-6">
         {/* Date selector */}
         <Card>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="mb-1">Replay Frame</CardTitle>
               <p className="text-xs text-text-tertiary">
                 Review what the simulation believed and what actually happened
               </p>
             </div>
-            <div className="flex gap-2">
+            <nav className="flex gap-2" aria-label="Select replay date">
               {AVAILABLE_DATES.map((d) => (
-                <span
+                <Link
                   key={d}
+                  href={`/replay?date=${d}`}
                   className={cn(
-                    "rounded-md border px-3 py-1.5 font-mono text-xs",
+                    "rounded-md border px-3 py-1.5 font-mono text-xs transition-colors",
                     d === date
                       ? "border-accent-blue/40 bg-accent-blue/10 text-accent-blue"
-                      : "border-border-subtle text-text-tertiary"
+                      : "border-border-subtle text-text-tertiary hover:border-border-default hover:text-text-secondary"
                   )}
+                  aria-current={d === date ? "page" : undefined}
                 >
                   {d}
-                </span>
+                </Link>
               ))}
-            </div>
+            </nav>
           </div>
         </Card>
 
@@ -74,7 +85,7 @@ export default async function ReplayPage() {
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-text-tertiary italic">
+              <p className="text-sm text-text-tertiary italic mb-4">
                 Outcome data not yet available for this date.
               </p>
             )}
@@ -90,49 +101,56 @@ export default async function ReplayPage() {
           <CardTitle className="mb-4">
             Actor States — {frame.date}
           </CardTitle>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {frame.actor_states.map((actor) => (
-              <div
-                key={actor.id}
-                className="rounded-md border border-border-subtle bg-surface-2 p-4"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-xs font-semibold text-text-primary">
-                      {actor.name}
-                    </p>
-                    <p className="text-2xs text-text-tertiary">
-                      {formatArchetype(actor.archetype)}
-                    </p>
+          {frame.actor_states.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {frame.actor_states.map((actor) => (
+                <div
+                  key={actor.id}
+                  className="rounded-md border border-border-subtle bg-surface-2 p-4"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-xs font-semibold text-text-primary">
+                        {actor.name}
+                      </p>
+                      <p className="text-2xs text-text-tertiary">
+                        {formatArchetype(actor.archetype)}
+                      </p>
+                    </div>
+                    <BiasBadge bias={actor.bias} />
                   </div>
-                  <BiasBadge bias={actor.bias} />
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div>
+                      <p className="text-2xs text-text-tertiary">Contribution</p>
+                      <p
+                        className={cn(
+                          "font-mono text-xs font-semibold",
+                          actor.contribution >= 0
+                            ? "text-accent-green"
+                            : "text-accent-red"
+                        )}
+                      >
+                        {actor.contribution >= 0 ? "+" : ""}
+                        {(actor.contribution * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-2xs text-text-tertiary">Conviction</p>
+                      <p className="font-mono text-xs text-text-primary">
+                        {(actor.conviction * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-2xs text-text-tertiary">{actor.recent_change}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <p className="text-2xs text-text-tertiary">Contribution</p>
-                    <p
-                      className={cn(
-                        "font-mono text-xs font-semibold",
-                        actor.contribution >= 0
-                          ? "text-accent-green"
-                          : "text-accent-red"
-                      )}
-                    >
-                      {actor.contribution >= 0 ? "+" : ""}
-                      {(actor.contribution * 100).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-2xs text-text-tertiary">Conviction</p>
-                    <p className="font-mono text-xs text-text-primary">
-                      {(actor.conviction * 100).toFixed(0)}%
-                    </p>
-                  </div>
-                </div>
-                <p className="text-2xs text-text-tertiary">{actor.recent_change}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No actor data"
+              description="Actor state data is not available for this replay frame."
+            />
+          )}
         </Card>
 
         {/* Scenarios at that time */}
@@ -140,28 +158,35 @@ export default async function ReplayPage() {
           <CardTitle className="mb-4">
             Scenario Branches — {frame.date}
           </CardTitle>
-          <div className="space-y-3">
-            {frame.scenario_branches.map((s) => (
-              <div
-                key={s.id}
-                className="rounded-md border border-border-subtle bg-surface-2 p-4"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-text-primary">
-                      {s.name}
-                    </p>
-                    <DirectionBadge direction={s.direction} />
-                    <RiskBadge level={s.risk_level} />
+          {frame.scenario_branches.length > 0 ? (
+            <div className="space-y-3">
+              {frame.scenario_branches.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-md border border-border-subtle bg-surface-2 p-4"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-text-primary">
+                        {s.name}
+                      </p>
+                      <DirectionBadge direction={s.direction} />
+                      <RiskBadge level={s.risk_level} />
+                    </div>
+                    <span className="font-mono text-lg font-bold text-text-primary">
+                      {(s.probability * 100).toFixed(0)}%
+                    </span>
                   </div>
-                  <span className="font-mono text-lg font-bold text-text-primary">
-                    {(s.probability * 100).toFixed(0)}%
-                  </span>
+                  <p className="text-xs text-text-secondary">{s.notes}</p>
                 </div>
-                <p className="text-xs text-text-secondary">{s.notes}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No scenario data"
+              description="Scenario branch data is not available for this replay frame."
+            />
+          )}
         </Card>
       </div>
     </>

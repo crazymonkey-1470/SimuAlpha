@@ -5,7 +5,7 @@ interface TopbarProps {
 
 export function Topbar({ title, subtitle }: TopbarProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border-subtle bg-surface-1/60 px-6 backdrop-blur-sm">
+    <header className="flex h-14 items-center justify-between border-b border-border-subtle bg-surface-1/60 pl-14 pr-6 lg:px-6 backdrop-blur-sm">
       <div>
         <h1 className="text-sm font-semibold text-text-primary">{title}</h1>
         {subtitle && (

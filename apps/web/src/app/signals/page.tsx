@@ -91,8 +91,8 @@ export default async function SignalsPage() {
             </span>
           </CardHeader>
 
-          <div className="-mx-5 -mb-5">
-            <table className="w-full text-xs">
+          <div className="-mx-5 -mb-5 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr className="border-t border-border-subtle bg-surface-2 text-text-tertiary">
                   <th className="py-2.5 pl-5 pr-3 text-left font-medium">Date</th>
