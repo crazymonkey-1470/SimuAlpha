@@ -46,7 +46,7 @@ The frontend calls **10 backend endpoints**. All are `GET` requests except one.
 ```
 Frontend (browser)
     │
-    │  fetch("https://api.simualpha.com/api/v1/regime/current")
+    │  fetch("https://simualphaapi-production.up.railway.app/api/v1/regime/current")
     │
     ▼
 Backend (Railway)
@@ -88,7 +88,7 @@ The frontend API client lives at `apps/web/src/lib/api.ts`. It reads `NEXT_PUBLI
    ```
    uvicorn app.main:app --host 0.0.0.0 --port $PORT
    ```
-5. Once deployed, you'll get a URL like `https://simualpha-api-production.up.railway.app`
+5. Once deployed, your URL is: `https://simualphaapi-production.up.railway.app`
 6. **Custom domain (recommended):** In Railway settings, add `api.simualpha.com` (or whatever your domain is) and configure DNS (see step 5)
 
 ### 3. Deploy Frontend on Cloudflare Pages
@@ -105,7 +105,7 @@ The frontend API client lives at `apps/web/src/lib/api.ts`. It reads `NEXT_PUBLI
    > **Note:** You may need to use `@cloudflare/next-on-pages` for full compatibility. See [Cloudflare Next.js docs](https://developers.cloudflare.com/pages/framework-guides/nextjs/).
 4. Set this **environment variable** in Cloudflare Pages:
    ```
-   NEXT_PUBLIC_API_URL=https://api.simualpha.com
+   NEXT_PUBLIC_API_URL=https://simualphaapi-production.up.railway.app
    ```
    (Use whatever URL your Railway backend is at)
 5. Deploy. You'll get a URL like `https://simualpha.pages.dev`
@@ -120,7 +120,7 @@ The frontend API client lives at `apps/web/src/lib/api.ts`. It reads `NEXT_PUBLI
    |------|------|--------|-------|
    | CNAME | `@` | `simualpha.pages.dev` | Proxied |
    | CNAME | `www` | `simualpha.pages.dev` | Proxied |
-   | CNAME | `api` | `simualpha-api-production.up.railway.app` | DNS only |
+   | CNAME | `api` | `simualphaapi-production.up.railway.app` | DNS only |
 
 4. In Cloudflare Pages → Custom domains → Add `simualpha.com` and `www.simualpha.com`
 5. In Railway → Settings → Custom domain → Add `api.simualpha.com`
@@ -130,10 +130,10 @@ The frontend API client lives at `apps/web/src/lib/api.ts`. It reads `NEXT_PUBLI
 
 ```bash
 # Check backend health
-curl https://api.simualpha.com/api/v1/health
+curl https://simualphaapi-production.up.railway.app/api/v1/health
 
 # Check a data endpoint
-curl https://api.simualpha.com/api/v1/regime/current
+curl https://simualphaapi-production.up.railway.app/api/v1/regime/current
 
 # Visit frontend
 open https://simualpha.com
@@ -155,7 +155,7 @@ open https://simualpha.com
 
 | Variable | Example | Required |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://api.simualpha.com` | Yes |
+| `NEXT_PUBLIC_API_URL` | `https://simualphaapi-production.up.railway.app` | Yes |
 
 ---
 
