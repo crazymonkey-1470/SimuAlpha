@@ -1,53 +1,49 @@
 """Database engine and session management."""
 
-import ipaddress
+import logging
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
-import psycopg2
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
-def _resolve_ipv4(host: str) -> str | None:
-    """Resolve hostname to an IPv4 address, skipping IPv6."""
+
+def _force_ipv4_url(url: str) -> str:
+    """Replace hostname with its IPv4 address to avoid IPv6 unreachable errors.
+
+    Keeps the original hostname in connect_args via sslsni if needed, but
+    forces the actual TCP connection to use IPv4.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host or host in ("localhost", "127.0.0.1"):
+        return url
     try:
         results = socket.getaddrinfo(host, None, socket.AF_INET)
         if results:
-            return results[0][4][0]
+            ipv4 = results[0][4][0]
+            # Replace hostname with IPv4 in the URL
+            netloc = parsed.netloc.replace(host, ipv4)
+            forced = urlunparse(parsed._replace(netloc=netloc))
+            logger.info("Resolved %s -> %s (IPv4)", host, ipv4)
+            return forced
     except socket.gaierror:
-        pass
-    return None
+        logger.warning("Could not resolve %s to IPv4, using original URL", host)
+    return url
 
 
-def _ipv4_creator() -> psycopg2.extensions.connection:
-    """Custom connection creator that forces IPv4 for Supabase hosts."""
-    parsed = urlparse(settings.database_url)
-    host = parsed.hostname or "localhost"
-    ipv4 = _resolve_ipv4(host)
-    connect_args: dict = {}
-    if ipv4:
-        connect_args["hostaddr"] = ipv4
-    # Build the DSN from the original URL
-    return psycopg2.connect(
-        host=host,
-        port=parsed.port or 5432,
-        user=parsed.username,
-        password=parsed.password,
-        dbname=(parsed.path or "/simualpha").lstrip("/"),
-        **connect_args,
-    )
-
+_db_url = _force_ipv4_url(settings.database_url)
 
 engine = create_engine(
-    settings.database_url,
+    _db_url,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
     echo=settings.debug,
-    creator=_ipv4_creator,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
