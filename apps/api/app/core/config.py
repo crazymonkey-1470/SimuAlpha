@@ -15,6 +15,8 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://simualpha.pages.dev",
+        "https://simualpha.com",
+        "https://www.simualpha.com",
     ]
 
     # Database
@@ -25,6 +27,12 @@ class Settings(BaseSettings):
 
     # Redis for job queue
     redis_url: str = "redis://localhost:6379/0"
+
+    # Use real market data from Yahoo Finance (default: false = synthetic)
+    use_real_data: bool = False
+
+    # Simulation cache TTL in seconds
+    sim_cache_ttl: int = 300
 
     # Auth / JWT — MUST be set via SIMUALPHA_JWT_SECRET in production
     jwt_secret: str = ""

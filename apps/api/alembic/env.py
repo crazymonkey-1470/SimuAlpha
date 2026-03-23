@@ -3,6 +3,7 @@
 import os
 import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -10,18 +11,17 @@ from sqlalchemy import engine_from_config, pool
 # Add the API app to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Load .env file if present
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())
+
 from app.db.base import Base
-from app.db.models import (  # noqa: F401 — ensure all models are imported
-    ActorStateRecord,
-    CalibrationRun,
-    RegimeSnapshotRecord,
-    ReplayFrameRecord,
-    ReplayRun,
-    ScenarioBranchRecord,
-    SignalSummaryRecord,
-    SimulationRun,
-    SystemStatusRecord,
-)
+import app.db.models  # noqa: F401 — ensure all models are imported
 
 config = context.config
 

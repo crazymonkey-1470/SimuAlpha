@@ -88,3 +88,11 @@ class SimulationService:
 
 
 simulation_service = SimulationService()
+
+
+def run_simulation_sync(db: Session) -> None:
+    """Run a simulation synchronously, used for initial seeding."""
+    from app.schemas.simulation import SimulationRequest
+
+    request = SimulationRequest()
+    simulation_service.submit_run(request, db=db)
