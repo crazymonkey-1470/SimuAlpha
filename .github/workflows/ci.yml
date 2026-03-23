@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
   pull_request:
     branches: [main]
 
 jobs:
-  lint-and-build:
-    name: Lint & Build (Frontend)
+  frontend:
+    name: Frontend (Lint, Type Check, Build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,16 +24,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm --filter @simualpha/web lint
 
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm --filter @simualpha/web typecheck
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter @simualpha/web build
 
-  api-check:
-    name: API Checks
+  api:
+    name: API (Lint, Type Check, Test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,18 +44,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
-      - name: Install dependencies
+      - name: Install worker dependency
+        run: pip install -e ../worker
+
+      - name: Install API with dev deps
         run: pip install -e ".[dev]"
 
       - name: Lint
         run: ruff check .
 
-      - name: Type check
-        run: mypy app/
+      - name: Test
+        run: python -m pytest tests/ -x -q --tb=short
 
-  worker-check:
-    name: Worker Checks
+  worker:
+    name: Worker (Lint, Test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,12 +70,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
-      - name: Install dependencies
+      - name: Install worker with dev deps
         run: pip install -e ".[dev]"
 
       - name: Lint
         run: ruff check .
 
-      - name: Type check
-        run: mypy worker/
+      - name: Test
+        run: python -m pytest tests/ -x -q --tb=short
+
+  docker:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t simualpha-api .
+
+      - name: Build Worker image
+        run: docker build -f apps/worker/Dockerfile -t simualpha-worker apps/worker

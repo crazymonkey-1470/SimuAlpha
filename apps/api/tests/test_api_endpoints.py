@@ -1,32 +1,6 @@
-"""Tests for API endpoint responses."""
+"""Tests for API endpoint responses — uses shared conftest fixtures."""
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.db.base import Base
-from app.db.session import get_db
-from app.main import app
-
-
-@pytest.fixture
-def client():
-    """Create test client with in-memory SQLite."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    TestSessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-
-    def override_get_db():
-        db = TestSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
 
 
 def test_health(client: TestClient) -> None:
@@ -96,6 +70,57 @@ def test_signals_current_fallback(client: TestClient) -> None:
     assert "bias" in data
 
 
+def test_signals_history(client: TestClient) -> None:
+    resp = client.get("/api/v1/signals/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+    assert "period_start" in data
+
+
+def test_regime_history(client: TestClient) -> None:
+    resp = client.get("/api/v1/regime/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+
+
 def test_run_not_found(client: TestClient) -> None:
     resp = client.get("/api/v1/runs/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 404
+
+
+def test_replay_frame_fallback(client: TestClient) -> None:
+    resp = client.get("/api/v1/replay/2025-03-18")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "date" in data
+
+
+def test_context_cross_asset(client: TestClient) -> None:
+    resp = client.get("/api/v1/context/cross-asset")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "entries" in data
+
+
+def test_simulation_run(client: TestClient) -> None:
+    resp = client.post("/api/v1/simulation/run", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "run_id" in data
+    assert data["status"] in ("completed", "queued", "failed")
+
+
+def test_symbol_overview(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/overview")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["symbol"] == "SPY"
+
+
+def test_symbol_compare(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/compare?symbols=SPY,QQQ")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "symbols" in data

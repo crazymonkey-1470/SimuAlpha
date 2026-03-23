@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL for result persistence",
     )
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "env_prefix": "SIMUALPHA_"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "env_prefix": "SIMUALPHA_", "extra": "ignore"}
 
 
 _settings: Settings | None = None

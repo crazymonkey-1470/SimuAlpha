@@ -81,11 +81,12 @@ async def submit_simulation_job(
     request: SimulationJobRequest,
     db: Session = Depends(get_db),
 ) -> JobSubmitResponse:
-    """Enqueue a simulation job for async execution."""
+    """Enqueue a simulation job. Falls back to in-process execution if Redis is unavailable."""
     try:
-        from worker.queue.enqueue import enqueue_simulation
+        from app.services.job_runner import try_enqueue_or_run_inprocess
 
-        result = enqueue_simulation(
+        result = try_enqueue_or_run_inprocess(
+            "simulation",
             seed=request.seed,
             use_real_data=request.use_real_data,
             symbol=request.symbol,
@@ -93,12 +94,12 @@ async def submit_simulation_job(
         return JobSubmitResponse(
             job_id=result["job_id"],
             job_type="simulation",
-            status="queued",
+            status=result.get("status", "queued"),
             enqueued_at=result["enqueued_at"],
-            message=f"Simulation job {result['job_id']} queued for execution",
+            message=result.get("message", f"Simulation job {result['job_id']} submitted"),
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue job: {exc}")
+        raise HTTPException(status_code=503, detail=f"Failed to submit job: {exc}")
 
 
 @router.post("/replay", response_model=JobSubmitResponse)
@@ -106,11 +107,12 @@ async def submit_replay_job(
     request: ReplayJobRequest,
     db: Session = Depends(get_db),
 ) -> JobSubmitResponse:
-    """Enqueue a replay generation job for async execution."""
+    """Enqueue a replay generation job. Requires Redis/worker service."""
     try:
-        from worker.queue.enqueue import enqueue_replay
+        from app.services.job_runner import try_enqueue_or_run_inprocess
 
-        result = enqueue_replay(
+        result = try_enqueue_or_run_inprocess(
+            "replay",
             start_date=request.start_date,
             end_date=request.end_date,
             symbol=request.symbol,
@@ -119,12 +121,12 @@ async def submit_replay_job(
         return JobSubmitResponse(
             job_id=result["job_id"],
             job_type="replay",
-            status="queued",
+            status=result.get("status", "queued"),
             enqueued_at=result["enqueued_at"],
-            message=f"Replay job {result['job_id']} queued ({request.start_date} to {request.end_date})",
+            message=result.get("message", f"Replay job {result['job_id']} submitted"),
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue job: {exc}")
+        raise HTTPException(status_code=503, detail=f"Failed to submit job: {exc}")
 
 
 @router.post("/calibration", response_model=JobSubmitResponse)
@@ -132,11 +134,12 @@ async def submit_calibration_job(
     request: CalibrationJobRequest,
     db: Session = Depends(get_db),
 ) -> JobSubmitResponse:
-    """Enqueue a calibration job for async execution."""
+    """Enqueue a calibration job. Requires Redis/worker service."""
     try:
-        from worker.queue.enqueue import enqueue_calibration
+        from app.services.job_runner import try_enqueue_or_run_inprocess
 
-        result = enqueue_calibration(
+        result = try_enqueue_or_run_inprocess(
+            "calibration",
             period_name=request.period_name,
             start_date=request.start_date,
             end_date=request.end_date,
@@ -145,12 +148,12 @@ async def submit_calibration_job(
         return JobSubmitResponse(
             job_id=result["job_id"],
             job_type="calibration",
-            status="queued",
+            status=result.get("status", "queued"),
             enqueued_at=result["enqueued_at"],
-            message=f"Calibration job {result['job_id']} queued",
+            message=result.get("message", f"Calibration job {result['job_id']} submitted"),
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue job: {exc}")
+        raise HTTPException(status_code=503, detail=f"Failed to submit job: {exc}")
 
 
 @router.post("/data-refresh", response_model=JobSubmitResponse)
@@ -158,20 +161,20 @@ async def submit_data_refresh_job(
     request: DataRefreshJobRequest,
     db: Session = Depends(get_db),
 ) -> JobSubmitResponse:
-    """Enqueue a market data refresh job for async execution."""
+    """Enqueue a market data refresh job. Requires Redis/worker service."""
     try:
-        from worker.queue.enqueue import enqueue_data_refresh
+        from app.services.job_runner import try_enqueue_or_run_inprocess
 
-        result = enqueue_data_refresh(symbol=request.symbol)
+        result = try_enqueue_or_run_inprocess("data_refresh", symbol=request.symbol)
         return JobSubmitResponse(
             job_id=result["job_id"],
             job_type="data_refresh",
-            status="queued",
+            status=result.get("status", "queued"),
             enqueued_at=result["enqueued_at"],
-            message=f"Data refresh job {result['job_id']} queued",
+            message=result.get("message", f"Data refresh job {result['job_id']} submitted"),
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue job: {exc}")
+        raise HTTPException(status_code=503, detail=f"Failed to submit job: {exc}")
 
 
 # ── Job monitoring endpoints ──────────────────────────────────────────────

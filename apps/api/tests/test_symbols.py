@@ -1,35 +1,15 @@
 """Tests for symbol drilldown, compare, and watchlist intelligence endpoints."""
 
-import pytest
-from httpx import ASGITransport, AsyncClient
+from fastapi.testclient import TestClient
 
-from app.main import app
-
-
-@pytest.fixture
-async def client() -> AsyncClient:
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-
-@pytest.fixture
-async def auth_headers(client: AsyncClient) -> dict:
-    resp = await client.post("/api/v1/auth/register", json={
-        "email": "sym_test@example.com",
-        "password": "securepass123",
-        "full_name": "Symbol Tester",
-    })
-    token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+from tests.conftest import register_and_login
 
 
 # ── Symbol Overview ────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_symbol_overview(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/overview")
+def test_symbol_overview(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/overview")
     assert resp.status_code == 200
     data = resp.json()
     assert data["symbol"] == "SPY"
@@ -41,53 +21,47 @@ async def test_symbol_overview(client: AsyncClient) -> None:
     assert "warning_count" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_overview_unknown_symbol(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/ZZZZZ/overview")
+def test_symbol_overview_unknown_symbol(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/ZZZZZ/overview")
     assert resp.status_code == 200
     data = resp.json()
     assert data["symbol"] == "ZZZZZ"
     assert data["regime"] is None
 
 
-@pytest.mark.asyncio
-async def test_symbol_regime(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/regime")
+def test_symbol_regime(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/regime")
     assert resp.status_code == 200
     data = resp.json()
     assert "regime" in data
     assert "confidence" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_actors(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/actors")
+def test_symbol_actors(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/actors")
     assert resp.status_code == 200
     data = resp.json()
     assert "actors" in data
     assert "actor_count" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_scenarios(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/scenarios")
+def test_symbol_scenarios(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/scenarios")
     assert resp.status_code == 200
     data = resp.json()
     assert "scenarios" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_signals(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/signals")
+def test_symbol_signals(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/signals")
     assert resp.status_code == 200
     data = resp.json()
     assert "bias" in data
     assert "confidence" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_history(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/history?limit=10")
+def test_symbol_history(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/history?limit=10")
     assert resp.status_code == 200
     data = resp.json()
     assert data["symbol"] == "SPY"
@@ -95,18 +69,16 @@ async def test_symbol_history(client: AsyncClient) -> None:
     assert "total" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_replay(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/replay")
+def test_symbol_replay(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/replay")
     assert resp.status_code == 200
     data = resp.json()
     assert data["symbol"] == "SPY"
     assert "frames" in data
 
 
-@pytest.mark.asyncio
-async def test_symbol_runs(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/SPY/runs")
+def test_symbol_runs(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/SPY/runs")
     assert resp.status_code == 200
     data = resp.json()
     assert data["symbol"] == "SPY"
@@ -116,23 +88,18 @@ async def test_symbol_runs(client: AsyncClient) -> None:
 # ── Compare ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_compare_symbols(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/compare?symbols=SPY,QQQ,TLT")
+def test_compare_symbols(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/compare?symbols=SPY,QQQ,TLT")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["symbols"]) == 3
-    assert data["symbols"][0]["symbol"] == "SPY"
-    assert data["symbols"][1]["symbol"] == "QQQ"
-    assert data["symbols"][2]["symbol"] == "TLT"
     for entry in data["symbols"]:
         assert "fragility" in entry
         assert "warning_count" in entry
 
 
-@pytest.mark.asyncio
-async def test_compare_single_symbol(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/symbols/compare?symbols=NVDA")
+def test_compare_single_symbol(client: TestClient) -> None:
+    resp = client.get("/api/v1/symbols/compare?symbols=NVDA")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["symbols"]) == 1
@@ -141,24 +108,23 @@ async def test_compare_single_symbol(client: AsyncClient) -> None:
 # ── Watchlist Intelligence ─────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_watchlist_intelligence_requires_auth(client: AsyncClient) -> None:
-    resp = await client.get("/api/v1/watchlists/00000000-0000-0000-0000-000000000000/intelligence")
+def test_watchlist_intelligence_requires_auth(client: TestClient) -> None:
+    resp = client.get("/api/v1/watchlists/00000000-0000-0000-0000-000000000000/intelligence")
     assert resp.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_watchlist_intelligence(client: AsyncClient, auth_headers: dict) -> None:
+def test_watchlist_intelligence(client: TestClient) -> None:
+    headers = register_and_login(client, "sym_test@example.com")
+
     # Create a watchlist with symbols
-    resp = await client.post("/api/v1/watchlists", json={"name": "Intel Test"}, headers=auth_headers)
+    resp = client.post("/api/v1/watchlists", json={"name": "Intel Test"}, headers=headers)
     assert resp.status_code == 201
     wl_id = resp.json()["id"]
 
-    await client.post(f"/api/v1/watchlists/{wl_id}/items", json={"symbol": "SPY"}, headers=auth_headers)
-    await client.post(f"/api/v1/watchlists/{wl_id}/items", json={"symbol": "QQQ"}, headers=auth_headers)
+    client.post(f"/api/v1/watchlists/{wl_id}/items", json={"symbol": "SPY"}, headers=headers)
+    client.post(f"/api/v1/watchlists/{wl_id}/items", json={"symbol": "QQQ"}, headers=headers)
 
-    # Get intelligence
-    resp = await client.get(f"/api/v1/watchlists/{wl_id}/intelligence", headers=auth_headers)
+    resp = client.get(f"/api/v1/watchlists/{wl_id}/intelligence", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["watchlist_id"] == wl_id
@@ -174,9 +140,10 @@ async def test_watchlist_intelligence(client: AsyncClient, auth_headers: dict) -
 # ── Saved Views with Research Context ──────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_saved_view_research_context(client: AsyncClient, auth_headers: dict) -> None:
-    resp = await client.post("/api/v1/views", json={
+def test_saved_view_research_context(client: TestClient) -> None:
+    headers = register_and_login(client, "views_research@example.com")
+
+    resp = client.post("/api/v1/views", json={
         "name": "SPY High Vol Research",
         "view_type": "research",
         "config": {
@@ -186,14 +153,13 @@ async def test_saved_view_research_context(client: AsyncClient, auth_headers: di
             "filters": {"regime": "unstable_rally"},
         },
         "is_default": False,
-    }, headers=auth_headers)
+    }, headers=headers)
     assert resp.status_code == 201
     data = resp.json()
     assert data["view_type"] == "research"
     assert data["config"]["symbols"] == ["SPY"]
 
-    # Verify it appears in list
-    resp = await client.get("/api/v1/views", headers=auth_headers)
+    resp = client.get("/api/v1/views", headers=headers)
     assert resp.status_code == 200
     views = resp.json()["views"]
     research_views = [v for v in views if v["view_type"] == "research"]

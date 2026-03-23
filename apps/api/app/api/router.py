@@ -6,6 +6,7 @@ from app.api.routes import (
     backtest,
     calibrations,
     context,
+    events,
     health,
     jobs,
     preferences,
@@ -51,6 +52,9 @@ api_router.include_router(calibrations.router, prefix="/calibrations", tags=["ca
 
 # Job queue endpoints
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+
+# Real-time events (SSE)
+api_router.include_router(events.router, prefix="/events", tags=["events"])
 
 # User-specific data (authenticated)
 api_router.include_router(watchlists.router, prefix="/watchlists", tags=["watchlists"])

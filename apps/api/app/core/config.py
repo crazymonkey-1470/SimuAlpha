@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
 
-    model_config = {"env_prefix": "SIMUALPHA_", "env_file": ".env"}
+    model_config = {"env_prefix": "SIMUALPHA_", "env_file": ".env", "extra": "ignore"}
 
     def get_jwt_secret(self) -> str:
         if self.jwt_secret:
