@@ -1,9 +1,19 @@
 import SymbolDetailClient from "./symbol-detail-client";
 
-export const dynamicParams = false;
-
-export async function generateStaticParams() {
-  return [{ symbol: "SPY" }];
+export function generateStaticParams() {
+  // Pre-generate common symbols; others handled at runtime via client-side navigation
+  return [
+    { symbol: "SPY" },
+    { symbol: "QQQ" },
+    { symbol: "AAPL" },
+    { symbol: "MSFT" },
+    { symbol: "AMZN" },
+    { symbol: "GOOGL" },
+    { symbol: "TSLA" },
+    { symbol: "NVDA" },
+    { symbol: "META" },
+    { symbol: "IWM" },
+  ];
 }
 
 export default function SymbolDetailPage() {

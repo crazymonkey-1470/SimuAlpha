@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/topbar";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Badge, BiasBadge, RiskBadge } from "@/components/ui/badge";
 import { ConfidenceBar } from "@/components/ui/confidence-bar";
 import { MetricBlock } from "@/components/ui/metric-block";

@@ -1,2 +1,6 @@
-# Serve the symbol detail SPA for any symbol
+# Serve static assets directly (default behavior)
+# SPA fallback for dynamic symbol routes not pre-generated
 /symbols/* /symbols/SPY.html 200
+
+# SPA fallback for all other client-side routes
+/*  /index.html  200
