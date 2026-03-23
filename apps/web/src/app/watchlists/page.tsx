@@ -34,7 +34,16 @@ export default function WatchlistsPage() {
     }
   }, [user]);
 
-  if (!user) return null;
+  if (authLoading || !user) {
+    return (
+      <>
+        <Topbar title="Watchlists" subtitle="Manage your symbol watchlists" />
+        <div className="p-6 text-sm text-text-tertiary">
+          {authLoading ? "Loading..." : "Redirecting to login..."}
+        </div>
+      </>
+    );
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

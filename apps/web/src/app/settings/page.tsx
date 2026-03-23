@@ -25,7 +25,16 @@ export default function SettingsPage() {
     }
   }, [user]);
 
-  if (!user || !prefs) return null;
+  if (!user || !prefs) {
+    return (
+      <>
+        <Topbar title="Settings" subtitle="Customize your SimuAlpha experience" />
+        <div className="p-6 text-sm text-text-tertiary">
+          {authLoading ? "Loading..." : !user ? "Redirecting to login..." : "Loading preferences..."}
+        </div>
+      </>
+    );
+  }
 
   async function handleSave() {
     if (!prefs) return;

@@ -13,7 +13,28 @@ import { cn, formatArchetype } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { ReplayFrame, ReplayRunListResponse } from "@/lib/types";
 
-const AVAILABLE_DATES = ["2025-03-18", "2025-03-19", "2025-03-20", "2025-03-21"];
+function getRecentDates(count: number): string[] {
+  const dates: string[] = [];
+  const today = new Date();
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    // Skip weekends
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  // Ensure we always have at least 4 dates
+  while (dates.length < count) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (count + (count - dates.length)));
+    if (d.getDay() !== 0 && d.getDay() !== 6) {
+      dates.unshift(d.toISOString().split("T")[0]);
+    }
+  }
+  return dates.slice(-count);
+}
+
+const AVAILABLE_DATES = getRecentDates(4);
 
 function ReplayContent() {
   const searchParams = useSearchParams();

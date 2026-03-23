@@ -58,7 +58,16 @@ function MonitorPageInner() {
     }
   }, [selectedId]);
 
-  if (!user) return null;
+  if (authLoading || !user) {
+    return (
+      <>
+        <Topbar title="Monitor" subtitle="Watchlist intelligence board" />
+        <div className="p-6 text-sm text-text-tertiary">
+          {authLoading ? "Loading..." : "Redirecting to login..."}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
