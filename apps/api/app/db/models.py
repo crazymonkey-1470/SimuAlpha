@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy import JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, new_uuid
@@ -28,7 +28,7 @@ from app.db.base import Base, new_uuid
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -55,8 +55,8 @@ class User(Base):
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
@@ -72,9 +72,9 @@ class RefreshToken(Base):
 class Workspace(Base):
     __tablename__ = "workspaces"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
@@ -93,9 +93,9 @@ class WorkspaceMembership(Base):
     __tablename__ = "workspace_memberships"
     __table_args__ = (UniqueConstraint("workspace_id", "user_id", name="uq_workspace_user"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="owner")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
@@ -111,13 +111,13 @@ class WorkspaceMembership(Base):
 class UserPreference(Base):
     __tablename__ = "user_preferences"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     default_symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     default_time_horizon: Mapped[str] = mapped_column(String(64), nullable=False, default="1-3 days")
     preferred_signal_view: Mapped[str] = mapped_column(String(32), nullable=False, default="compact")
     landing_page: Mapped[str] = mapped_column(String(32), nullable=False, default="dashboard")
-    default_view_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    default_view_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
@@ -132,9 +132,9 @@ class UserPreference(Base):
 class Watchlist(Base):
     __tablename__ = "watchlists"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -154,8 +154,8 @@ class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
     __table_args__ = (UniqueConstraint("watchlist_id", "symbol", name="uq_watchlist_symbol"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    watchlist_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("watchlists.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    watchlist_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("watchlists.id", ondelete="CASCADE"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
@@ -171,9 +171,9 @@ class WatchlistItem(Base):
 class SavedView(Base):
     __tablename__ = "saved_views"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     view_type: Mapped[str] = mapped_column(String(32), nullable=False, default="dashboard")
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -196,9 +196,9 @@ class SavedView(Base):
 class ReplayBookmark(Base):
     __tablename__ = "replay_bookmarks"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     replay_date: Mapped[str] = mapped_column(String(10), nullable=False)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -216,7 +216,7 @@ class ReplayBookmark(Base):
 class SimulationRun(Base):
     __tablename__ = "simulation_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     run_type: Mapped[str] = mapped_column(String(32), nullable=False, default="current")
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
@@ -247,8 +247,8 @@ class SimulationRun(Base):
 class RegimeSnapshotRecord(Base):
     __tablename__ = "regime_snapshots"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulation_runs.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("simulation_runs.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     regime: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
@@ -271,8 +271,8 @@ class RegimeSnapshotRecord(Base):
 class ActorStateRecord(Base):
     __tablename__ = "actor_states"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulation_runs.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("simulation_runs.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     actor_name: Mapped[str] = mapped_column(String(128), nullable=False)
     archetype: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -298,8 +298,8 @@ class ActorStateRecord(Base):
 class ScenarioBranchRecord(Base):
     __tablename__ = "scenario_branches"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulation_runs.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("simulation_runs.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     branch_name: Mapped[str] = mapped_column(String(128), nullable=False)
     probability: Mapped[float] = mapped_column(Float, nullable=False)
@@ -323,8 +323,8 @@ class ScenarioBranchRecord(Base):
 class SignalSummaryRecord(Base):
     __tablename__ = "signal_summaries"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulation_runs.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("simulation_runs.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     bias: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
@@ -346,7 +346,7 @@ class SignalSummaryRecord(Base):
 class ReplayRun(Base):
     __tablename__ = "replay_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
     end_date: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -371,8 +371,8 @@ class ReplayRun(Base):
 class ReplayFrameRecord(Base):
     __tablename__ = "replay_frames"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    replay_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("replay_runs.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
+    replay_run_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("replay_runs.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     frame_date: Mapped[str] = mapped_column(String(10), nullable=False)
     regime: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -395,7 +395,7 @@ class ReplayFrameRecord(Base):
 class CalibrationRun(Base):
     __tablename__ = "calibration_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_uuid)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False, default="SPY")
     period_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
