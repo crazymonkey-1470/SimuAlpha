@@ -11,11 +11,17 @@ from app.core.exceptions import SimuAlphaError, simualpha_error_handler
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     # Startup: ensure DB tables exist (for dev convenience; production uses Alembic)
-    from app.db.base import Base
-    import app.db.models  # noqa: F401 — register all models
-    from app.db.session import engine
+    import logging
 
-    Base.metadata.create_all(bind=engine)
+    logger = logging.getLogger(__name__)
+    try:
+        from app.db.base import Base
+        import app.db.models  # noqa: F401 — register all models
+        from app.db.session import engine
+
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        logger.warning("Could not connect to database on startup: %s", exc)
     yield
     # Shutdown: nothing needed
 
