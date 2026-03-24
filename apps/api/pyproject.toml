@@ -1,7 +1,7 @@
 [project]
 name = "simualpha-api"
-version = "0.1.0"
-description = "SimuAlpha — quantitative market intelligence and simulation API"
+version = "1.0.0"
+description = "SimuAlpha — financial distress-risk intelligence API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -11,9 +11,6 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "alembic>=1.14.0",
-    "simualpha-worker",
-    "redis>=5.0,<6",
-    "rq>=1.16,<2",
     "PyJWT>=2.8.0",
     "bcrypt>=4.0.0",
     "python-multipart>=0.0.9",

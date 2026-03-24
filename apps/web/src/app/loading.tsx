@@ -1,17 +1,7 @@
-import { CardSkeleton } from "@/components/ui/skeleton";
-
-export default function DashboardLoading() {
+export default function Loading() {
   return (
-    <div className="p-6 space-y-6">
-      <div className="h-14 border-b border-border-subtle" />
-      <CardSkeleton />
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <CardSkeleton />
-        <CardSkeleton />
-        <CardSkeleton />
-      </div>
-      <CardSkeleton />
-      <CardSkeleton />
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-default border-t-accent-blue" />
     </div>
   );
 }

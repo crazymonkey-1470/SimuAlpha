@@ -17,18 +17,6 @@ services:
       timeout: 3s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   api:
     build:
       context: .
@@ -37,15 +25,11 @@ services:
       - "8000:8000"
     environment:
       SIMUALPHA_DATABASE_URL: postgresql://simualpha:simualpha@postgres:5432/simualpha
-      SIMUALPHA_REDIS_URL: redis://redis:6379/0
       SIMUALPHA_JWT_SECRET: dev-secret-change-in-production
       SIMUALPHA_DEBUG: "false"
-      SIMUALPHA_USE_REAL_DATA: "false"
       SIMUALPHA_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -54,38 +38,6 @@ services:
       retries: 5
       start_period: 30s
 
-  worker:
-    build:
-      context: apps/worker
-      dockerfile: Dockerfile
-    environment:
-      SIMUALPHA_DATABASE_URL: postgresql://simualpha:simualpha@postgres:5432/simualpha
-      SIMUALPHA_REDIS_URL: redis://redis:6379/0
-      SIMUALPHA_ENVIRONMENT: production
-      SIMUALPHA_LOG_LEVEL: INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: ["python", "-m", "worker.main", "worker"]
-
-  scheduler:
-    build:
-      context: apps/worker
-      dockerfile: Dockerfile
-    environment:
-      SIMUALPHA_DATABASE_URL: postgresql://simualpha:simualpha@postgres:5432/simualpha
-      SIMUALPHA_REDIS_URL: redis://redis:6379/0
-      SIMUALPHA_ENVIRONMENT: production
-      SIMUALPHA_LOG_LEVEL: INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: ["python", "-m", "worker.main", "scheduler"]
-
   web:
     build:
       context: .
@@ -93,11 +45,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy
 
 volumes:
   pgdata:
-  redisdata:

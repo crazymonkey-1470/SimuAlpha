@@ -1,118 +1,77 @@
 "use client";
 
-import { Topbar } from "@/components/layout/topbar";
-import { RegimeSummary } from "@/components/dashboard/regime-summary";
-import { ActorSummary } from "@/components/dashboard/actor-summary";
-import { ScenarioSummary } from "@/components/dashboard/scenario-summary";
-import { SignalSummaryCard } from "@/components/dashboard/signal-summary";
-import { CrossAssetTable } from "@/components/dashboard/cross-asset-table";
-import { Card, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
-import { useApiData } from "@/lib/use-api-data";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-export default function DashboardPage() {
-  const { data, loading } = useApiData(() =>
-    Promise.all([
-      api.regime.current(),
-      api.actors.current(),
-      api.scenarios.current(),
-      api.signals.current(),
-      api.context.crossAsset(),
-      api.system.status(),
-      api.runs.list(5),
-    ])
-  );
+export default function HomePage() {
+  const [ticker, setTicker] = useState("");
+  const router = useRouter();
 
-  if (loading || !data) {
-    return (
-      <>
-        <Topbar title="Dashboard" subtitle="Market intelligence overview" />
-        <div className="p-6 text-sm text-text-tertiary">Loading…</div>
-      </>
-    );
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = ticker.trim().toUpperCase();
+    if (clean) {
+      router.push(`/report/${clean}`);
+    }
   }
 
-  const [regime, actorRes, scenarioRes, signal, context, systemStatus, runs] = data;
-
   return (
-    <>
-      <Topbar
-        title="Dashboard"
-        subtitle="Market intelligence overview"
-      />
-      <div className="p-6 space-y-6">
-        {/* Narrative summary */}
-        <Card className="border-accent-blue/20 bg-accent-blue/[0.03]">
-          <CardTitle className="mb-2">Market Summary</CardTitle>
-          <p className="text-sm leading-relaxed text-text-secondary">
-            {regime.summary}
-          </p>
-          <div className="mt-3 flex items-center gap-4 text-2xs text-text-tertiary">
-            <span>
-              Updated{" "}
-              {new Date(regime.updated_at).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZoneName: "short",
-              })}
-            </span>
-            <span>·</span>
-            <span>Signal horizon: {signal.time_horizon}</span>
-            <span>·</span>
-            <span>
-              {systemStatus.last_simulation_run
-                ? `Last run: ${new Date(systemStatus.last_simulation_run).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
-                : "No runs recorded"}
-            </span>
+    <div className="flex min-h-screen flex-col">
+      {/* Nav */}
+      <header className="flex items-center justify-between px-6 py-4 sm:px-10">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent-blue/15">
+            <span className="text-xs font-bold text-accent-blue">SA</span>
           </div>
-        </Card>
-
-        {/* Core panels */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-          <RegimeSummary data={regime} />
-          <SignalSummaryCard data={signal} />
-          <ScenarioSummary
-            scenarios={scenarioRes.scenarios}
-            baseCaseId={scenarioRes.base_case_id}
-          />
+          <span className="text-sm font-semibold tracking-tight">SimuAlpha</span>
         </div>
+        <nav className="flex items-center gap-6 text-xs text-text-tertiary">
+          <Link href="/methodology" className="hover:text-text-secondary transition-colors">
+            Methodology
+          </Link>
+          <Link href="/about" className="hover:text-text-secondary transition-colors">
+            About
+          </Link>
+        </nav>
+      </header>
 
-        {/* Actor overview */}
-        <ActorSummary actors={actorRes.actors} />
-
-        {/* Cross-asset */}
-        <CrossAssetTable data={context} />
-
-        {/* Change vs prior */}
-        <Card>
-          <CardTitle className="mb-3">Change vs Prior Period</CardTitle>
-          <p className="text-sm leading-relaxed text-text-secondary">
-            {signal.change_vs_prior}
+      {/* Hero */}
+      <main className="flex flex-1 flex-col items-center justify-center px-6 pb-32">
+        <div className="w-full max-w-xl text-center">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Analyze the financial strength of any public company.
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-text-secondary max-w-md mx-auto">
+            SimuAlpha reviews debt, liquidity, cash flow, and long-term fundamentals
+            to identify financial distress risk.
           </p>
-        </Card>
 
-        {/* Recent runs */}
-        {runs.runs.length > 0 && (
-          <Card>
-            <CardTitle className="mb-3">Recent Simulation Runs</CardTitle>
-            <div className="space-y-2">
-              {runs.runs.map((run) => (
-                <div key={run.id} className="flex items-center justify-between text-xs border-b border-border-subtle pb-2 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-3">
-                    <span className={`inline-block h-2 w-2 rounded-full ${run.status === "completed" ? "bg-accent-green" : run.status === "failed" ? "bg-accent-red" : "bg-accent-amber"}`} />
-                    <span className="text-text-secondary">{run.summary || run.status}</span>
-                  </div>
-                  <span className="font-mono text-text-tertiary">
-                    {new Date(run.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </div>
-    </>
+          <form onSubmit={handleSubmit} className="mt-8 flex gap-3">
+            <input
+              type="text"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value.toUpperCase())}
+              placeholder="Enter a ticker — e.g. AAPL, F, AMC"
+              className="flex-1 rounded-lg border border-border-default bg-surface-1 px-4 py-3 text-sm font-mono text-text-primary placeholder:text-text-tertiary focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue/30"
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button
+              type="submit"
+              disabled={!ticker.trim()}
+              className="rounded-lg bg-accent-blue px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-blue/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Analyze
+            </button>
+          </form>
+
+          <p className="mt-4 text-2xs text-text-tertiary">
+            Enter any publicly traded US ticker to generate a structured risk report.
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

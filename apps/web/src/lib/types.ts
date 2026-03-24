@@ -1,4 +1,61 @@
-// ── Auth ────────────────────────────────────────────────────────────────────
+export interface DistressReport {
+  id: string;
+  ticker: string;
+  company_name: string;
+  sector: string | null;
+  industry: string | null;
+  distress_rating: string;
+  distress_score: number;
+  executive_summary: string;
+  why_safe: string[];
+  key_risks: string[];
+  stabilizing_factors: string[];
+  what_to_watch: string[];
+  liquidity_analysis: string | null;
+  leverage_analysis: string | null;
+  profitability_analysis: string | null;
+  cashflow_analysis: string | null;
+  interest_coverage_analysis: string | null;
+  dilution_risk_analysis: string | null;
+  long_term_trend_analysis: string | null;
+  hold_context: string | null;
+  analyst_notes: string | null;
+  source_period_end: string | null;
+  raw_metrics: Record<string, number | string | boolean> | null;
+  report_version: string;
+  status: string;
+  generated_at: string;
+  updated_at: string;
+}
+
+export interface ReportSummary {
+  id: string;
+  ticker: string;
+  company_name: string;
+  sector: string | null;
+  distress_rating: string;
+  distress_score: number;
+  executive_summary: string;
+  generated_at: string;
+}
+
+export interface AnalyzeResponse {
+  ticker: string;
+  status: string;
+  report: DistressReport | null;
+  message: string | null;
+}
+
+export interface RecentReportsResponse {
+  reports: ReportSummary[];
+  total: number;
+}
+
+export interface HealthResponse {
+  status: string;
+  service: string;
+  version: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -15,498 +72,4 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   user: UserProfile;
-}
-
-export interface UserPreferences {
-  default_symbol: string;
-  default_time_horizon: string;
-  preferred_signal_view: string;
-  landing_page: string;
-  default_view_id: string | null;
-}
-
-export interface WatchlistItem {
-  id: string;
-  symbol: string;
-  position: number;
-}
-
-export interface WatchlistOut {
-  id: string;
-  name: string;
-  description: string | null;
-  workspace_id: string;
-  items: WatchlistItem[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WatchlistListResponse {
-  watchlists: WatchlistOut[];
-  total: number;
-}
-
-export interface SavedViewOut {
-  id: string;
-  name: string;
-  view_type: string;
-  config: Record<string, unknown> | null;
-  is_default: boolean;
-  workspace_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SavedViewListResponse {
-  views: SavedViewOut[];
-  total: number;
-}
-
-export interface BookmarkOut {
-  id: string;
-  symbol: string;
-  replay_date: string;
-  label: string;
-  note: string | null;
-  created_at: string;
-}
-
-export interface BookmarkListResponse {
-  bookmarks: BookmarkOut[];
-  total: number;
-}
-
-// ── Symbol Drilldown ────────────────────────────────────────────────────────
-
-export interface SymbolRegime {
-  regime: string;
-  confidence: number;
-  net_pressure: number;
-  posture: string;
-  risk_flags: string[];
-  summary: string;
-  updated_at: string;
-}
-
-export interface SymbolSignal {
-  bias: string;
-  confidence: number;
-  time_horizon: string;
-  suggested_posture: string;
-  warnings: string[];
-  change_vs_prior: string;
-}
-
-export interface SymbolActorSummary {
-  name: string;
-  archetype: string;
-  bias: string;
-  conviction: number;
-  contribution: number;
-  confidence: number;
-}
-
-export interface SymbolScenarioSummary {
-  name: string;
-  probability: number;
-  direction: string;
-  risk_level: string;
-  is_base_case: boolean;
-}
-
-export interface SymbolOverview {
-  symbol: string;
-  regime: SymbolRegime | null;
-  signal: SymbolSignal | null;
-  actors: SymbolActorSummary[];
-  scenarios: SymbolScenarioSummary[];
-  dominant_actor: string | null;
-  fragility: string;
-  warning_count: number;
-  last_simulation_at: string | null;
-  run_id: string | null;
-}
-
-export interface SymbolTimelineEntry {
-  date: string;
-  regime: string;
-  regime_confidence: number;
-  net_pressure: number;
-  signal_bias: string | null;
-  signal_confidence: number | null;
-}
-
-export interface SymbolHistoryResponse {
-  symbol: string;
-  entries: SymbolTimelineEntry[];
-  total: number;
-}
-
-export interface SymbolReplayFrame {
-  date: string;
-  regime: string;
-  regime_confidence: number;
-  net_pressure: number;
-  signal_bias: string | null;
-  notes: string | null;
-  realized_outcome: string | null;
-}
-
-export interface SymbolReplayResponse {
-  symbol: string;
-  frames: SymbolReplayFrame[];
-  total: number;
-}
-
-export interface SymbolRunSummary {
-  id: string;
-  run_type: string;
-  status: string;
-  source: string;
-  summary: string | null;
-  warnings: string[];
-  created_at: string | null;
-  completed_at: string | null;
-}
-
-export interface SymbolRunsResponse {
-  symbol: string;
-  runs: SymbolRunSummary[];
-  total: number;
-}
-
-// ── Watchlist Intelligence ──────────────────────────────────────────────────
-
-export interface WatchlistSymbolIntel {
-  symbol: string;
-  regime: string | null;
-  regime_confidence: number | null;
-  signal_bias: string | null;
-  signal_confidence: number | null;
-  fragility: string;
-  dominant_actor: string | null;
-  base_scenario: string | null;
-  base_scenario_probability: number | null;
-  warning_count: number;
-  risk_flags: string[];
-  last_simulation_at: string | null;
-}
-
-export interface WatchlistIntelligenceResponse {
-  watchlist_id: string;
-  watchlist_name: string;
-  symbols: WatchlistSymbolIntel[];
-  regime_distribution: Record<string, number>;
-  signal_distribution: Record<string, number>;
-  highest_fragility: string[];
-  strongest_conviction: string[];
-  total_warnings: number;
-}
-
-// ── Compare ─────────────────────────────────────────────────────────────────
-
-export interface CompareEntry {
-  symbol: string;
-  regime: string | null;
-  regime_confidence: number | null;
-  net_pressure: number | null;
-  signal_bias: string | null;
-  signal_confidence: number | null;
-  dominant_actor: string | null;
-  fragility: string;
-  base_scenario: string | null;
-  base_scenario_direction: string | null;
-  posture: string | null;
-  warning_count: number;
-  last_simulation_at: string | null;
-}
-
-export interface CompareResponse {
-  symbols: CompareEntry[];
-  compared_at: string;
-}
-
-// ── Regime ──────────────────────────────────────────────────────────────────
-
-export interface RegimeDriver {
-  factor: string;
-  influence: number;
-  description: string;
-}
-
-export interface RegimeSnapshot {
-  regime: string;
-  confidence: number;
-  net_pressure: number;
-  posture: string;
-  risk_flags: string[];
-  drivers: RegimeDriver[];
-  summary: string;
-  updated_at: string;
-}
-
-export interface RegimeHistoryEntry {
-  date: string;
-  regime: string;
-  confidence: number;
-  net_pressure: number;
-  summary: string;
-}
-
-export interface RegimeHistoryResponse {
-  entries: RegimeHistoryEntry[];
-  period_start: string;
-  period_end: string;
-}
-
-// ── Actors ─────────────────────────────────────────────────────────────────
-
-export interface ActorSensitivity {
-  factor: string;
-  weight: number;
-}
-
-export interface ActorState {
-  id: string;
-  name: string;
-  archetype: string;
-  bias: string;
-  conviction: number;
-  contribution: number;
-  horizon: string;
-  sensitivities: ActorSensitivity[];
-  recent_change: string;
-  confidence: number;
-}
-
-export interface ActorStateResponse {
-  actors: ActorState[];
-  actor_count: number;
-}
-
-// ── Scenarios ──────────────────────────────────────────────────────────────
-
-export interface ActorReaction {
-  actor_archetype: string;
-  expected_behavior: string;
-}
-
-export interface ScenarioBranch {
-  id: string;
-  name: string;
-  probability: number;
-  direction: string;
-  drivers: string[];
-  invalidation_conditions: string[];
-  actor_reactions: ActorReaction[];
-  risk_level: string;
-  notes: string;
-}
-
-export interface ScenarioResponse {
-  scenarios: ScenarioBranch[];
-  base_case_id: string;
-}
-
-// ── Signals ────────────────────────────────────────────────────────────────
-
-export interface SignalSummary {
-  bias: string;
-  confidence: number;
-  time_horizon: string;
-  suggested_posture: string;
-  warnings: string[];
-  change_vs_prior: string;
-  updated_at: string;
-}
-
-export interface SignalHistoryEntry {
-  date: string;
-  bias: string;
-  confidence: number;
-  suggested_posture: string;
-  summary: string;
-}
-
-export interface SignalHistoryResponse {
-  entries: SignalHistoryEntry[];
-  period_start: string;
-  period_end: string;
-}
-
-// ── Replay ─────────────────────────────────────────────────────────────────
-
-export interface ReplayFrame {
-  date: string;
-  regime: string;
-  regime_confidence: number;
-  net_pressure: number;
-  actor_states: ActorState[];
-  scenario_branches: ScenarioBranch[];
-  realized_outcome: string | null;
-  notes: string;
-}
-
-// ── System ─────────────────────────────────────────────────────────────────
-
-export interface SystemStatus {
-  api_status: string;
-  data_freshness: string;
-  last_simulation_run: string | null;
-  calibration_status: string;
-  worker_status: string;
-  active_model_version: string;
-  warnings: string[];
-}
-
-// ── Cross-Asset ────────────────────────────────────────────────────────────
-
-export interface CrossAssetEntry {
-  instrument: string;
-  last_price: number;
-  change_pct: number;
-  volatility_state: string;
-  trend_state: string;
-  notes: string;
-}
-
-export interface CrossAssetResponse {
-  entries: CrossAssetEntry[];
-  as_of: string;
-}
-
-// ── Runs / Job Tracking ────────────────────────────────────────────────────
-
-export interface RunSummary {
-  id: string;
-  run_type: string;
-  symbol: string;
-  status: string;
-  source: string;
-  summary: string | null;
-  warnings: string[];
-  error_message: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-}
-
-export interface RunListResponse {
-  runs: RunSummary[];
-  total: number;
-}
-
-export interface ReplayRunSummary {
-  id: string;
-  symbol: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  summary: string | null;
-  frame_count: number | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-export interface ReplayRunListResponse {
-  runs: ReplayRunSummary[];
-  total: number;
-}
-
-export interface CalibrationRunSummary {
-  id: string;
-  symbol: string;
-  period_name: string | null;
-  start_date: string;
-  end_date: string;
-  status: string;
-  summary: string | null;
-  metrics: Record<string, unknown> | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-export interface CalibrationRunListResponse {
-  runs: CalibrationRunSummary[];
-  total: number;
-}
-
-// ── Simulation Run Response ────────────────────────────────────────────────
-
-export interface SimulationRunResponse {
-  run_id: string;
-  status: string;
-  submitted_at: string;
-  message: string;
-}
-
-// ── Job Queue Types ───────────────────────────────────────────────────────
-
-export interface JobSubmitResponse {
-  job_id: string;
-  job_type: string;
-  status: string;
-  enqueued_at: string;
-  message: string;
-}
-
-export interface JobStatusResponse {
-  id: string;
-  job_type: string;
-  status: string;
-  symbol: string;
-  source: string;
-  summary: string | null;
-  error_message: string | null;
-  warnings: string[];
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  duration_seconds: number | null;
-}
-
-export interface JobListResponse {
-  jobs: JobStatusResponse[];
-  total: number;
-}
-
-export interface QueueInfo {
-  name: string;
-  pending: number;
-  active: number;
-  failed: number;
-}
-
-export interface QueueStatusResponse {
-  redis_connected: boolean;
-  queues: QueueInfo[];
-  total_pending: number;
-  total_active: number;
-  total_failed: number;
-}
-
-export interface WorkerInfo {
-  name: string;
-  state: string;
-  current_job: string | null;
-  queues: string[];
-  birth_date: string | null;
-}
-
-export interface WorkerHealthResponse {
-  redis_connected: boolean;
-  workers: WorkerInfo[];
-  worker_count: number;
-}
-
-export interface ScheduleEntry {
-  id: string;
-  description: string;
-  cron_string: string;
-  queue_name: string;
-}
-
-export interface ScheduleResponse {
-  schedules: ScheduleEntry[];
-  scheduler_running: boolean;
 }

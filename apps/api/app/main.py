@@ -5,12 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
-from app.core.exceptions import SimuAlphaError, simualpha_error_handler
+from app.core.exceptions import AppError, app_error_handler
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    # Startup: ensure DB tables exist (for dev convenience; production uses Alembic)
     import logging
 
     logger = logging.getLogger(__name__)
@@ -23,14 +22,13 @@ async def lifespan(application: FastAPI):
     except Exception as exc:
         logger.warning("Could not connect to database on startup: %s", exc)
     yield
-    # Shutdown: nothing needed
 
 
 def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.app_name,
         version=settings.version,
-        description="Quantitative market intelligence and simulation API",
+        description="SimuAlpha — Financial distress-risk intelligence API",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
@@ -45,7 +43,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    application.add_exception_handler(SimuAlphaError, simualpha_error_handler)  # type: ignore[arg-type]
+    application.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)
 

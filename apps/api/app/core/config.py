@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "SimuAlpha API"
-    version: str = "0.1.0"
+    version: str = "1.0.0"
     debug: bool = False
 
     api_v1_prefix: str = "/api/v1"
@@ -19,22 +19,16 @@ class Settings(BaseSettings):
         "https://www.simualpha.com",
     ]
 
-    # Database
+    # Database (Supabase PostgreSQL in production)
     database_url: str = "postgresql://simualpha:simualpha@localhost:5432/simualpha"
 
-    # Worker integration
-    worker_url: str = "http://localhost:8001"
+    # Financial data provider API key (e.g. Financial Modeling Prep)
+    financial_data_api_key: str = ""
 
-    # Redis for job queue
-    redis_url: str = "redis://localhost:6379/0"
+    # Report cache TTL in seconds (default 6 hours)
+    report_cache_ttl: int = 21600
 
-    # Use real market data from Yahoo Finance (default: false = synthetic)
-    use_real_data: bool = False
-
-    # Simulation cache TTL in seconds
-    sim_cache_ttl: int = 300
-
-    # Auth / JWT — MUST be set via SIMUALPHA_JWT_SECRET in production
+    # Auth / JWT
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
@@ -55,7 +49,5 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Resolve the JWT secret once at startup
 _jwt_secret = settings.get_jwt_secret()
-# Patch it back so all code uses the resolved value
 settings.jwt_secret = _jwt_secret

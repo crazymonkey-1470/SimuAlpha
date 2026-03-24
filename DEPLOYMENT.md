@@ -3,122 +3,60 @@
 ## Architecture
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐     ┌──────────────┐
-│   Frontend (Next.js)│────▶│   Backend (FastAPI)  │────▶│   Database   │
-│   Cloudflare Pages  │     │   Railway             │     │   Supabase   │
-│   simualpha.com     │     │   api.simualpha.com   │     │   PostgreSQL │
-└─────────────────────┘     └─────────────────────┘     └──────────────┘
-                                     │
-                                     ▼
-                              ┌──────────────┐
-                              │    Redis     │
-                              │  (optional)  │
-                              │  Job Queue   │
-                              └──────────────┘
+Frontend (Next.js) → Backend API (FastAPI) → Database (Supabase PostgreSQL)
 ```
 
----
+## Railway Services
+
+### Recommended Setup (2 services)
+
+| Service | Type | Notes |
+|---------|------|-------|
+| **SimuAlpha API** | Railway Python | FastAPI backend, port 8000 |
+| **SimuAlpha Web** | Railway Node / Cloudflare Pages | Next.js frontend, port 3000 |
+
+### Removed Services
+
+- **Worker**: No longer needed. Analysis runs synchronously in the API.
+- **Scheduler**: No longer needed. No background job queue required.
+- **Redis**: No longer needed. No job queue dependency.
+
+### Why This Is Simpler
+
+The old SimuAlpha had a simulation engine requiring background workers, Redis queues, and scheduled tasks. The new distress-analysis product runs analysis on-demand within the API request, caches results in PostgreSQL, and serves them directly.
 
 ## Environment Variables
 
-### Backend (Railway)
+### API Service (Railway)
 
-| Variable | Description | Required |
-|---|---|---|
-| `SIMUALPHA_DATABASE_URL` | PostgreSQL connection string (Supabase) | Yes |
-| `SIMUALPHA_JWT_SECRET` | Random 64+ char string for JWT signing | Yes |
-| `SIMUALPHA_REDIS_URL` | Redis URL for job queue | No (queue features disabled without it) |
-| `SIMUALPHA_USE_REAL_DATA` | `true` to use Yahoo Finance data | No (default: `false` = synthetic) |
-| `SIMUALPHA_CORS_ORIGINS` | JSON array of allowed origins | No (defaults include simualpha.com) |
-| `SIMUALPHA_DEBUG` | `true` for verbose logging | No (default: `false`) |
-| `SIMUALPHA_SIM_CACHE_TTL` | Engine cache TTL in seconds | No (default: `300`) |
-| `PORT` | Server port (Railway sets this) | Auto |
-
-### Frontend (Cloudflare Pages)
-
-| Variable | Description | Required |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | Backend API URL | Yes |
-
----
-
-## Deploy Steps
-
-### 1. Supabase (Database)
-
-Already configured. The database schema is managed via Alembic migrations that run automatically on API startup.
-
-### 2. Railway (Backend API)
-
-Railway deploys from the repo root using `apps/api/Dockerfile`.
-
-**Required env vars in Railway dashboard:**
 ```
-SIMUALPHA_DATABASE_URL=postgresql://postgres:<password>@db.<project>.supabase.co:5432/postgres
-SIMUALPHA_JWT_SECRET=<generate with: python -c "import secrets; print(secrets.token_urlsafe(64))">
-SIMUALPHA_USE_REAL_DATA=true
-SIMUALPHA_CORS_ORIGINS=["https://simualpha.com","https://www.simualpha.com","https://simualpha.pages.dev"]
+SIMUALPHA_DATABASE_URL=postgresql://...  (Supabase connection string)
+SIMUALPHA_JWT_SECRET=<64+ char random string>
+SIMUALPHA_CORS_ORIGINS=["https://simualpha.com","https://www.simualpha.com"]
+SIMUALPHA_FINANCIAL_DATA_API_KEY=<optional - for live data provider>
+SIMUALPHA_REPORT_CACHE_TTL=21600
 ```
 
-**What happens on startup (`start.sh`):**
-1. Runs `alembic upgrade head` (creates/updates all 15+ tables)
-2. Checks if simulation data exists; if empty, runs initial seed simulation
-3. Starts uvicorn
+### Frontend Service
 
-**Custom domain:** Add `api.simualpha.com` in Railway settings, configure DNS CNAME.
-
-### 3. Cloudflare Pages (Frontend)
-
-Build settings:
 ```
-Framework:     Next.js (Static HTML Export)
-Root:          apps/web
-Build command: cd ../.. && npx pnpm install && npx pnpm --filter @simualpha/web build
-Output:        apps/web/out
+NEXT_PUBLIC_API_URL=https://api.simualpha.com
 ```
 
-Environment variable:
-```
-NEXT_PUBLIC_API_URL=https://simualphaapi-production.up.railway.app
-```
+## Database Setup
 
-Custom domains: `simualpha.com` and `www.simualpha.com` in Cloudflare Pages settings.
+1. Create a Supabase project
+2. Run `supabase_migration.sql` in the SQL editor
+3. Set `SIMUALPHA_DATABASE_URL` to the Supabase connection string
 
-### 4. DNS Records
+## Build & Deploy
 
-| Type | Name | Target | Proxy |
-|------|------|--------|-------|
-| CNAME | `@` | `simualpha.pages.dev` | Proxied |
-| CNAME | `www` | `simualpha.pages.dev` | Proxied |
-| CNAME | `api` | `simualphaapi-production.up.railway.app` | DNS only |
+### API (Railway)
+- Build command: `pip install .`
+- Start command: `sh start.sh`
+- start.sh runs Alembic migrations then starts uvicorn
 
----
-
-## Verify
-
-```bash
-# Health check
-curl https://simualphaapi-production.up.railway.app/api/v1/health
-
-# Regime data
-curl https://simualphaapi-production.up.railway.app/api/v1/regime/current
-
-# Auth
-curl -X POST https://simualphaapi-production.up.railway.app/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123","full_name":"Test User"}'
-```
-
----
-
-## Optional: Redis (Job Queue)
-
-Add a Redis service on Railway for async job processing:
-```
-SIMUALPHA_REDIS_URL=redis://<railway-redis-host>:6379
-```
-
-Without Redis, all simulations run synchronously via the API. With Redis, you can:
-- Queue simulation/replay/calibration jobs
-- Run background workers
-- Schedule periodic data refreshes
+### Frontend (Cloudflare Pages or Railway)
+- Build command: `pnpm install && pnpm build:web`
+- Start command: `pnpm start` (runs `next start`)
+- Output directory: `apps/web/.next`

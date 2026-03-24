@@ -11,7 +11,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_SQLITE_FALLBACK_URL = "sqlite:///./simualpha_fallback.db"
+_SQLITE_FALLBACK_URL = "sqlite:///./simualpha_dev.db"
 
 
 def _can_reach_host(url: str, timeout: float = 3.0) -> bool:
