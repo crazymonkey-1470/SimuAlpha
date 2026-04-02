@@ -2,12 +2,11 @@
   "name": "the-long-screener",
   "private": true,
   "scripts": {
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "build:client": "cd client && npm run build",
-    "build:server": "cd server && npm run build",
-    "start:server": "cd server && npm start"
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "cd frontend && npm run build",
+    "start:backend": "cd backend && npm start"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
