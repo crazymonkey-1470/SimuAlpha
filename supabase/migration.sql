@@ -121,3 +121,85 @@ create index if not exists idx_screener_entry on screener_results(entry_zone) wh
 create index if not exists idx_alerts_fired on signal_alerts(fired_at desc);
 create index if not exists idx_alerts_ticker on signal_alerts(ticker);
 create index if not exists idx_scan_history_time on scan_history(scanned_at desc);
+
+-- ══════════════════════════════════════════════════════
+-- Stage 4: Elliott Wave + Backtesting Tables
+-- ══════════════════════════════════════════════════════
+
+-- Wave count results (Stage 4 output)
+create table if not exists wave_counts (
+  id uuid default gen_random_uuid() primary key,
+  ticker text not null,
+  timeframe text not null,            -- 'monthly' | 'weekly'
+  wave_degree text not null,          -- 'primary' | 'intermediate'
+  wave_structure text,                -- 'impulse' | 'corrective'
+  current_wave text,                  -- '1','2','3','4','5','A','B','C'
+  confidence_score integer,           -- 0-100
+  confidence_label text,              -- 'HIGH','PROBABLE','SPECULATIVE'
+  tli_signal text,                    -- 'BUY_ZONE','ACCUMULATE_ZONE','AVOID','NEUTRAL'
+  tli_reason text,
+  pivot_count integer,
+  entry_zone numeric,
+  stop_loss numeric,
+  target_1 numeric,
+  target_2 numeric,
+  reward_risk_ratio numeric,
+  last_updated timestamptz default now(),
+  unique(ticker, timeframe, wave_degree)
+);
+
+-- Historical backtest individual signals
+create table if not exists backtest_results (
+  id uuid default gen_random_uuid() primary key,
+  ticker text not null,
+  timeframe text,
+  wave_degree text,
+  signal_date text,
+  signal_wave text,
+  entry_price numeric,
+  stop_loss numeric,
+  target_1 numeric,
+  target_2 numeric,
+  outcome text,                       -- 'TARGET_1_HIT','TARGET_2_HIT','STOPPED_OUT','OPEN'
+  exit_price numeric,
+  exit_date text,
+  hold_days integer,
+  pct_return numeric,
+  max_drawdown_pct numeric,
+  max_gain_pct numeric
+);
+
+-- Backtest summary per ticker
+create table if not exists backtest_summary (
+  id uuid default gen_random_uuid() primary key,
+  ticker text not null unique,
+  total_signals integer,
+  winning_signals integer,
+  win_rate_pct numeric,
+  avg_return_pct numeric,
+  avg_hold_days integer,
+  avg_reward_risk numeric,
+  best_return_pct numeric,
+  worst_return_pct numeric,
+  total_return_pct numeric,
+  vs_spy_pct numeric,
+  last_updated timestamptz default now()
+);
+
+-- Enable RLS
+alter table wave_counts enable row level security;
+alter table backtest_results enable row level security;
+alter table backtest_summary enable row level security;
+
+-- Public read policies
+create policy "Public read wave_counts" on wave_counts for select using (true);
+create policy "Public read backtest_results" on backtest_results for select using (true);
+create policy "Public read backtest_summary" on backtest_summary for select using (true);
+
+-- Performance indexes
+create index if not exists idx_wave_ticker on wave_counts(ticker);
+create index if not exists idx_wave_signal on wave_counts(tli_signal);
+create index if not exists idx_backtest_ticker on backtest_results(ticker);
+create index if not exists idx_backtest_outcome on backtest_results(outcome);
+create index if not exists idx_bt_summary_ticker on backtest_summary(ticker);
+create index if not exists idx_bt_summary_winrate on backtest_summary(win_rate_pct desc);

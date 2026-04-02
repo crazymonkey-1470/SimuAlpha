@@ -13,8 +13,28 @@ export default function Screener() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    supabase.from('screener_results').select('*').order('total_score', { ascending: false })
-      .then(({ data }) => { setResults(data || []); setLoading(false); });
+    async function load() {
+      const [{ data: rows }, { data: waves }, { data: bts }] = await Promise.all([
+        supabase.from('screener_results').select('*').order('total_score', { ascending: false }),
+        supabase.from('wave_counts').select('ticker, current_wave, wave_structure, confidence_score, tli_signal').order('confidence_score', { ascending: false }),
+        supabase.from('backtest_summary').select('ticker, win_rate_pct'),
+      ]);
+      // Build lookup maps (best wave per ticker)
+      const waveMap = {};
+      (waves || []).forEach((w) => { if (!waveMap[w.ticker]) waveMap[w.ticker] = w; });
+      const btMap = {};
+      (bts || []).forEach((b) => { btMap[b.ticker] = b; });
+      // Merge into results
+      const merged = (rows || []).map((r) => ({
+        ...r,
+        wave_position: waveMap[r.ticker] ? `${waveMap[r.ticker].wave_structure === 'corrective' ? '' : 'W'}${waveMap[r.ticker].current_wave}` : null,
+        wave_tli: waveMap[r.ticker]?.tli_signal || null,
+        bt_win_rate: btMap[r.ticker]?.win_rate_pct ?? null,
+      }));
+      setResults(merged);
+      setLoading(false);
+    }
+    load();
   }, []);
 
   const filtered = filter === 'ALL' ? results

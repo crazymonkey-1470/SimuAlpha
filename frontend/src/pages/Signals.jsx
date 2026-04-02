@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 import supabase from '../supabaseClient';
 import SignalBadge from '../components/SignalBadge';
 
-const TYPE_EMOJI = { LOAD_THE_BOAT: '🟢', SIGNAL_UPGRADE: '🟡', CROSSED_200WMA: '📉', CROSSED_200MMA: '📉' };
-const TYPES = ['ALL', 'LOAD_THE_BOAT', 'SIGNAL_UPGRADE', 'CROSSED_200WMA', 'CROSSED_200MMA'];
+const TYPE_EMOJI = { LOAD_THE_BOAT: '🟢', SIGNAL_UPGRADE: '🟡', CROSSED_200WMA: '📉', CROSSED_200MMA: '📉', WAVE_BUY_ZONE: '🌊' };
+const TYPES = ['ALL', 'LOAD_THE_BOAT', 'SIGNAL_UPGRADE', 'CROSSED_200WMA', 'CROSSED_200MMA', 'WAVE_BUY_ZONE'];
 
 export default function Signals() {
   const [alerts, setAlerts] = useState([]);
@@ -78,6 +78,12 @@ export default function Signals() {
               {a.entry_note && <p className="text-[10px] font-mono text-text-secondary mt-2">{a.entry_note}</p>}
               {a.previous_signal && a.new_signal && a.previous_signal !== a.new_signal && (
                 <p className="text-[10px] font-mono text-amber mt-1">Signal: {a.previous_signal} → {a.new_signal}</p>
+              )}
+              {a.new_signal === 'WAVE BUY ZONE' && (
+                <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 border border-green/30 bg-green-dim">
+                  <span className="text-[9px]">🌊</span>
+                  <span className="text-[9px] font-mono text-green tracking-wider">ELLIOTT WAVE BUY ZONE</span>
+                </div>
               )}
             </motion.div>
           ))}
