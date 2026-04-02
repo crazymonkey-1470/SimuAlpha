@@ -1,23 +1,15 @@
 {
-  "name": "simualpha",
+  "name": "the-long-screener",
   "private": true,
-  "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "typecheck": "turbo typecheck",
-    "dev:web": "turbo dev --filter=@simualpha/web",
-    "build:web": "turbo build --filter=@simualpha/web",
-    "lint:web": "turbo lint --filter=@simualpha/web",
-    "clean": "turbo clean",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "start:server": "cd server && npm start"
   },
   "devDependencies": {
-    "prettier": "^3.4.2",
-    "turbo": "^2.3.3"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.99.3"
+    "concurrently": "^8.2.2"
   }
 }
