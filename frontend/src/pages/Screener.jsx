@@ -4,89 +4,65 @@ import supabase from '../supabaseClient';
 import ScreenerTable from '../components/ScreenerTable';
 import TLILegend from '../components/TLILegend';
 
+const FILTERS = ['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'ENTRY ZONE'];
+
 export default function Screener() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('ALL');
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    async function load() {
-      const { data } = await supabase
-        .from('screener_results')
-        .select('*')
-        .order('total_score', { ascending: false });
-
-      setResults(data || []);
-      if (data && data.length > 0) {
-        const newest = data.reduce((a, b) =>
-          new Date(a.last_updated) > new Date(b.last_updated) ? a : b
-        );
-        setLastUpdated(newest.last_updated);
-      }
-      setLoading(false);
-    }
-    load();
+    supabase.from('screener_results').select('*').order('total_score', { ascending: false })
+      .then(({ data }) => { setResults(data || []); setLoading(false); });
   }, []);
 
-  const filtered = filter === 'ALL'
-    ? results
+  const filtered = filter === 'ALL' ? results
+    : filter === 'ENTRY ZONE' ? results.filter((r) => r.entry_zone)
     : results.filter((r) => r.signal === filter);
 
-  function formatAgo(ts) {
-    if (!ts) return '';
-    const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    return `${Math.floor(mins / 60)}h ago`;
-  }
+  const counts = {
+    ALL: results.length,
+    'LOAD THE BOAT': results.filter((r) => r.signal === 'LOAD THE BOAT').length,
+    ACCUMULATE: results.filter((r) => r.signal === 'ACCUMULATE').length,
+    WATCH: results.filter((r) => r.signal === 'WATCH').length,
+    'ENTRY ZONE': results.filter((r) => r.entry_zone).length,
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-8"
-    >
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading font-bold text-xl">
-            <span className="text-green">STOCK</span> SCREENER
-          </h1>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <h1 className="font-heading font-bold text-lg"><span className="text-green">STOCK</span> SCREENER</h1>
           <TLILegend />
         </div>
-        <div className="text-[10px] font-mono text-text-secondary">
-          {lastUpdated && `Updated ${formatAgo(lastUpdated)}`}
-          {results.length > 0 && ` · ${results.length} stocks`}
-        </div>
+        <span className="text-[10px] font-mono text-text-secondary">
+          Showing {filtered.length} of {results.length} scored
+        </span>
       </div>
 
+      {/* Search */}
+      <input type="text" placeholder="Search ticker or company..." value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full sm:w-64 px-3 py-1.5 mb-4 bg-bg-card border border-border text-[11px] font-mono text-text-primary placeholder:text-text-secondary/40 focus:outline-none focus:border-green/50" />
+
       {/* Filters */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH'].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${
-              filter === f
-                ? 'text-green bg-green/10 border border-green/30'
-                : 'text-text-secondary border border-border hover:text-text-primary'
-            }`}
-          >
-            {f} {f !== 'ALL' && `(${results.filter((r) => r.signal === f).length})`}
+      <div className="flex gap-1.5 mb-4 flex-wrap">
+        {FILTERS.map((f) => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-2.5 py-1 text-[9px] font-mono tracking-wider transition-colors ${
+              filter === f ? 'text-green bg-green-dim border border-green/30' : 'text-text-secondary border border-border hover:text-text-primary'}`}>
+            {f} ({counts[f]})
           </button>
         ))}
       </div>
 
-      {/* Table */}
       <div className="bg-bg-card border border-border">
-        {loading ? (
-          <div className="text-center py-16 text-text-secondary font-mono text-sm">
-            Loading...
-          </div>
-        ) : (
-          <ScreenerTable data={filtered} />
-        )}
+        {loading
+          ? <div className="text-center py-12 text-text-secondary font-mono text-xs">Loading...</div>
+          : <ScreenerTable data={filtered} searchQuery={search} />}
       </div>
     </motion.div>
   );

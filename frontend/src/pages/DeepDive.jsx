@@ -5,27 +5,18 @@ import supabase from '../supabaseClient';
 import ScoreRing from '../components/ScoreRing';
 import SignalBadge from '../components/SignalBadge';
 import MetricCard from '../components/MetricCard';
+import AlertFeed from '../components/AlertFeed';
 
-function fmt(val, dec = 2) {
-  if (val == null) return '—';
-  return Number(val).toFixed(dec);
-}
+function f(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d); }
+function fRev(v) { if (v == null) return '—'; const n = Number(v); return n >= 1e9 ? `$${(n/1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n/1e6).toFixed(0)}M` : `$${n.toLocaleString()}`; }
 
-function fmtRev(val) {
-  if (val == null) return '—';
-  const n = Number(val);
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
-  return `$${n.toLocaleString()}`;
-}
-
-function ScoreLine({ label, value, points, max }) {
+function ScoreLine({ label, value, pts, max }) {
   return (
-    <div className="flex items-center justify-between text-xs font-mono py-1.5 border-b border-border/30">
+    <div className="flex items-center justify-between text-[11px] font-mono py-1.5 border-b border-border/20">
       <span className="text-text-secondary">{label}</span>
       <div className="flex items-center gap-3">
         <span className="text-text-primary">{value}</span>
-        <span className="text-green w-16 text-right">{points}/{max} pts</span>
+        <span className="text-green w-14 text-right">{pts}/{max}</span>
       </div>
     </div>
   );
@@ -34,154 +25,144 @@ function ScoreLine({ label, value, points, max }) {
 export default function DeepDive() {
   const { symbol } = useParams();
   const [data, setData] = useState(null);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [watchlistMsg, setWatchlistMsg] = useState(null);
+  const [wlMsg, setWlMsg] = useState(null);
 
   useEffect(() => {
     async function load() {
-      const { data: row } = await supabase
-        .from('screener_results')
-        .select('*')
-        .eq('ticker', symbol.toUpperCase())
-        .single();
+      const [{ data: row }, { data: alertRows }] = await Promise.all([
+        supabase.from('screener_results').select('*').eq('ticker', symbol.toUpperCase()).single(),
+        supabase.from('signal_alerts').select('*').eq('ticker', symbol.toUpperCase()).order('fired_at', { ascending: false }).limit(5),
+      ]);
       setData(row);
+      setAlerts(alertRows || []);
       setLoading(false);
     }
     load();
   }, [symbol]);
 
-  async function addToWatchlist() {
-    const { error } = await supabase
-      .from('watchlist')
-      .upsert({ ticker: symbol.toUpperCase() }, { onConflict: 'ticker' });
-    setWatchlistMsg(error ? 'Failed to add' : 'Added to watchlist');
-    setTimeout(() => setWatchlistMsg(null), 3000);
+  async function addWl() {
+    const { error } = await supabase.from('watchlist').upsert({ ticker: symbol.toUpperCase() }, { onConflict: 'ticker' });
+    setWlMsg(error ? 'Failed' : 'Added!');
+    setTimeout(() => setWlMsg(null), 3000);
   }
 
-  if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 text-center py-24 font-mono text-text-secondary text-sm">
-        Loading {symbol?.toUpperCase()}...
-      </div>
-    );
-  }
+  if (loading) return <div className="max-w-7xl mx-auto px-4 py-8 text-center py-24 font-mono text-text-secondary text-xs">Analyzing {symbol?.toUpperCase()}...</div>;
+  if (!data) return (
+    <div className="max-w-7xl mx-auto px-4 py-8 text-center py-24">
+      <div className="font-mono text-text-secondary text-sm mb-2">{symbol?.toUpperCase()} not yet in candidate pool.</div>
+      <div className="font-mono text-text-secondary text-[11px] mb-4">Pipeline initializing — first scan running. Check back in 10 minutes.</div>
+      <Link to="/screener" className="text-green font-mono text-xs hover:underline">← Screener</Link>
+    </div>
+  );
 
-  if (!data) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 text-center py-24">
-        <div className="font-mono text-text-secondary text-sm mb-4">
-          {symbol?.toUpperCase()} not yet scanned.
-        </div>
-        <div className="font-mono text-text-secondary text-xs mb-4">
-          First scan in progress. Check back in a few minutes.
-        </div>
-        <Link to="/screener" className="text-green font-mono text-xs hover:underline">← Back to Screener</Link>
-      </div>
-    );
-  }
-
-  // Reconstruct scoring breakdown
-  const revGrowth = data.revenue_growth_pct;
-  const revPts = revGrowth >= 15 ? 15 : revGrowth >= 8 ? 10 : revGrowth > 0 ? 5 : 0;
-  const pct52 = Math.abs(data.pct_from_52w_high || 0);
-  const pct52Pts = pct52 >= 50 ? 15 : pct52 >= 30 ? 10 : pct52 >= 15 ? 5 : 0;
+  // Reconstruct scoring
+  const rg = data.revenue_growth_pct;
+  const rgPts = rg >= 20 ? 15 : rg >= 10 ? 10 : rg > 0 ? 5 : 0;
+  const d52 = Math.abs(data.pct_from_52w_high || 0);
+  const d52Pts = d52 >= 60 ? 15 : d52 >= 40 ? 12 : d52 >= 25 ? 8 : d52 >= 15 ? 4 : 0;
   const ps = data.ps_ratio;
-  const psPts = (ps != null && ps > 0) ? (ps < 2 ? 10 : ps < 5 ? 5 : 0) : 0;
+  const psPts = (ps != null && ps > 0) ? (ps < 1 ? 10 : ps < 3 ? 7 : ps < 5 ? 4 : ps < 10 ? 2 : 0) : 0;
   const pe = data.pe_ratio;
-  const pePts = (pe != null && pe > 0) ? (pe < 15 ? 10 : pe < 20 ? 5 : 0) : 0;
+  const pePts = (pe != null && pe > 0) ? (pe < 10 ? 10 : pe < 15 ? 7 : pe < 20 ? 4 : pe < 30 ? 2 : 0) : 0;
   const wma = data.pct_from_200wma;
-  const wmaPts = wma != null ? (wma <= 0 ? 25 : wma <= 5 ? 15 : wma <= 15 ? 5 : 0) : 0;
+  const wmaPts = wma != null ? (wma <= 0 ? 25 : wma <= 3 ? 20 : wma <= 8 ? 12 : wma <= 15 ? 5 : 0) : 0;
   const mma = data.pct_from_200mma;
-  const mmaPts = mma != null ? (mma <= 0 ? 25 : mma <= 5 ? 15 : mma <= 10 ? 5 : 0) : 0;
+  const mmaPts = mma != null ? (mma <= 0 ? 25 : mma <= 3 ? 20 : mma <= 8 ? 12 : mma <= 15 ? 5 : 0) : 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-8"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
-          <Link to="/screener" className="text-[10px] font-mono text-text-secondary hover:text-green mb-1 inline-block">
-            ← SCREENER
-          </Link>
+          <Link to="/screener" className="text-[9px] font-mono text-text-secondary hover:text-green mb-1 inline-block">← SCREENER</Link>
           <h1 className="font-heading font-bold text-3xl text-green">{data.ticker}</h1>
-          <div className="text-text-secondary font-mono text-sm">
-            {data.company_name}{data.sector && ` · ${data.sector}`}
-          </div>
+          <div className="text-text-secondary font-mono text-xs">{data.company_name}{data.sector && ` · ${data.sector}`}</div>
         </div>
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4">
           <ScoreRing score={data.total_score || 0} size={100} strokeWidth={6} />
           <div>
             <SignalBadge signal={data.signal || 'WATCH'} />
-            <div className="mt-2 text-2xl font-mono font-medium">${fmt(data.current_price)}</div>
+            <div className="mt-2 text-2xl font-mono font-medium">${f(data.current_price)}</div>
+            {data.previous_score != null && data.previous_score !== data.total_score && (
+              <div className="text-[9px] font-mono text-text-secondary">prev: {data.previous_score}</div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Watchlist */}
-      <div className="flex gap-3 mb-8">
-        <button
-          onClick={addToWatchlist}
-          className="px-4 py-2 border border-green text-green font-mono text-[11px] tracking-wider hover:bg-green/10 transition-colors"
-        >
-          + ADD TO WATCHLIST
-        </button>
-        {watchlistMsg && <span className="text-xs font-mono text-green self-center">{watchlistMsg}</span>}
+      {/* Entry Zone Panel */}
+      <div className={`mb-6 p-4 border ${data.entry_zone ? 'border-green/40 bg-green-dim' : 'border-border bg-bg-card'}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm">{data.entry_zone ? '📍' : '⏳'}</span>
+          <span className={`font-heading font-semibold text-xs ${data.entry_zone ? 'text-green' : 'text-text-secondary'}`}>
+            {data.entry_zone ? 'ENTRY ZONE ACTIVE' : 'WAITING FOR ENTRY'}
+          </span>
+        </div>
+        <p className="text-[11px] font-mono text-text-secondary">{data.entry_note || '—'}</p>
       </div>
 
-      {/* Score Breakdown — two columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-bg-card border border-border p-5">
-          <h3 className="font-heading font-semibold text-sm text-green mb-1">FUNDAMENTAL SCORE</h3>
-          <div className="text-2xl font-mono font-medium mb-4">
-            {data.fundamental_score}<span className="text-text-secondary text-base">/50</span>
-          </div>
-          <ScoreLine label="Revenue Growth YoY" value={revGrowth != null ? `${fmt(revGrowth, 1)}%` : '—'} points={revPts} max={15} />
-          <ScoreLine label="% from 52w High" value={data.pct_from_52w_high != null ? `${fmt(data.pct_from_52w_high, 1)}%` : '—'} points={pct52Pts} max={15} />
-          <ScoreLine label="P/S Ratio" value={ps != null ? fmt(ps, 1) : '—'} points={psPts} max={10} />
-          <ScoreLine label="P/E Ratio" value={pe != null ? fmt(pe, 1) : '—'} points={pePts} max={10} />
-        </div>
+      {/* Actions */}
+      <div className="flex gap-3 mb-6">
+        <button onClick={addWl} className="px-3 py-1.5 border border-green text-green font-mono text-[10px] tracking-wider hover:bg-green-dim transition-colors">+ WATCHLIST</button>
+        {wlMsg && <span className="text-[10px] font-mono text-green self-center">{wlMsg}</span>}
+      </div>
 
-        <div className="bg-bg-card border border-border p-5">
-          <h3 className="font-heading font-semibold text-sm text-green mb-1">TECHNICAL SCORE</h3>
-          <div className="text-2xl font-mono font-medium mb-4">
-            {data.technical_score}<span className="text-text-secondary text-base">/50</span>
-          </div>
-          <ScoreLine label="Price vs 200 WMA" value={wma != null ? `${fmt(wma, 1)}% (MA: $${fmt(data.price_200wma)})` : '—'} points={wmaPts} max={25} />
-          <ScoreLine label="Price vs 200 MMA" value={mma != null ? `${fmt(mma, 1)}% (MA: $${fmt(data.price_200mma)})` : '—'} points={mmaPts} max={25} />
+      {/* Score Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-bg-card border border-border p-4">
+          <h3 className="font-heading font-semibold text-xs text-green mb-1">FUNDAMENTAL SCORE</h3>
+          <div className="text-xl font-mono font-medium mb-3">{data.fundamental_score}<span className="text-text-secondary text-sm">/50</span></div>
+          <ScoreLine label="Revenue Growth" value={rg != null ? `${f(rg,1)}%` : '—'} pts={rgPts} max={15} />
+          <ScoreLine label="52w Drawdown" value={data.pct_from_52w_high != null ? `${f(data.pct_from_52w_high,1)}%` : '—'} pts={d52Pts} max={15} />
+          <ScoreLine label="P/S Ratio" value={ps != null ? f(ps,1) : '—'} pts={psPts} max={10} />
+          <ScoreLine label="P/E Ratio" value={pe != null ? f(pe,1) : '—'} pts={pePts} max={10} />
+        </div>
+        <div className="bg-bg-card border border-border p-4">
+          <h3 className="font-heading font-semibold text-xs text-green mb-1">TECHNICAL SCORE</h3>
+          <div className="text-xl font-mono font-medium mb-3">{data.technical_score}<span className="text-text-secondary text-sm">/50</span></div>
+          <ScoreLine label="vs 200 WMA" value={wma != null ? `${f(wma,1)}% (MA: $${f(data.price_200wma)})` : '—'} pts={wmaPts} max={25} />
+          <ScoreLine label="vs 200 MMA" value={mma != null ? `${f(mma,1)}% (MA: $${f(data.price_200mma)})` : '—'} pts={mmaPts} max={25} />
         </div>
       </div>
 
-      {/* Key Metrics Grid */}
-      <h3 className="font-heading font-semibold text-xs text-text-secondary mb-3 uppercase tracking-wider">Key Metrics</h3>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-8">
-        <MetricCard label="Current Price" value={`$${fmt(data.current_price)}`} />
-        <MetricCard label="200 WMA" value={data.price_200wma != null ? `$${fmt(data.price_200wma)}` : null} />
-        <MetricCard label="200 MMA" value={data.price_200mma != null ? `$${fmt(data.price_200mma)}` : null} />
-        <MetricCard label="% from 200WMA" value={data.pct_from_200wma != null ? `${fmt(data.pct_from_200wma, 1)}%` : null} delta={data.pct_from_200wma} />
-        <MetricCard label="% from 200MMA" value={data.pct_from_200mma != null ? `${fmt(data.pct_from_200mma, 1)}%` : null} delta={data.pct_from_200mma} />
-        <MetricCard label="Revenue (Current)" value={fmtRev(data.revenue_current)} />
-        <MetricCard label="Revenue (Prior)" value={fmtRev(data.revenue_prior_year)} />
-        <MetricCard label="Revenue Growth" value={data.revenue_growth_pct != null ? `${fmt(data.revenue_growth_pct, 1)}%` : null} delta={data.revenue_growth_pct} />
-        <MetricCard label="P/E Ratio" value={data.pe_ratio != null ? fmt(data.pe_ratio, 1) : null} />
-        <MetricCard label="P/S Ratio" value={data.ps_ratio != null ? fmt(data.ps_ratio, 1) : null} />
-        <MetricCard label="52-Week High" value={data.week_52_high != null ? `$${fmt(data.week_52_high)}` : null} />
-        <MetricCard label="% from 52w High" value={data.pct_from_52w_high != null ? `${fmt(data.pct_from_52w_high, 1)}%` : null} delta={data.pct_from_52w_high} />
+      {/* Key Metrics */}
+      <h3 className="font-heading font-semibold text-[10px] text-text-secondary mb-2 uppercase tracking-wider">Key Metrics</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 mb-6">
+        <MetricCard label="Price" value={`$${f(data.current_price)}`} />
+        <MetricCard label="200 WMA" value={data.price_200wma != null ? `$${f(data.price_200wma)}` : null} />
+        <MetricCard label="200 MMA" value={data.price_200mma != null ? `$${f(data.price_200mma)}` : null} />
+        <MetricCard label="% from WMA" value={data.pct_from_200wma != null ? `${f(data.pct_from_200wma,1)}%` : null} delta={data.pct_from_200wma} />
+        <MetricCard label="% from MMA" value={data.pct_from_200mma != null ? `${f(data.pct_from_200mma,1)}%` : null} delta={data.pct_from_200mma} />
+        <MetricCard label="Revenue" value={fRev(data.revenue_current)} />
+        <MetricCard label="Rev Prior" value={fRev(data.revenue_prior_year)} />
+        <MetricCard label="Rev Growth" value={data.revenue_growth_pct != null ? `${f(data.revenue_growth_pct,1)}%` : null} delta={data.revenue_growth_pct} />
+        <MetricCard label="P/E" value={data.pe_ratio != null ? f(data.pe_ratio,1) : null} />
+        <MetricCard label="P/S" value={data.ps_ratio != null ? f(data.ps_ratio,1) : null} />
+        <MetricCard label="52w High" value={data.week_52_high != null ? `$${f(data.week_52_high)}` : null} />
+        <MetricCard label="% from 52w" value={data.pct_from_52w_high != null ? `${f(data.pct_from_52w_high,1)}%` : null} delta={data.pct_from_52w_high} />
       </div>
 
       {/* TLI Note */}
-      <div className="bg-bg-card border border-border p-5">
-        <h3 className="font-heading font-semibold text-xs text-green mb-2">TLI METHODOLOGY NOTE</h3>
-        <p className="text-xs font-mono text-text-secondary leading-relaxed">
+      <div className="bg-bg-card border border-border p-4 mb-6">
+        <h3 className="font-heading font-semibold text-[10px] text-green mb-2">TLI METHODOLOGY NOTE</h3>
+        <p className="text-[11px] font-mono text-text-secondary leading-relaxed">
           Per TLI strategy: scores &ge;75 represent the fundamental + technical sweet spot.
           Price at or below 200WMA/MMA with growing revenue = historically asymmetric risk/reward.
-          This is a long-only methodology focused on accumulating high-conviction positions during
-          periods of maximum pessimism, when both price and sentiment have mean-reverted to extremes.
+          This is a long-only methodology — accumulate during corrective waves at key moving average supports.
         </p>
       </div>
+
+      {/* Alert History */}
+      {alerts.length > 0 && (
+        <div>
+          <h3 className="font-heading font-semibold text-[10px] text-text-secondary mb-2 uppercase tracking-wider">Alert History</h3>
+          <AlertFeed alerts={alerts} limit={5} />
+        </div>
+      )}
     </motion.div>
   );
 }
