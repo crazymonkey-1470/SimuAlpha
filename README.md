@@ -1,103 +1,114 @@
-# SimuAlpha
+# The Long Screener
 
-Financial distress-risk intelligence platform. Analyze the financial strength of any public company using debt, liquidity, cash flow, and long-term fundamental analysis.
+A stock opportunity finder implementing **The Long Investor (TLI) methodology**: buying fundamentally AND technically undervalued positions at or below the 200 WMA/200 MMA.
+
+## TLI Methodology
+
+Stocks are scored 0–100 based on two pillars:
+
+**Fundamental Score (50 pts):** Revenue growth, distance from 52-week high, P/S ratio, P/E ratio.
+
+**Technical Score (50 pts):** Price position relative to 200 Weekly Moving Average and 200 Monthly Moving Average.
+
+| Signal | Score | Action |
+|---|---|---|
+| LOAD THE BOAT | 75–100 | Full position — fundamental + technical sweet spot |
+| ACCUMULATE | 60–74 | Dollar-cost average in |
+| WATCH | 0–59 | Monitor for improvement |
 
 ## Architecture
 
 ```
-apps/
-  ├── web/        → Next.js frontend (React 19, Tailwind CSS)
-  ├── api/        → FastAPI backend (Python 3.11+, SQLAlchemy, Alembic)
-
-packages/
-  ├── ui/         → Shared React components
-  └── types/      → Shared TypeScript types
+Railway (backend/)           Supabase (DB)           Cloudflare Pages (frontend/)
+┌──────────────┐       ┌──────────────────┐       ┌────────────────────┐
+│ Cron: 6 hrs  │──────▶│ screener_results │◀──────│ Dashboard          │
+│ Yahoo Finance│       │ watchlist         │◀─────▶│ Screener           │
+│ FMP API      │       │ scan_history      │       │ Deep Dive          │
+│ TLI Scorer   │       └──────────────────┘       │ Watchlist           │
+└──────────────┘                                   └────────────────────┘
+     WRITES                                              READS
 ```
 
-### Services (Production)
+**Railway and the frontend never communicate directly.** No CORS config needed.
 
-| Service | Platform | Purpose |
-|---------|----------|---------|
-| Frontend | Cloudflare Pages / Railway | Next.js SSR app |
-| API | Railway | FastAPI distress analysis engine |
-| Database | Supabase | PostgreSQL |
+- Railway writes scored data to Supabase using the **service role key**
+- Frontend reads from Supabase using the **anon key**
+- Frontend writes to the watchlist table only
 
-**Worker service removed** — the analysis engine runs synchronously within the API. A background worker can be re-added later if needed for scheduled report refreshes.
+## Monorepo Structure
 
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/analyze` | Analyze a ticker for distress risk |
-| GET | `/api/v1/report/{ticker}` | Get cached report for a ticker |
-| GET | `/api/v1/recent` | List recent reports |
-| GET | `/api/v1/validate/{ticker}` | Check if a ticker is recognized |
-| GET | `/api/v1/methodology` | Scoring methodology data |
-| POST | `/api/v1/auth/register` | User registration |
-| POST | `/api/v1/auth/login` | User login |
-| GET | `/api/v1/auth/me` | Current user profile |
+```
+/
+├── backend/          ← Express + cron (Railway)
+│   ├── server.js     ← Health check + starts cron
+│   ├── cron.js       ← 6-hour scan scheduler
+│   ├── fetcher.js    ← Yahoo Finance + FMP data fetching
+│   ├── scorer.js     ← TLI scoring algorithm
+│   ├── supabase.js   ← Supabase client (service role)
+│   ├── tickers.js    ← Default ticker list (30 stocks)
+│   └── nixpacks.toml ← Railway build config
+├── frontend/         ← React + Vite (Cloudflare Pages)
+│   ├── src/
+│   │   ├── supabaseClient.js  ← Supabase client (anon key)
+│   │   ├── pages/
+│   │   └── components/
+│   └── vite.config.js
+└── supabase/
+    └── migration.sql ← Full schema
+```
 
 ## Environment Variables
 
-### API (`apps/api/.env`)
+### Backend (Railway)
+| Variable | Description |
+|---|---|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (NOT the anon key) |
+| `FMP_API_KEY` | Financial Modeling Prep API key (free tier) |
+| `PORT` | Server port (default: 3000) |
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SIMUALPHA_DATABASE_URL` | Yes | PostgreSQL connection string (Supabase) |
-| `SIMUALPHA_JWT_SECRET` | Yes (prod) | 64+ char JWT signing key |
-| `SIMUALPHA_CORS_ORIGINS` | No | JSON array of allowed origins |
-| `SIMUALPHA_FINANCIAL_DATA_API_KEY` | No | API key for live financial data provider |
-| `SIMUALPHA_REPORT_CACHE_TTL` | No | Report cache TTL in seconds (default: 21600) |
-| `SIMUALPHA_DEBUG` | No | Enable debug mode |
+### Frontend (Cloudflare Pages)
+| Variable | Description |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key |
 
-### Frontend (`apps/web/.env.local`)
+## Setup
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | Yes | Backend API URL |
+### 1. Supabase
+1. Create a new Supabase project
+2. Go to SQL Editor
+3. Paste and run the contents of `supabase/migration.sql`
+4. Copy your project URL, anon key, and service role key from Settings > API
 
-## Development
+### 2. Railway (Backend)
+1. Create a new Railway project
+2. Connect this GitHub repo
+3. Set **Root Directory** to `backend`
+4. Set **Build Command** to `npm install`
+5. Set **Start Command** to `node server.js`
+6. Set **Health Check Path** to `/health`
+7. Add environment variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FMP_API_KEY`
+8. Deploy — the first scan runs immediately on startup
 
-```bash
-# Prerequisites: Node 20+, pnpm 9+, Python 3.11+
+### 3. Cloudflare Pages (Frontend)
+1. Create a new Cloudflare Pages project
+2. Connect this GitHub repo
+3. Set **Root Directory** to `frontend`
+4. Set **Build Command** to `npm run build`
+5. Set **Build Output Directory** to `dist`
+6. Add environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+7. Deploy
 
-# Install frontend deps
-pnpm install
+## Adding More Tickers
 
-# Install API deps
-cd apps/api && pip install -e ".[dev]"
+Edit `backend/tickers.js` and add/remove ticker symbols from the array. Changes take effect on the next Railway deploy or cron cycle.
 
-# Run all services
-pnpm dev          # Frontend on :3000
-cd apps/api && uvicorn app.main:app --reload  # API on :8000
-```
+## Data Sources
 
-## Database
+- **Yahoo Finance** (`yahoo-finance2`): Current price, historical prices (weekly/monthly), 52-week high
+- **Financial Modeling Prep** (free tier): Revenue history, P/E ratio, P/S ratio, sector
 
-The Supabase schema is managed via:
-- **Alembic migrations**: `apps/api/alembic/versions/`
-- **Manual SQL**: `supabase_migration.sql` (paste into Supabase SQL editor)
+---
 
-### Core Tables
-
-| Table | Purpose |
-|-------|---------|
-| `distress_reports` | Financial distress analysis reports |
-| `report_history` | Historical snapshots for trend tracking |
-| `users` | User accounts |
-| `refresh_tokens` | JWT token management |
-| `watchlists` | User watchlists |
-| `watchlist_items` | Watchlist ticker items |
-
-## Scoring Model
-
-SimuAlpha uses a multi-factor composite distress score (0-100):
-- **Liquidity** (~20%): Current ratio, cash-to-debt
-- **Leverage** (~20%): D/E, D/A, debt/EBITDA
-- **Profitability** (~15%): Operating margin, net margin, trends
-- **Cash Flow** (~20%): OCF, FCF, direction
-- **Interest Coverage** (~15%): EBITDA / interest expense
-- **Altman Z-Score** (~10%): Academic distress model
-
-Rating scale: **Low** (0-25) / **Moderate** (26-50) / **High** (51-75) / **Severe** (76-100)
+*Not financial advice. For educational and informational purposes only.*

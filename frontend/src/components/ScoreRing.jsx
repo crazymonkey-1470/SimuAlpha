@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 function getColor(score) {
   if (score >= 75) return '#00ff88';
   if (score >= 60) return '#f5a623';
-  return '#8a8a9a';
+  return '#f0f0f5';
 }
 
-export default function ScoreRing({ score, size = 80, strokeWidth = 6 }) {
+export default function ScoreRing({ score = 0, size = 80, strokeWidth = 5 }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = (score / 100) * circumference;
@@ -20,7 +20,7 @@ export default function ScoreRing({ score, size = 80, strokeWidth = 6 }) {
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#2a2a3a"
+          stroke="#1e1e2e"
           strokeWidth={strokeWidth}
         />
         <motion.circle
@@ -34,15 +34,18 @@ export default function ScoreRing({ score, size = 80, strokeWidth = 6 }) {
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: circumference - progress }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
+          transition={{ duration: 1, ease: 'easeOut' }}
         />
       </svg>
-      <span
+      <motion.span
         className="absolute font-mono font-medium"
-        style={{ color, fontSize: size * 0.25 }}
+        style={{ color, fontSize: size * 0.28 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
       >
         {score}
-      </span>
+      </motion.span>
     </div>
   );
 }

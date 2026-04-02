@@ -1,49 +1,45 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { api } from '../lib/api';
+import supabase from '../supabaseClient';
 import ScreenerTable from '../components/ScreenerTable';
 import TLILegend from '../components/TLILegend';
 
 export default function Screener() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
-  const [customTickers, setCustomTickers] = useState('');
   const [filter, setFilter] = useState('ALL');
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
-    fetchResults();
-  }, []);
+    async function load() {
+      const { data } = await supabase
+        .from('screener_results')
+        .select('*')
+        .order('total_score', { ascending: false });
 
-  async function fetchResults() {
-    try {
-      const res = await api.getResults();
-      setResults(res.results || []);
-    } catch {
-      setResults([]);
-    } finally {
+      setResults(data || []);
+      if (data && data.length > 0) {
+        const newest = data.reduce((a, b) =>
+          new Date(a.last_updated) > new Date(b.last_updated) ? a : b
+        );
+        setLastUpdated(newest.last_updated);
+      }
       setLoading(false);
     }
-  }
-
-  async function runScan() {
-    setScanning(true);
-    try {
-      const tickers = customTickers
-        ? customTickers.split(',').map((t) => t.trim()).filter(Boolean)
-        : undefined;
-      const res = await api.scan(tickers);
-      setResults(res.results || []);
-    } catch (err) {
-      console.error('Scan failed:', err);
-    } finally {
-      setScanning(false);
-    }
-  }
+    load();
+  }, []);
 
   const filtered = filter === 'ALL'
     ? results
     : results.filter((r) => r.signal === filter);
+
+  function formatAgo(ts) {
+    if (!ts) return '';
+    const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    return `${Math.floor(mins / 60)}h ago`;
+  }
 
   return (
     <motion.div
@@ -53,59 +49,40 @@ export default function Screener() {
       className="max-w-7xl mx-auto px-4 sm:px-6 py-8"
     >
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-heading font-bold text-2xl">
-          <span className="text-accent">STOCK</span> SCREENER
-        </h1>
-        <div className="text-xs font-mono text-text-secondary">
-          {results.length} stocks loaded
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading font-bold text-xl">
+            <span className="text-green">STOCK</span> SCREENER
+          </h1>
+          <TLILegend />
+        </div>
+        <div className="text-[10px] font-mono text-text-secondary">
+          {lastUpdated && `Updated ${formatAgo(lastUpdated)}`}
+          {results.length > 0 && ` · ${results.length} stocks`}
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Custom tickers (e.g. AAPL, MSFT, TSLA)"
-          value={customTickers}
-          onChange={(e) => setCustomTickers(e.target.value)}
-          className="flex-1 px-3 py-2 bg-bg-card border border-border text-sm font-mono text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-accent"
-        />
-        <button
-          onClick={runScan}
-          disabled={scanning}
-          className="px-4 py-2 bg-accent text-bg font-mono text-xs font-medium tracking-wider hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-        >
-          {scanning ? 'SCANNING...' : 'SCAN'}
-        </button>
-      </div>
-
       {/* Filters */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH'].map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 text-xs font-mono transition-colors ${
+            className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${
               filter === f
-                ? 'text-accent bg-accent/10 border border-accent/30'
+                ? 'text-green bg-green/10 border border-green/30'
                 : 'text-text-secondary border border-border hover:text-text-primary'
             }`}
           >
-            {f}
+            {f} {f !== 'ALL' && `(${results.filter((r) => r.signal === f).length})`}
           </button>
         ))}
-      </div>
-
-      {/* Legend */}
-      <div className="mb-4">
-        <TLILegend />
       </div>
 
       {/* Table */}
       <div className="bg-bg-card border border-border">
         {loading ? (
-          <div className="text-center py-12 text-text-secondary font-mono text-sm">
-            Loading cached results...
+          <div className="text-center py-16 text-text-secondary font-mono text-sm">
+            Loading...
           </div>
         ) : (
           <ScreenerTable data={filtered} />

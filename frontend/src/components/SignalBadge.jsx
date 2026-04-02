@@ -1,36 +1,35 @@
-const signalConfig = {
+const config = {
   'LOAD THE BOAT': {
-    color: '#00ff88',
-    bg: 'bg-accent/10',
-    border: 'border-accent/40',
+    bg: 'bg-green/15',
+    border: 'border-green/40',
+    text: 'text-green',
+    dot: 'bg-green',
     pulse: true,
   },
-  'ACCUMULATE': {
-    color: '#f5a623',
-    bg: 'bg-amber/10',
+  ACCUMULATE: {
+    bg: 'bg-amber/15',
     border: 'border-amber/40',
+    text: 'text-amber',
+    dot: 'bg-amber',
     pulse: false,
   },
-  'WATCH': {
-    color: '#8a8a9a',
-    bg: 'bg-text-secondary/10',
+  WATCH: {
+    bg: 'bg-transparent',
     border: 'border-text-secondary/30',
+    text: 'text-text-secondary',
+    dot: 'bg-text-secondary',
     pulse: false,
   },
 };
 
 export default function SignalBadge({ signal }) {
-  const config = signalConfig[signal] || signalConfig.WATCH;
+  const c = config[signal] || config.WATCH;
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium border ${config.bg} ${config.border} ${config.pulse ? 'animate-pulse' : ''}`}
-      style={{ color: config.color }}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono font-medium border ${c.bg} ${c.border} ${c.text} ${c.pulse ? 'animate-pulse-slow' : ''}`}
     >
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ backgroundColor: config.color }}
-      />
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
       {signal}
     </span>
   );
