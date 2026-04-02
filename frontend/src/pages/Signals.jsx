@@ -85,6 +85,18 @@ export default function Signals() {
                   <span className="text-[9px] font-mono text-green tracking-wider">ELLIOTT WAVE BUY ZONE</span>
                 </div>
               )}
+              {a.claude_narrative && (
+                <div className="mt-2 p-2.5 bg-bg border border-border/40 italic">
+                  <p className="font-mono text-[11px] text-text-secondary leading-relaxed">"{a.claude_narrative}"</p>
+                  {a.claude_conviction && (
+                    <span className="font-mono text-[9px] mt-1 inline-block" style={{
+                      color: a.claude_conviction === 'HIGH' ? '#00ff88' : a.claude_conviction === 'MEDIUM' ? '#f5a623' : '#888'
+                    }}>
+                      — {a.claude_conviction} CONVICTION
+                    </span>
+                  )}
+                </div>
+              )}
             </motion.div>
           ))}
         </div>

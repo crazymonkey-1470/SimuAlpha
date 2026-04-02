@@ -203,3 +203,22 @@ create index if not exists idx_backtest_ticker on backtest_results(ticker);
 create index if not exists idx_backtest_outcome on backtest_results(outcome);
 create index if not exists idx_bt_summary_ticker on backtest_summary(ticker);
 create index if not exists idx_bt_summary_winrate on backtest_summary(win_rate_pct desc);
+
+-- ══════════════════════════════════════════════════════
+-- Phase 3: Claude AI Interpretation Columns
+-- ══════════════════════════════════════════════════════
+
+-- Add Claude interpretation to wave_counts
+alter table wave_counts
+add column if not exists claude_interpretation jsonb,
+add column if not exists claude_model text,
+add column if not exists claude_interpreted_at timestamptz;
+
+-- Add Claude narrative to signal_alerts
+alter table signal_alerts
+add column if not exists claude_narrative text,
+add column if not exists claude_conviction text;
+
+-- Index for finding stale interpretations
+create index if not exists idx_wave_counts_interpreted_at
+on wave_counts(claude_interpreted_at);
