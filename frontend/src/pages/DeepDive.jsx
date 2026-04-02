@@ -6,6 +6,9 @@ import ScoreRing from '../components/ScoreRing';
 import SignalBadge from '../components/SignalBadge';
 import MetricCard from '../components/MetricCard';
 import AlertFeed from '../components/AlertFeed';
+import WaveChart from '../components/WaveChart';
+import FibTargets from '../components/FibTargets';
+import BacktestCard from '../components/BacktestCard';
 
 function f(v, d = 2) { return v == null ? '—' : Number(v).toFixed(d); }
 function fRev(v) { if (v == null) return '—'; const n = Number(v); return n >= 1e9 ? `$${(n/1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n/1e6).toFixed(0)}M` : `$${n.toLocaleString()}`; }
@@ -26,17 +29,27 @@ export default function DeepDive() {
   const { symbol } = useParams();
   const [data, setData] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [waveCounts, setWaveCounts] = useState([]);
+  const [backtestSummary, setBacktestSummary] = useState(null);
+  const [backtestSignals, setBacktestSignals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [wlMsg, setWlMsg] = useState(null);
 
   useEffect(() => {
     async function load() {
-      const [{ data: row }, { data: alertRows }] = await Promise.all([
-        supabase.from('screener_results').select('*').eq('ticker', symbol.toUpperCase()).single(),
-        supabase.from('signal_alerts').select('*').eq('ticker', symbol.toUpperCase()).order('fired_at', { ascending: false }).limit(5),
+      const ticker = symbol.toUpperCase();
+      const [{ data: row }, { data: alertRows }, { data: waveRows }, { data: btSummary }, { data: btSignals }] = await Promise.all([
+        supabase.from('screener_results').select('*').eq('ticker', ticker).single(),
+        supabase.from('signal_alerts').select('*').eq('ticker', ticker).order('fired_at', { ascending: false }).limit(5),
+        supabase.from('wave_counts').select('*').eq('ticker', ticker).order('confidence_score', { ascending: false }),
+        supabase.from('backtest_summary').select('*').eq('ticker', ticker).single(),
+        supabase.from('backtest_results').select('*').eq('ticker', ticker).order('signal_date', { ascending: false }),
       ]);
       setData(row);
       setAlerts(alertRows || []);
+      setWaveCounts(waveRows || []);
+      setBacktestSummary(btSummary);
+      setBacktestSignals(btSignals || []);
       setLoading(false);
     }
     load();
@@ -145,6 +158,25 @@ export default function DeepDive() {
         <MetricCard label="52w High" value={data.week_52_high != null ? `$${f(data.week_52_high)}` : null} />
         <MetricCard label="% from 52w" value={data.pct_from_52w_high != null ? `${f(data.pct_from_52w_high,1)}%` : null} delta={data.pct_from_52w_high} />
       </div>
+
+      {/* Wave Analysis Section */}
+      {waveCounts.length > 0 && (
+        <div className="mb-6">
+          <h3 className="font-heading font-semibold text-[10px] text-text-secondary mb-2 uppercase tracking-wider">Wave Analysis</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <WaveChart waveCounts={waveCounts} />
+            <FibTargets waveCount={waveCounts[0]} currentPrice={data.current_price} />
+          </div>
+        </div>
+      )}
+
+      {/* Backtest Performance */}
+      {(backtestSummary || backtestSignals.length > 0) && (
+        <div className="mb-6">
+          <h3 className="font-heading font-semibold text-[10px] text-text-secondary mb-2 uppercase tracking-wider">Backtest Performance</h3>
+          <BacktestCard summary={backtestSummary} signals={backtestSignals} />
+        </div>
+      )}
 
       {/* TLI Note */}
       <div className="bg-bg-card border border-border p-4 mb-6">

@@ -15,6 +15,8 @@ const COLUMNS = [
   { key: 'revenue_growth_pct', label: 'REV GR' },
   { key: 'pe_ratio', label: 'P/E' },
   { key: 'ps_ratio', label: 'P/S' },
+  { key: 'wave_position', label: 'WAVE' },
+  { key: 'bt_win_rate', label: 'BT WIN%' },
   { key: 'sector', label: 'SECTOR' },
 ];
 
@@ -77,6 +79,17 @@ export default function ScreenerTable({ data, searchQuery = '' }) {
               <td className="px-2 py-2 font-mono" style={{ color: r.revenue_growth_pct > 0 ? '#00ff88' : '#ff4466' }}>{fPct(r.revenue_growth_pct)}</td>
               <td className="px-2 py-2 font-mono">{f(r.pe_ratio)}</td>
               <td className="px-2 py-2 font-mono">{f(r.ps_ratio)}</td>
+              <td className="px-2 py-2">
+                {r.wave_position ? (
+                  <span className="font-mono text-[9px] px-1.5 py-0.5 border" style={{
+                    color: r.wave_tli === 'BUY_ZONE' ? '#00ff88' : r.wave_tli === 'AVOID' ? '#ff4466' : '#f5a623',
+                    borderColor: r.wave_tli === 'BUY_ZONE' ? '#00ff8844' : r.wave_tli === 'AVOID' ? '#ff446644' : '#f5a62344',
+                  }}>{r.wave_position}</span>
+                ) : <span className="text-text-dim text-[9px]">—</span>}
+              </td>
+              <td className="px-2 py-2 font-mono text-[10px]" style={{
+                color: r.bt_win_rate >= 60 ? '#00ff88' : r.bt_win_rate >= 40 ? '#f5a623' : r.bt_win_rate != null ? '#ff4466' : undefined
+              }}>{r.bt_win_rate != null ? `${Number(r.bt_win_rate).toFixed(0)}%` : '—'}</td>
               <td className="px-2 py-2 font-mono text-text-secondary text-[9px]">{r.sector || '—'}</td>
             </motion.tr>
           ))}
