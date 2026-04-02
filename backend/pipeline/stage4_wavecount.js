@@ -3,7 +3,12 @@ const { fetchHistoricalPrices, sleep } = require('../services/fetcher');
 const { runWaveAnalysis } = require('../services/elliott_wave');
 const { runBacktestAll } = require('../services/backtester');
 const { fireAlert } = require('../services/alerts');
+const { interpretWaveCount, generateAlertNarrative, shouldInterpret } = require('../services/claude_interpreter');
 const yahooFinance = require('yahoo-finance2').default;
+
+// Hard cap on daily Claude calls to control cost
+let claudeCallsToday = 0;
+const CLAUDE_DAILY_LIMIT = 100;
 
 /**
  * Fetch extended monthly price history for backtesting (max available).
@@ -102,6 +107,55 @@ async function runWaveCount() {
 
         waveCounts += waveResults.length;
 
+        // Fetch fundamentals for Claude interpretation
+        const { data: fundamentals } = await supabase
+          .from('screener_results')
+          .select('*')
+          .eq('ticker', ticker)
+          .single();
+
+        // Claude interpretation for the best wave count
+        const topWaveForClaude = waveResults[0];
+        if (topWaveForClaude && claudeCallsToday < CLAUDE_DAILY_LIMIT && process.env.ANTHROPIC_API_KEY) {
+          const { data: prevWave } = await supabase
+            .from('wave_counts')
+            .select('tli_signal, current_wave, confidence_label, claude_interpreted_at')
+            .eq('ticker', ticker)
+            .eq('timeframe', topWaveForClaude.timeframe)
+            .single();
+
+          if (shouldInterpret(topWaveForClaude, prevWave)) {
+            console.log(`  Calling Claude for ${ticker}...`);
+            claudeCallsToday++;
+
+            const backtestData = await getBacktestSummary(ticker);
+            const interpretation = await interpretWaveCount(
+              ticker,
+              topWaveForClaude,
+              fundamentals || { company_name, current_price },
+              backtestData
+            );
+
+            await supabase
+              .from('wave_counts')
+              .update({
+                claude_interpretation: interpretation,
+                claude_model: interpretation.model_used,
+                claude_interpreted_at: interpretation.interpreted_at,
+              })
+              .eq('ticker', ticker)
+              .eq('timeframe', topWaveForClaude.timeframe)
+              .eq('wave_degree', topWaveForClaude.wave_degree);
+
+            console.log(`  Claude: ${ticker} — ${interpretation.conviction} conviction | "${interpretation.one_liner}"`);
+            await sleep(500);
+          } else {
+            console.log(`  Skipping Claude for ${ticker} — interpretation still fresh`);
+          }
+        } else if (claudeCallsToday >= CLAUDE_DAILY_LIMIT) {
+          console.log(`  Claude daily limit reached (${CLAUDE_DAILY_LIMIT}). Skipping remaining interpretations.`);
+        }
+
         // Check for BUY_ZONE alerts
         const buyZone = waveResults.find((w) => w.tli_signal === 'BUY_ZONE' && w.confidence_score >= 60);
         if (buyZone) {
@@ -119,6 +173,30 @@ async function runWaveCount() {
             const targetNote = buyZone.target_1 ? `Target 1: $${buyZone.target_1} | R/R: ${buyZone.reward_risk_ratio}x` : '';
             const btNote = backtestSummary ? `Backtest: ${backtestSummary.total_signals} signals, ${backtestSummary.win_rate_pct}% win rate` : '';
 
+            // Generate Claude narrative for the alert if available
+            let narrative = null;
+            let conviction = null;
+            if (process.env.ANTHROPIC_API_KEY && claudeCallsToday < CLAUDE_DAILY_LIMIT) {
+              claudeCallsToday++;
+              narrative = await generateAlertNarrative(
+                ticker,
+                buyZone,
+                fundamentals || { company_name, current_price, total_score: 0, revenue_growth_pct: 0, pct_from_200wma: 0, pct_from_200mma: 0 },
+                'WAVE_BUY_ZONE'
+              );
+              // Get conviction from existing interpretation
+              const { data: interp } = await supabase
+                .from('wave_counts')
+                .select('claude_interpretation')
+                .eq('ticker', ticker)
+                .eq('timeframe', buyZone.timeframe)
+                .single();
+              conviction = interp?.claude_interpretation?.conviction || null;
+            }
+
+            const entryNote = [waveNote, targetNote, btNote].filter(Boolean).join('\n')
+              + (narrative ? `\n\n${narrative}` : '');
+
             await fireAlert({
               ticker,
               company_name,
@@ -127,10 +205,21 @@ async function runWaveCount() {
               current_price,
               price_200wma: null,
               price_200mma: null,
-              entry_note: [waveNote, targetNote, btNote].filter(Boolean).join('\n'),
+              entry_note: entryNote,
               previous_signal: null,
               new_signal: 'WAVE BUY ZONE',
             });
+
+            // Update the alert with claude fields
+            if (narrative) {
+              await supabase
+                .from('signal_alerts')
+                .update({ claude_narrative: narrative, claude_conviction: conviction })
+                .eq('ticker', ticker)
+                .order('fired_at', { ascending: false })
+                .limit(1);
+            }
+
             alertsFired++;
           }
         }
