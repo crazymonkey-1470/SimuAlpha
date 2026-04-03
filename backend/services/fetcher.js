@@ -1,4 +1,11 @@
-const yahooFinance = require('yahoo-finance2').default;
+let _yahooFinance;
+async function getYahooFinance() {
+  if (!_yahooFinance) {
+    const mod = await import('yahoo-finance2');
+    _yahooFinance = new mod.default();
+  }
+  return _yahooFinance;
+}
 
 const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
 const FMP_KEY = () => process.env.FMP_API_KEY;
@@ -83,6 +90,7 @@ async function fetchHistoricalPrices(ticker) {
     const twentyYearsAgo = new Date();
     twentyYearsAgo.setFullYear(twentyYearsAgo.getFullYear() - 20);
 
+    const yahooFinance = await getYahooFinance();
     const [weekly, monthly] = await Promise.all([
       yahooFinance.chart(ticker, {
         period1: fiveYearsAgo.toISOString().split('T')[0],
@@ -107,6 +115,7 @@ async function fetchHistoricalPrices(ticker) {
 
 async function fetchQuote(ticker) {
   try {
+    const yahooFinance = await getYahooFinance();
     const q = await yahooFinance.quote(ticker);
     return {
       currentPrice: q.regularMarketPrice ?? null,
