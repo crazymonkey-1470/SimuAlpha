@@ -1,42 +1,44 @@
-let _yahooFinance;
-async function getYahooFinance() {
-  if (!_yahooFinance) {
-    const mod = await import('yahoo-finance2');
-    _yahooFinance = new mod.default();
-  }
-  return _yahooFinance;
-}
-
-const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
-const FMP_KEY = () => process.env.FMP_API_KEY;
+const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// ── FMP: Full stock list ──
+// ── Scraper: Full stock list ──
 
 async function fetchStockList() {
-  const res = await fetch(`${FMP_BASE}/stock/list?apikey=${FMP_KEY()}`);
-  if (!res.ok) throw new Error(`FMP stock/list failed: ${res.status}`);
-  return res.json();
+  const res = await fetch(`${SCRAPER_URL}/universe/`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Scraper universe failed: ${res.status}`);
+  const data = await res.json();
+  const stocks = data.stocks || [];
+
+  // Map to the format the pipeline expects
+  return stocks.map((s) => ({
+    symbol: s.ticker,
+    name: s.company_name,
+    exchangeShortName: s.exchange === 'US' ? 'NYSE' : s.exchange,
+    price: s.current_price,
+    type: 'stock',
+  }));
 }
 
-// ── FMP: Company profile ──
+// ── Scraper: Company profile ──
 
 async function fetchProfile(ticker) {
   try {
-    const res = await fetch(`${FMP_BASE}/profile/${ticker}?apikey=${FMP_KEY()}`);
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const p = Array.isArray(data) ? data[0] : data;
     return {
-      companyName: p?.companyName || ticker,
-      sector: p?.sector || null,
-      industry: p?.industry || null,
-      marketCap: p?.mktCap || null,
-      currentPrice: p?.price || null,
-      week52High: p?.range ? parseFloat(p.range.split('-')[1]) : null,
-      exchange: p?.exchangeShortName || null,
+      companyName: data.ticker || ticker,
+      sector: null,
+      industry: null,
+      marketCap: null,
+      currentPrice: null,
+      week52High: null,
+      exchange: null,
     };
   } catch (err) {
     console.error(`[fetcher] profile failed ${ticker}:`, err.message);
@@ -44,36 +46,34 @@ async function fetchProfile(ticker) {
   }
 }
 
-// ── FMP: Income statement (revenue) ──
+// ── Scraper: Income statement (revenue) ──
 
 async function fetchIncomeStatement(ticker) {
   try {
-    const res = await fetch(`${FMP_BASE}/income-statement/${ticker}?limit=2&apikey=${FMP_KEY()}`);
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const arr = Array.isArray(data) ? data : [];
-    const revCurrent = arr[0]?.revenue ?? null;
-    const revPrior = arr[1]?.revenue ?? null;
-    let growthPct = null;
-    if (revCurrent != null && revPrior != null && revPrior !== 0) {
-      growthPct = ((revCurrent - revPrior) / Math.abs(revPrior)) * 100;
-    }
-    return { revenueCurrent: revCurrent, revenuePrior: revPrior, revenueGrowthPct: growthPct };
+    return {
+      revenueCurrent: data.revenue_current ?? null,
+      revenuePrior: data.revenue_prior_year ?? null,
+      revenueGrowthPct: data.revenue_growth_pct ?? null,
+    };
   } catch (err) {
     console.error(`[fetcher] income failed ${ticker}:`, err.message);
     return { revenueCurrent: null, revenuePrior: null, revenueGrowthPct: null };
   }
 }
 
-// ── FMP: Ratios TTM (P/E, P/S) ──
+// ── Scraper: Ratios (P/E, P/S) ──
 
 async function fetchRatios(ticker) {
   try {
-    const res = await fetch(`${FMP_BASE}/ratios-ttm/${ticker}?apikey=${FMP_KEY()}`);
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const r = Array.isArray(data) ? data[0] : data;
     return {
-      peRatio: r?.peRatioTTM ?? null,
-      psRatio: r?.priceToSalesRatioTTM ?? null,
+      peRatio: data.pe_ratio ?? null,
+      psRatio: data.ps_ratio ?? null,
     };
   } catch (err) {
     console.error(`[fetcher] ratios failed ${ticker}:`, err.message);
@@ -81,29 +81,15 @@ async function fetchRatios(ticker) {
   }
 }
 
-// ── Yahoo Finance: Historical prices ──
+// ── Scraper: Historical prices ──
 
 async function fetchHistoricalPrices(ticker) {
   try {
-    const fiveYearsAgo = new Date();
-    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-    const twentyYearsAgo = new Date();
-    twentyYearsAgo.setFullYear(twentyYearsAgo.getFullYear() - 20);
-
-    const yahooFinance = await getYahooFinance();
-    const [weekly, monthly] = await Promise.all([
-      yahooFinance.chart(ticker, {
-        period1: fiveYearsAgo.toISOString().split('T')[0],
-        interval: '1wk',
-      }),
-      yahooFinance.chart(ticker, {
-        period1: twentyYearsAgo.toISOString().split('T')[0],
-        interval: '1mo',
-      }),
-    ]);
-
-    const weeklyCloses = (weekly.quotes || []).map((q) => q.close).filter((c) => c != null);
-    const monthlyCloses = (monthly.quotes || []).map((q) => q.close).filter((c) => c != null);
+    const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const weeklyCloses = (data.weekly || []).map((d) => d.close).filter((c) => c != null);
+    const monthlyCloses = (data.monthly || []).map((d) => d.close).filter((c) => c != null);
     return { weeklyCloses, monthlyCloses };
   } catch (err) {
     console.error(`[fetcher] historical failed ${ticker}:`, err.message);
@@ -111,16 +97,17 @@ async function fetchHistoricalPrices(ticker) {
   }
 }
 
-// ── Yahoo Finance: Current quote ──
+// ── Scraper: Current quote ──
 
 async function fetchQuote(ticker) {
   try {
-    const yahooFinance = await getYahooFinance();
-    const q = await yahooFinance.quote(ticker);
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
     return {
-      currentPrice: q.regularMarketPrice ?? null,
-      week52High: q.fiftyTwoWeekHigh ?? null,
-      companyName: q.shortName || q.longName || ticker,
+      currentPrice: null,
+      week52High: null,
+      companyName: data.ticker || ticker,
       sector: null,
     };
   } catch (err) {
