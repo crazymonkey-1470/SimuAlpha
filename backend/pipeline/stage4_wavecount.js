@@ -1,5 +1,5 @@
 const supabase = require('../services/supabase');
-const { fetchHistoricalPrices, sleep } = require('../services/fetcher');
+const { sleep } = require('../services/fetcher');
 const { runWaveAnalysis } = require('../services/elliott_wave');
 const { runBacktestAll } = require('../services/backtester');
 const { fireAlert } = require('../services/alerts');
@@ -52,16 +52,7 @@ async function runWaveCount() {
 
   for (const { ticker, company_name, current_price } of candidates) {
     try {
-      // Fetch historical prices (extended for wave detection)
-      const historicals = await fetchHistoricalPrices(ticker);
-
-      // Build price arrays with dates for wave analysis
-      const fiveYearsAgo = new Date();
-      fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-      const twentyYearsAgo = new Date();
-      twentyYearsAgo.setFullYear(twentyYearsAgo.getFullYear() - 20);
-
-      // Fetch with dates for wave engine
+      // Fetch historical prices with dates for wave analysis (single call)
       let monthlyWithDates = [];
       let weeklyWithDates = [];
       try {
