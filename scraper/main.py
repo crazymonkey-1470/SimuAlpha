@@ -6,6 +6,7 @@ app = FastAPI(
     title="TLI Scraper Service",
     description="Self-built financial data scraper. No paid APIs.",
     version="1.0.0",
+    redirect_slashes=False,
 )
 
 app.include_router(universe.router, prefix="/universe", tags=["Universe"])
