@@ -137,12 +137,14 @@ create table if not exists wave_counts (
   confidence_score integer,           -- 0-100
   confidence_label text,              -- 'HIGH','PROBABLE','SPECULATIVE'
   tli_signal text,                    -- 'BUY_ZONE','ACCUMULATE_ZONE','AVOID','NEUTRAL'
-  tli_reason text,
-  pivot_count integer,
-  entry_zone numeric,
+  tli_signal_reason text,
+  wave_count_json jsonb,
+  entry_zone_low numeric,
+  entry_zone_high numeric,
   stop_loss numeric,
   target_1 numeric,
   target_2 numeric,
+  target_3 numeric,
   reward_risk_ratio numeric,
   last_updated timestamptz default now(),
   unique(ticker, timeframe, wave_degree)

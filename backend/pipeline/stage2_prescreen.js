@@ -73,7 +73,8 @@ async function runPrescreen() {
         last_updated: new Date().toISOString(),
       });
     } catch (err) {
-      // Skip on error, never crash
+      // Skip on error, never crash — but log it
+      console.error(`  ${ticker}: prescreen error -`, err.message);
     }
 
     await sleep(200);

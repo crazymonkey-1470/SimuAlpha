@@ -60,7 +60,7 @@ function scoreTechnical({ pctFrom200WMA, pctFrom200MMA }) {
     if (pctFrom200MMA <= 0) score += 25;
     else if (pctFrom200MMA <= 3) score += 20;
     else if (pctFrom200MMA <= 8) score += 12;
-    else if (pctFrom200MMA <= 15) score += 5;
+    else if (pctFrom200MMA <= 10) score += 5;
   }
 
   return score;
