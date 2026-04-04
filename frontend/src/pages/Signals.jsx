@@ -1,106 +1,122 @@
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import supabase from '../supabaseClient';
+import { useNavigate } from 'react-router-dom';
+import { useSignalAlerts } from '../hooks/useScreener';
 import SignalBadge from '../components/SignalBadge';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
-const TYPE_EMOJI = { LOAD_THE_BOAT: '🟢', SIGNAL_UPGRADE: '🟡', CROSSED_200WMA: '📉', CROSSED_200MMA: '📉', WAVE_BUY_ZONE: '🌊' };
-const TYPES = ['ALL', 'LOAD_THE_BOAT', 'SIGNAL_UPGRADE', 'CROSSED_200WMA', 'CROSSED_200MMA', 'WAVE_BUY_ZONE'];
+const alertTypeLabel = {
+  'LOAD_THE_BOAT': 'Load The Boat',
+  'SIGNAL_UPGRADE': 'Signal Upgrade',
+  'CROSSED_200WMA': 'Crossed 200WMA',
+  'CROSSED_200MMA': 'Crossed 200MMA',
+  'WAVE_BUY_ZONE': 'Wave Buy Zone',
+};
 
 export default function Signals() {
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('ALL');
-
-  useEffect(() => {
-    supabase.from('signal_alerts').select('*').order('fired_at', { ascending: false }).limit(200)
-      .then(({ data }) => { setAlerts(data || []); setLoading(false); });
-  }, []);
-
-  // Refresh every 5 minutes
-  useEffect(() => {
-    const iv = setInterval(() => {
-      supabase.from('signal_alerts').select('*').order('fired_at', { ascending: false }).limit(200)
-        .then(({ data }) => { if (data) setAlerts(data); });
-    }, 5 * 60 * 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  const filtered = filter === 'ALL' ? alerts : alerts.filter((a) => a.alert_type === filter);
+  const navigate = useNavigate();
+  const { data: alerts, loading } = useSignalAlerts();
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-
-      <h1 className="font-heading font-bold text-lg mb-5"><span className="text-green">SIGNAL</span> HISTORY</h1>
-
-      <div className="flex gap-1.5 mb-4 flex-wrap">
-        {TYPES.map((t) => (
-          <button key={t} onClick={() => setFilter(t)}
-            className={`px-2.5 py-1 text-[9px] font-mono tracking-wider transition-colors ${
-              filter === t ? 'text-green bg-green-dim border border-green/30' : 'text-text-secondary border border-border hover:text-text-primary'}`}>
-            {t === 'ALL' ? 'ALL' : `${TYPE_EMOJI[t] || ''} ${t.replace(/_/g, ' ')}`}
-          </button>
-        ))}
+    <div style={{ paddingTop: '40px' }}>
+      <div style={{ marginBottom: '32px' }}>
+        <h1 style={{
+          fontFamily: 'Cormorant Garamond', fontSize: '48px',
+          fontWeight: 300, color: 'var(--text-primary)', marginBottom: '8px'
+        }}>
+          Signals
+        </h1>
+        <p style={{
+          fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-secondary)'
+        }}>
+          Every opportunity the system has detected. Most recent first.
+        </p>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-text-secondary font-mono text-xs">Loading...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 border border-border bg-bg-card">
-          <div className="font-mono text-text-secondary text-sm mb-2">No alerts yet</div>
-          <div className="font-mono text-text-secondary text-[11px]">
-            Pipeline will fire alerts when signals change or prices cross key levels.
-          </div>
-        </div>
+        <LoadingSpinner />
+      ) : alerts.length === 0 ? (
+        <EmptyState
+          message="No signals yet"
+          sub="Signals fire when a stock enters a TLI buy zone. Check back after the first full pipeline run."
+        />
       ) : (
-        <div className="space-y-2">
-          {filtered.map((a, i) => (
-            <motion.div key={a.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.02 }}
-              className="bg-bg-card border border-border p-4 hover:bg-bg-card-hover transition-colors">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">{TYPE_EMOJI[a.alert_type] || '📊'}</span>
-                  <div>
-                    <Link to={`/ticker/${a.ticker}`} className="font-mono font-medium text-green hover:underline text-sm">{a.ticker}</Link>
-                    {a.company_name && <span className="text-[10px] text-text-secondary ml-2">{a.company_name}</span>}
-                    <div className="text-[9px] text-text-secondary font-mono">{a.alert_type?.replace(/_/g, ' ')}</div>
-                  </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {alerts.map((alert, i) => (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => navigate(`/ticker/${alert.ticker}`)}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderLeft: alert.alert_type === 'LOAD_THE_BOAT'
+                  ? '3px solid var(--signal-green)' : '3px solid var(--signal-amber)',
+                borderRadius: '8px', padding: '20px 24px', cursor: 'pointer',
+                transition: 'background 0.15s ease'
+              }}
+            >
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px'
+              }}>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <span style={{
+                    fontFamily: 'Cormorant Garamond', fontSize: '24px',
+                    fontWeight: 600, color: 'var(--text-primary)'
+                  }}>
+                    {alert.ticker}
+                  </span>
+                  <SignalBadge signal={alert.new_signal} size="sm" />
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-text-primary">{a.score}/100</span>
-                  <span className="font-mono text-xs">${a.current_price != null ? Number(a.current_price).toFixed(2) : '—'}</span>
-                  {a.new_signal && <SignalBadge signal={a.new_signal} compact />}
-                  <span className="text-[9px] font-mono text-text-dim">{new Date(a.fired_at).toLocaleDateString()}</span>
-                </div>
+                <span style={{
+                  fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)'
+                }}>
+                  {new Date(alert.fired_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                  })}
+                </span>
               </div>
-              {a.entry_note && <p className="text-[10px] font-mono text-text-secondary mt-2">{a.entry_note}</p>}
-              {a.previous_signal && a.new_signal && a.previous_signal !== a.new_signal && (
-                <p className="text-[10px] font-mono text-amber mt-1">Signal: {a.previous_signal} → {a.new_signal}</p>
-              )}
-              {a.new_signal === 'WAVE BUY ZONE' && (
-                <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 border border-green/30 bg-green-dim">
-                  <span className="text-[9px]">🌊</span>
-                  <span className="text-[9px] font-mono text-green tracking-wider">ELLIOTT WAVE BUY ZONE</span>
+
+              <div style={{
+                marginTop: '12px', display: 'flex', gap: '24px', flexWrap: 'wrap'
+              }}>
+                <div>
+                  <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginRight: '8px' }}>TYPE</span>
+                  <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-primary)' }}>
+                    {alertTypeLabel[alert.alert_type] || alert.alert_type}
+                  </span>
                 </div>
-              )}
-              {a.claude_narrative && (
-                <div className="mt-2 p-2.5 bg-bg border border-border/40 italic">
-                  <p className="font-mono text-[11px] text-text-secondary leading-relaxed">"{a.claude_narrative}"</p>
-                  {a.claude_conviction && (
-                    <span className="font-mono text-[9px] mt-1 inline-block" style={{
-                      color: a.claude_conviction === 'HIGH' ? '#00ff88' : a.claude_conviction === 'MEDIUM' ? '#f5a623' : '#888'
-                    }}>
-                      — {a.claude_conviction} CONVICTION
-                    </span>
-                  )}
+                {alert.score && (
+                  <div>
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginRight: '8px' }}>SCORE</span>
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--signal-green)' }}>{alert.score}/100</span>
+                  </div>
+                )}
+                {alert.current_price && (
+                  <div>
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginRight: '8px' }}>PRICE AT SIGNAL</span>
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-primary)' }}>${alert.current_price?.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              {alert.claude_narrative && (
+                <div style={{
+                  marginTop: '12px', padding: '10px 14px',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '6px', fontFamily: 'IBM Plex Mono', fontSize: '11px',
+                  color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic'
+                }}>
+                  &ldquo;{alert.claude_narrative}&rdquo;
                 </div>
               )}
             </motion.div>
           ))}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

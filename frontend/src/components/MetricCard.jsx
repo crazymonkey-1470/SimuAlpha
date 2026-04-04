@@ -1,17 +1,46 @@
-export default function MetricCard({ label, value, delta, color }) {
+export default function MetricCard({ label, value, delta, highlight }) {
+  const deltaColor = delta > 0
+    ? 'var(--signal-green)'
+    : delta < 0
+    ? 'var(--red)'
+    : 'var(--text-secondary)';
+
   return (
-    <div className="bg-bg-card border border-border p-3">
-      <div className="text-[9px] font-mono text-text-secondary uppercase tracking-wider mb-1">{label}</div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-base font-mono font-medium" style={{ color: color || '#e8e8f0' }}>
-          {value ?? '—'}
-        </span>
-        {delta != null && (
-          <span className="text-[9px] font-mono" style={{ color: delta >= 0 ? '#00ff88' : '#ff4466' }}>
-            {delta >= 0 ? '+' : ''}{typeof delta === 'number' ? delta.toFixed(1) : delta}%
-          </span>
-        )}
+    <div style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${highlight ? 'var(--signal-green)30' : 'var(--border)'}`,
+      borderRadius: '8px',
+      padding: '16px',
+      transition: 'border-color 0.2s ease'
+    }}>
+      <div style={{
+        fontFamily: 'IBM Plex Mono',
+        fontSize: '10px',
+        color: 'var(--text-secondary)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.12em',
+        marginBottom: '8px'
+      }}>
+        {label}
       </div>
+      <div style={{
+        fontFamily: 'IBM Plex Mono',
+        fontSize: '20px',
+        fontWeight: 500,
+        color: highlight ? 'var(--signal-green)' : 'var(--text-primary)'
+      }}>
+        {value ?? '\u2014'}
+      </div>
+      {delta !== undefined && (
+        <div style={{
+          fontFamily: 'IBM Plex Mono',
+          fontSize: '11px',
+          color: deltaColor,
+          marginTop: '4px'
+        }}>
+          {delta > 0 ? '+' : ''}{delta?.toFixed(1)}%
+        </div>
+      )}
     </div>
   );
 }

@@ -1,39 +1,70 @@
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 
-function getColor(score) {
-  if (score >= 75) return '#00ff88';
-  if (score >= 60) return '#f5a623';
-  return '#e8e8f0';
-}
+export default function ScoreRing({ score = 0, size = 80 }) {
+  const [animated, setAnimated] = useState(0);
 
-export default function ScoreRing({ score = 0, size = 80, strokeWidth = 5 }) {
-  const r = (size - strokeWidth) / 2;
-  const circ = 2 * Math.PI * r;
-  const progress = (score / 100) * circ;
-  const color = getColor(score);
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimated(score), 100);
+    return () => clearTimeout(timer);
+  }, [score]);
+
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (animated / 100) * circumference;
+
+  const color = score >= 75
+    ? 'var(--signal-green)'
+    : score >= 60
+    ? 'var(--signal-amber)'
+    : 'var(--text-secondary)';
 
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1a1a2e" strokeWidth={strokeWidth} />
-        <motion.circle
-          cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
-          strokeWidth={strokeWidth} strokeLinecap="round"
-          strokeDasharray={circ}
-          initial={{ strokeDashoffset: circ }}
-          animate={{ strokeDashoffset: circ - progress }}
-          transition={{ duration: 1, ease: 'easeOut' }}
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke="var(--border)"
+          strokeWidth={4}
+        />
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={4}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference - progress}
+          style={{ transition: 'stroke-dashoffset 1s ease' }}
         />
       </svg>
-      <motion.span
-        className="absolute font-mono font-medium"
-        style={{ color, fontSize: size * 0.28 }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        {score}
-      </motion.span>
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column'
+      }}>
+        <span style={{
+          fontFamily: 'IBM Plex Mono',
+          fontSize: size > 60 ? '18px' : '13px',
+          fontWeight: 500,
+          color
+        }}>
+          {score}
+        </span>
+        {size > 60 && (
+          <span style={{
+            fontFamily: 'IBM Plex Mono',
+            fontSize: '9px',
+            color: 'var(--text-dim)',
+            letterSpacing: '0.1em'
+          }}>
+            /100
+          </span>
+        )}
+      </div>
     </div>
   );
 }
