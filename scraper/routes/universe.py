@@ -6,6 +6,7 @@ from services.crawl_universe import get_universe
 router = APIRouter()
 
 
+@router.get("")
 @router.get("/")
 async def fetch_universe():
     data = await get_universe()
