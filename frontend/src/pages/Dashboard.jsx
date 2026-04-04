@@ -1,139 +1,183 @@
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import supabase from '../supabaseClient';
-import ScoreRing from '../components/ScoreRing';
-import SignalBadge from '../components/SignalBadge';
-import AlertFeed from '../components/AlertFeed';
+import { useNavigate } from 'react-router-dom';
+import { useScreenerResults, useScanHistory } from '../hooks/useScreener';
+import OpportunityCard from '../components/OpportunityCard';
+import EmptyState from '../components/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Dashboard() {
-  const [top5, setTop5] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [pipeline, setPipeline] = useState({ universe: 0, candidates: 0, scored: 0, lastScan: null });
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { data: allStocks, loading } = useScreenerResults();
+  const { data: scanHistory } = useScanHistory();
 
-  useEffect(() => {
-    async function load() {
-      const [
-        { data: topData },
-        { data: alertData },
-        { count: uniCount },
-        { count: candCount },
-        { count: resCount },
-        { data: histData },
-      ] = await Promise.all([
-        supabase.from('screener_results').select('*').eq('signal', 'LOAD THE BOAT').order('total_score', { ascending: false }).limit(5),
-        supabase.from('signal_alerts').select('*').order('fired_at', { ascending: false }).limit(10),
-        supabase.from('universe').select('*', { count: 'exact', head: true }),
-        supabase.from('screener_candidates').select('*', { count: 'exact', head: true }),
-        supabase.from('screener_results').select('*', { count: 'exact', head: true }),
-        supabase.from('scan_history').select('scanned_at').order('scanned_at', { ascending: false }).limit(1),
-      ]);
-      setTop5(topData || []);
-      setAlerts(alertData || []);
-      setPipeline({
-        universe: uniCount || 0,
-        candidates: candCount || 0,
-        scored: resCount || 0,
-        lastScan: histData?.[0]?.scanned_at || null,
-      });
-      setLoading(false);
-    }
-    load();
-  }, []);
+  const topOpportunities = allStocks
+    .filter(s => s.signal === 'LOAD THE BOAT')
+    .slice(0, 6);
+
+  const accumulate = allStocks.filter(s => s.signal === 'ACCUMULATE').length;
+  const loadTheBoat = allStocks.filter(s => s.signal === 'LOAD THE BOAT').length;
+  const entryZone = allStocks.filter(s => s.entry_zone).length;
+  const lastScan = scanHistory[0]?.scanned_at;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div style={{ paddingTop: '48px' }}>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ marginBottom: '64px', position: 'relative' }}
+      >
+        <div style={{
+          position: 'absolute',
+          top: 0, left: '-24px', right: '-24px',
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent, var(--signal-green)40, transparent)',
+          animation: 'scan-line 4s ease infinite'
+        }} />
 
-      {/* Hero */}
-      <div className="relative text-center py-16 sm:py-24 overflow-hidden">
-        <div className="scanline" />
-        <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="font-heading font-extrabold text-4xl sm:text-5xl lg:text-6xl mb-4">
-          <span className="text-green">THE LONG</span> SCREENER
-        </motion.h1>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="text-text-secondary font-mono text-[11px] sm:text-xs max-w-lg mx-auto">
-          The market always gives you the opportunity. The question is whether you're watching.
-        </motion.p>
-      </div>
+        <div style={{
+          fontFamily: 'Cormorant Garamond',
+          fontSize: 'clamp(48px, 8vw, 96px)',
+          fontWeight: 300,
+          color: 'var(--text-primary)',
+          lineHeight: 0.9,
+          marginBottom: '24px'
+        }}>
+          The Long<br />
+          <span style={{ color: 'var(--signal-green)', fontStyle: 'italic' }}>
+            Screener
+          </span>
+        </div>
 
-      {/* Pipeline Status */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-        className="flex flex-wrap items-center justify-center gap-2 mb-10 text-[10px] font-mono text-text-secondary">
-        <span>Universe <span className="text-text-primary">{pipeline.universe.toLocaleString()}</span></span>
-        <span className="text-text-dim">→</span>
-        <span>Candidates <span className="text-amber">{pipeline.candidates.toLocaleString()}</span></span>
-        <span className="text-text-dim">→</span>
-        <span>Scored <span className="text-green">{pipeline.scored}</span></span>
-        {pipeline.lastScan && (
-          <>
-            <span className="text-text-dim">|</span>
-            <span>Last scan: {new Date(pipeline.lastScan).toLocaleString()}</span>
-          </>
+        <div style={{
+          fontFamily: 'IBM Plex Mono',
+          fontSize: '13px',
+          color: 'var(--text-secondary)',
+          maxWidth: '480px',
+          lineHeight: 1.7,
+          marginBottom: '32px'
+        }}>
+          Scanning {allStocks.length.toLocaleString()} stocks for
+          fundamentally undervalued positions at or below their
+          200 Weekly and Monthly Moving Averages.
+        </div>
+
+        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+          {[
+            { label: 'STOCKS SCANNED', value: allStocks.length.toLocaleString() },
+            { label: 'LOAD THE BOAT', value: loadTheBoat, color: 'var(--signal-green)' },
+            { label: 'ACCUMULATE', value: accumulate, color: 'var(--signal-amber)' },
+            { label: 'ENTRY ZONES', value: entryZone, color: 'var(--gold)' },
+          ].map(stat => (
+            <div key={stat.label}>
+              <div style={{
+                fontFamily: 'IBM Plex Mono', fontSize: '10px',
+                color: 'var(--text-secondary)', letterSpacing: '0.12em', marginBottom: '4px'
+              }}>
+                {stat.label}
+              </div>
+              <div style={{
+                fontFamily: 'IBM Plex Mono', fontSize: '28px',
+                fontWeight: 500, color: stat.color || 'var(--text-primary)'
+              }}>
+                {loading ? '\u2014' : stat.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {lastScan && (
+          <div style={{
+            marginTop: '16px', fontFamily: 'IBM Plex Mono',
+            fontSize: '11px', color: 'var(--text-dim)'
+          }}>
+            Last scan: {new Date(lastScan).toLocaleString()}
+          </div>
         )}
       </motion.div>
 
-      {loading ? (
-        <div className="text-center py-16 font-mono text-text-secondary text-xs">Loading...</div>
-      ) : pipeline.scored === 0 ? (
-        <div className="text-center py-16 border border-border bg-bg-card">
-          <div className="font-mono text-text-secondary text-sm mb-2">Pipeline initializing</div>
-          <div className="font-mono text-text-secondary text-[11px]">First scan running. Check back in 10 minutes.</div>
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '24px'
+        }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--text-primary)'
+          }}>
+            Top Opportunities
+          </h2>
+          <button
+            onClick={() => navigate('/screener')}
+            style={{
+              fontFamily: 'IBM Plex Mono', fontSize: '11px',
+              color: 'var(--text-secondary)', background: 'transparent',
+              border: 'none', cursor: 'pointer', textDecoration: 'underline'
+            }}
+          >
+            View all &rarr;
+          </button>
         </div>
-      ) : (
-        <>
-          {/* Top 5 */}
-          {top5.length > 0 && (
-            <div className="mb-10">
-              <h2 className="font-heading font-semibold text-sm mb-4 text-center text-green">TOP OPPORTUNITIES</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-                {top5.map((r, i) => (
-                  <motion.div key={r.ticker} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + i * 0.08 }}>
-                    <Link to={`/ticker/${r.ticker}`}
-                      className="block bg-bg-card border border-green/20 p-4 hover:border-green/50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="font-mono font-medium text-green text-lg">{r.ticker}</div>
-                          <div className="text-[9px] text-text-secondary truncate max-w-[100px]">{r.company_name}</div>
-                        </div>
-                        <ScoreRing score={r.total_score} size={44} strokeWidth={3} />
-                      </div>
-                      <div className="space-y-1 text-[10px] font-mono mb-2">
-                        <div className="flex justify-between"><span className="text-text-secondary">Price</span><span>${Number(r.current_price).toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span className="text-text-secondary">vs 200WMA</span><span className="text-green">{r.pct_from_200wma}%</span></div>
-                        <div className="flex justify-between"><span className="text-text-secondary">vs 200MMA</span><span className="text-green">{r.pct_from_200mma}%</span></div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <SignalBadge signal={r.signal} compact />
-                        {r.entry_zone && <span className="text-[8px] text-green font-mono">ENTRY</span>}
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
+
+        {loading ? (
+          <LoadingSpinner />
+        ) : topOpportunities.length === 0 ? (
+          <EmptyState
+            message="Pipeline initializing"
+            sub="First scan in progress. Top opportunities will appear here once complete."
+          />
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '16px'
+          }}>
+            {topOpportunities.map((stock, i) => (
+              <OpportunityCard key={stock.ticker} stock={stock} index={i} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: '12px', padding: '32px', marginBottom: '48px'
+        }}
+      >
+        <h3 style={{
+          fontFamily: 'Cormorant Garamond', fontSize: '24px',
+          fontWeight: 400, marginBottom: '20px', color: 'var(--text-primary)'
+        }}>
+          How This Works
+        </h3>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: '24px'
+        }}>
+          {[
+            { step: '01', title: 'Universe Scan', desc: '8,500+ US stocks scanned daily for fundamental quality \u2014 revenue growth, valuation, and drawdown from highs.' },
+            { step: '02', title: 'TLI Scoring', desc: 'Each stock scored 0-100 on two pillars: fundamentals (50pts) and technical position relative to 200WMA/MMA (50pts).' },
+            { step: '03', title: 'Elliott Wave', desc: 'High-scoring stocks analyzed for wave position. Only Wave 2, 4, or C entries flagged. Wave 5 always avoided.' },
+            { step: '04', title: 'Entry Signals', desc: 'When a stock hits the TLI sweet spot \u2014 fundamentally undervalued AND at its 200MA \u2014 you get alerted.' },
+          ].map(item => (
+            <div key={item.step}>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--signal-green)', marginBottom: '8px' }}>
+                {item.step}
+              </div>
+              <div style={{ fontFamily: 'Cormorant Garamond', fontSize: '18px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                {item.title}
+              </div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                {item.desc}
               </div>
             </div>
-          )}
-
-          {/* Recent Alerts */}
-          <div className="mb-10">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-heading font-semibold text-sm text-text-primary">RECENT ALERTS</h2>
-              <Link to="/signals" className="text-[10px] font-mono text-green hover:underline">VIEW ALL →</Link>
-            </div>
-            <AlertFeed alerts={alerts} limit={10} />
-          </div>
-
-          {/* CTA */}
-          <div className="text-center">
-            <Link to="/screener"
-              className="inline-block px-6 py-3 bg-green text-bg font-mono font-medium text-xs tracking-wider hover:bg-green/90 transition-colors">
-              VIEW FULL SCREENER →
-            </Link>
-          </div>
-        </>
-      )}
-    </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
   );
 }

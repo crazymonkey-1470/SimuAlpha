@@ -1,105 +1,173 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
 import SignalBadge from './SignalBadge';
-import ScoreRing from './ScoreRing';
 
 const COLUMNS = [
-  { key: 'ticker', label: 'TICKER' },
-  { key: 'total_score', label: 'SCORE' },
-  { key: 'signal', label: 'SIGNAL' },
-  { key: 'entry_zone', label: 'ENTRY' },
-  { key: 'current_price', label: 'PRICE' },
-  { key: 'pct_from_200wma', label: '% WMA' },
-  { key: 'pct_from_200mma', label: '% MMA' },
-  { key: 'revenue_growth_pct', label: 'REV GR' },
-  { key: 'pe_ratio', label: 'P/E' },
-  { key: 'ps_ratio', label: 'P/S' },
-  { key: 'wave_position', label: 'WAVE' },
-  { key: 'bt_win_rate', label: 'BT WIN%' },
-  { key: 'sector', label: 'SECTOR' },
+  { key: 'ticker', label: 'Ticker', sortable: true },
+  { key: 'total_score', label: 'Score', sortable: true },
+  { key: 'signal', label: 'Signal', sortable: false },
+  { key: 'current_price', label: 'Price', sortable: true },
+  { key: 'pct_from_200wma', label: '200WMA %', sortable: true },
+  { key: 'pct_from_200mma', label: '200MMA %', sortable: true },
+  { key: 'revenue_growth_pct', label: 'Rev Growth', sortable: true },
+  { key: 'pe_ratio', label: 'P/E', sortable: true },
+  { key: 'ps_ratio', label: 'P/S', sortable: true },
+  { key: 'sector', label: 'Sector', sortable: false },
 ];
 
-function f(v, d = 1) { return v == null ? '—' : Number(v).toFixed(d); }
-function fPct(v) { if (v == null) return '—'; return `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`; }
-
-export default function ScreenerTable({ data, searchQuery = '' }) {
+export default function ScreenerTable({ data }) {
+  const navigate = useNavigate();
   const [sortKey, setSortKey] = useState('total_score');
-  const [sortAsc, setSortAsc] = useState(false);
+  const [sortDir, setSortDir] = useState('desc');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('ALL');
 
-  const filtered = searchQuery
-    ? data.filter((r) => r.ticker?.toLowerCase().includes(searchQuery.toLowerCase()) || r.company_name?.toLowerCase().includes(searchQuery.toLowerCase()))
-    : data;
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('desc'); }
+  };
 
-  const sorted = [...filtered].sort((a, b) => {
-    const av = a[sortKey], bv = b[sortKey];
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === 'boolean') return sortAsc ? (av ? -1 : 1) : (av ? 1 : -1);
-    if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
-    return sortAsc ? av - bv : bv - av;
-  });
-
-  function toggleSort(key) {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(false); }
-  }
+  const filtered = data
+    .filter(s => {
+      if (filter === 'ALL') return true;
+      if (filter === 'ENTRY') return s.entry_zone;
+      return s.signal === filter;
+    })
+    .filter(s =>
+      !search ||
+      s.ticker?.toLowerCase().includes(search.toLowerCase()) ||
+      s.company_name?.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      const av = a[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+      const bv = b[sortKey] ?? (sortDir === 'asc' ? Infinity : -Infinity);
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="border-b border-border">
-            {COLUMNS.map((c) => (
-              <th key={c.key} onClick={() => toggleSort(c.key)}
-                className={`px-2 py-2 text-left font-mono uppercase tracking-wider cursor-pointer whitespace-nowrap transition-colors ${sortKey === c.key ? 'text-green' : 'text-text-secondary hover:text-text-primary'}`}>
-                {c.label}{sortKey === c.key && <span className="ml-0.5">{sortAsc ? '▲' : '▼'}</span>}
-              </th>
+    <div>
+      <div style={{
+        display: 'flex', gap: '12px', marginBottom: '20px',
+        flexWrap: 'wrap', alignItems: 'center'
+      }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search ticker or company..."
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '8px 14px', color: 'var(--text-primary)',
+            fontFamily: 'IBM Plex Mono', fontSize: '12px', outline: 'none', width: '240px'
+          }}
+        />
+        {['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'ENTRY'].map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              background: filter === f ? 'var(--bg-card-hover)' : 'transparent',
+              border: `1px solid ${filter === f ? 'var(--border-light)' : 'var(--border)'}`,
+              borderRadius: '6px', padding: '6px 12px',
+              color: filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontFamily: 'IBM Plex Mono', fontSize: '11px', cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {f === 'ENTRY' ? 'ENTRY ZONE' : f}
+          </button>
+        ))}
+        <span style={{
+          marginLeft: 'auto', fontFamily: 'IBM Plex Mono',
+          fontSize: '11px', color: 'var(--text-secondary)'
+        }}>
+          {filtered.length} stocks
+        </span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              {COLUMNS.map(col => (
+                <th
+                  key={col.key}
+                  onClick={() => col.sortable && handleSort(col.key)}
+                  style={{
+                    padding: '10px 12px', textAlign: 'left',
+                    fontFamily: 'IBM Plex Mono', fontSize: '10px',
+                    color: sortKey === col.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    textTransform: 'uppercase', letterSpacing: '0.1em',
+                    cursor: col.sortable ? 'pointer' : 'default',
+                    whiteSpace: 'nowrap', userSelect: 'none'
+                  }}
+                >
+                  {col.label}
+                  {sortKey === col.key && (
+                    <span style={{ marginLeft: '4px' }}>{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((stock, i) => (
+              <motion.tr
+                key={stock.ticker}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.02 }}
+                onClick={() => navigate(`/ticker/${stock.ticker}`)}
+                style={{
+                  borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                  borderLeft: stock.entry_zone ? '3px solid var(--signal-green)' : '3px solid transparent',
+                  transition: 'background 0.15s ease'
+                }}
+                whileHover={{ backgroundColor: 'var(--bg-card)' }}
+              >
+                <td style={{ padding: '12px' }}>
+                  <div style={{ fontFamily: 'Cormorant Garamond', fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {stock.ticker}
+                  </div>
+                  <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                    {stock.company_name?.substring(0, 20)}
+                  </div>
+                </td>
+                <td style={{ padding: '12px' }}>
+                  <span style={{
+                    fontFamily: 'IBM Plex Mono', fontSize: '16px', fontWeight: 500,
+                    color: stock.total_score >= 75 ? 'var(--signal-green)' : stock.total_score >= 60 ? 'var(--signal-amber)' : 'var(--text-secondary)'
+                  }}>
+                    {stock.total_score}
+                  </span>
+                </td>
+                <td style={{ padding: '12px' }}><SignalBadge signal={stock.signal} size="sm" /></td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-primary)' }}>
+                  ${stock.current_price?.toFixed(2) ?? '\u2014'}
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: stock.pct_from_200wma <= 0 ? 'var(--signal-green)' : 'var(--text-primary)' }}>
+                  {stock.pct_from_200wma?.toFixed(1) ?? '\u2014'}%
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: stock.pct_from_200mma <= 0 ? 'var(--signal-green)' : 'var(--text-primary)' }}>
+                  {stock.pct_from_200mma?.toFixed(1) ?? '\u2014'}%
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: stock.revenue_growth_pct > 0 ? 'var(--signal-green)' : 'var(--red)' }}>
+                  {stock.revenue_growth_pct > 0 ? '+' : ''}{stock.revenue_growth_pct?.toFixed(1) ?? '\u2014'}%
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {stock.pe_ratio?.toFixed(1) ?? '\u2014'}
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {stock.ps_ratio?.toFixed(1) ?? '\u2014'}
+                </td>
+                <td style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  {stock.sector ?? '\u2014'}
+                </td>
+              </motion.tr>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r, i) => (
-            <motion.tr key={r.ticker}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.02, duration: 0.2 }}
-              className={`border-b border-border/30 hover:bg-bg-card-hover transition-all ${r.entry_zone ? 'border-l-2 border-l-green/60' : ''}`}>
-              <td className="px-2 py-2">
-                <Link to={`/ticker/${r.ticker}`} className="font-mono font-medium text-green hover:underline">{r.ticker}</Link>
-                {r.company_name && <div className="text-[9px] text-text-secondary truncate max-w-[100px]">{r.company_name}</div>}
-              </td>
-              <td className="px-2 py-2"><ScoreRing score={r.total_score || 0} size={32} strokeWidth={2.5} /></td>
-              <td className="px-2 py-2"><SignalBadge signal={r.signal || 'WATCH'} compact /></td>
-              <td className="px-2 py-2">{r.entry_zone ? <span className="text-green text-[9px]">ACTIVE</span> : <span className="text-text-dim text-[9px]">—</span>}</td>
-              <td className="px-2 py-2 font-mono">${f(r.current_price, 2)}</td>
-              <td className="px-2 py-2 font-mono" style={{ color: r.pct_from_200wma <= 0 ? '#00ff88' : '#f5a623' }}>{fPct(r.pct_from_200wma)}</td>
-              <td className="px-2 py-2 font-mono" style={{ color: r.pct_from_200mma <= 0 ? '#00ff88' : '#f5a623' }}>{fPct(r.pct_from_200mma)}</td>
-              <td className="px-2 py-2 font-mono" style={{ color: r.revenue_growth_pct > 0 ? '#00ff88' : '#ff4466' }}>{fPct(r.revenue_growth_pct)}</td>
-              <td className="px-2 py-2 font-mono">{f(r.pe_ratio)}</td>
-              <td className="px-2 py-2 font-mono">{f(r.ps_ratio)}</td>
-              <td className="px-2 py-2">
-                {r.wave_position ? (
-                  <span className="font-mono text-[9px] px-1.5 py-0.5 border" style={{
-                    color: r.wave_tli === 'BUY_ZONE' ? '#00ff88' : r.wave_tli === 'AVOID' ? '#ff4466' : '#f5a623',
-                    borderColor: r.wave_tli === 'BUY_ZONE' ? '#00ff8844' : r.wave_tli === 'AVOID' ? '#ff446644' : '#f5a62344',
-                  }}>{r.wave_position}</span>
-                ) : <span className="text-text-dim text-[9px]">—</span>}
-              </td>
-              <td className="px-2 py-2 font-mono text-[10px]" style={{
-                color: r.bt_win_rate >= 60 ? '#00ff88' : r.bt_win_rate >= 40 ? '#f5a623' : r.bt_win_rate != null ? '#ff4466' : undefined
-              }}>{r.bt_win_rate != null ? `${Number(r.bt_win_rate).toFixed(0)}%` : '—'}</td>
-              <td className="px-2 py-2 font-mono text-text-secondary text-[9px]">{r.sector || '—'}</td>
-            </motion.tr>
-          ))}
-        </tbody>
-      </table>
-      {sorted.length === 0 && (
-        <div className="text-center py-12 text-text-secondary font-mono text-xs">
-          {searchQuery ? 'No results match your search.' : 'Pipeline initializing — first scan running. Check back in 10 minutes.'}
-        </div>
-      )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

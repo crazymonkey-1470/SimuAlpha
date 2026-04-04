@@ -1,89 +1,37 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import supabase from '../supabaseClient';
+import { useScreenerResults } from '../hooks/useScreener';
 import ScreenerTable from '../components/ScreenerTable';
-import TLILegend from '../components/TLILegend';
-
-const FILTERS = ['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'ENTRY ZONE'];
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 export default function Screener() {
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('ALL');
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    async function load() {
-      const [{ data: rows }, { data: waves }, { data: bts }] = await Promise.all([
-        supabase.from('screener_results').select('*').order('total_score', { ascending: false }),
-        supabase.from('wave_counts').select('ticker, current_wave, wave_structure, confidence_score, tli_signal').order('confidence_score', { ascending: false }),
-        supabase.from('backtest_summary').select('ticker, win_rate_pct'),
-      ]);
-      // Build lookup maps (best wave per ticker)
-      const waveMap = {};
-      (waves || []).forEach((w) => { if (!waveMap[w.ticker]) waveMap[w.ticker] = w; });
-      const btMap = {};
-      (bts || []).forEach((b) => { btMap[b.ticker] = b; });
-      // Merge into results
-      const merged = (rows || []).map((r) => ({
-        ...r,
-        wave_position: waveMap[r.ticker] ? `${waveMap[r.ticker].wave_structure === 'corrective' ? '' : 'W'}${waveMap[r.ticker].current_wave}` : null,
-        wave_tli: waveMap[r.ticker]?.tli_signal || null,
-        bt_win_rate: btMap[r.ticker]?.win_rate_pct ?? null,
-      }));
-      setResults(merged);
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  const filtered = filter === 'ALL' ? results
-    : filter === 'ENTRY ZONE' ? results.filter((r) => r.entry_zone)
-    : results.filter((r) => r.signal === filter);
-
-  const counts = {
-    ALL: results.length,
-    'LOAD THE BOAT': results.filter((r) => r.signal === 'LOAD THE BOAT').length,
-    ACCUMULATE: results.filter((r) => r.signal === 'ACCUMULATE').length,
-    WATCH: results.filter((r) => r.signal === 'WATCH').length,
-    'ENTRY ZONE': results.filter((r) => r.entry_zone).length,
-  };
+  const { data, loading } = useScreenerResults();
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <h1 className="font-heading font-bold text-lg"><span className="text-green">STOCK</span> SCREENER</h1>
-          <TLILegend />
-        </div>
-        <span className="text-[10px] font-mono text-text-secondary">
-          Showing {filtered.length} of {results.length} scored
-        </span>
+    <div style={{ paddingTop: '40px' }}>
+      <div style={{ marginBottom: '32px' }}>
+        <h1 style={{
+          fontFamily: 'Cormorant Garamond', fontSize: '48px',
+          fontWeight: 300, color: 'var(--text-primary)', marginBottom: '8px'
+        }}>
+          Screener
+        </h1>
+        <p style={{
+          fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-secondary)'
+        }}>
+          All stocks scored by TLI methodology. Click any row for deep analysis.
+        </p>
       </div>
 
-      {/* Search */}
-      <input type="text" placeholder="Search ticker or company..." value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full sm:w-64 px-3 py-1.5 mb-4 bg-bg-card border border-border text-[11px] font-mono text-text-primary placeholder:text-text-secondary/40 focus:outline-none focus:border-green/50" />
-
-      {/* Filters */}
-      <div className="flex gap-1.5 mb-4 flex-wrap">
-        {FILTERS.map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-2.5 py-1 text-[9px] font-mono tracking-wider transition-colors ${
-              filter === f ? 'text-green bg-green-dim border border-green/30' : 'text-text-secondary border border-border hover:text-text-primary'}`}>
-            {f} ({counts[f]})
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-bg-card border border-border">
-        {loading
-          ? <div className="text-center py-12 text-text-secondary font-mono text-xs">Loading...</div>
-          : <ScreenerTable data={filtered} searchQuery={search} />}
-      </div>
-    </motion.div>
+      {loading ? (
+        <LoadingSpinner />
+      ) : data.length === 0 ? (
+        <EmptyState
+          message="No results yet"
+          sub="The pipeline is running its first scan. Results will appear here shortly."
+        />
+      ) : (
+        <ScreenerTable data={data} />
+      )}
+    </div>
   );
 }
