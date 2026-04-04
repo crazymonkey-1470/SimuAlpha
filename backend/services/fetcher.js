@@ -32,39 +32,13 @@ async function fetchProfile(ticker) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Also fetch historical to get current price and 52w high
-    let currentPrice = null;
-    let week52High = null;
-    try {
-      const histRes = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
-      if (histRes.ok) {
-        const histData = await histRes.json();
-        const weekly = histData.weekly || [];
-        const monthly = histData.monthly || [];
-        // Current price = last close available
-        if (weekly.length > 0) {
-          currentPrice = weekly[weekly.length - 1].close;
-        } else if (monthly.length > 0) {
-          currentPrice = monthly[monthly.length - 1].close;
-        }
-        // 52-week high = max close in last 52 weekly entries (or all monthly in last year)
-        const recentWeekly = weekly.slice(-52);
-        if (recentWeekly.length > 0) {
-          week52High = Math.max(...recentWeekly.map((d) => d.close).filter((c) => c != null));
-        } else if (monthly.length > 0) {
-          const recentMonthly = monthly.slice(-12);
-          week52High = Math.max(...recentMonthly.map((d) => d.close).filter((c) => c != null));
-        }
-      }
-    } catch (_) { /* historical fetch optional for profile */ }
-
     return {
       companyName: data.company_name || data.ticker || ticker,
-      sector: null,
+      sector: data.sector || null,
       industry: null,
-      marketCap: data.revenue_current ? data.revenue_current * 5 : null, // rough estimate; scraper doesn't provide market cap
-      currentPrice,
-      week52High,
+      marketCap: data.market_cap ?? null,
+      currentPrice: data.current_price ?? null,
+      week52High: data.week_52_high ?? null,
       exchange: null,
     };
   } catch (err) {
@@ -128,38 +102,15 @@ async function fetchHistoricalPrices(ticker) {
 
 async function fetchQuote(ticker) {
   try {
-    // Get company name from fundamentals
-    const fundRes = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
-    let companyName = ticker;
-    if (fundRes.ok) {
-      const fundData = await fundRes.json();
-      companyName = fundData.company_name || fundData.ticker || ticker;
-    }
-
-    // Get current price and 52w high from historical data
-    let currentPrice = null;
-    let week52High = null;
-    const histRes = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
-    if (histRes.ok) {
-      const histData = await histRes.json();
-      const weekly = histData.weekly || [];
-      const monthly = histData.monthly || [];
-      if (weekly.length > 0) {
-        currentPrice = weekly[weekly.length - 1].close;
-        const recent52w = weekly.slice(-52);
-        week52High = Math.max(...recent52w.map((d) => d.close).filter((c) => c != null));
-      } else if (monthly.length > 0) {
-        currentPrice = monthly[monthly.length - 1].close;
-        const recent12m = monthly.slice(-12);
-        week52High = Math.max(...recent12m.map((d) => d.close).filter((c) => c != null));
-      }
-    }
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
 
     return {
-      currentPrice,
-      week52High,
-      companyName,
-      sector: null,
+      currentPrice: data.current_price ?? null,
+      week52High: data.week_52_high ?? null,
+      companyName: data.company_name || data.ticker || ticker,
+      sector: data.sector || null,
     };
   } catch (err) {
     console.error(`[fetcher] quote failed ${ticker}:`, err.message);
