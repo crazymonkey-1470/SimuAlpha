@@ -135,4 +135,4 @@ async def fetch_json(url: str, headers: dict = None) -> dict | None:
 
 
 def parse(html: str) -> BeautifulSoup:
-    return BeautifulSoup(html, "lxml")
+    return BeautifulSoup(html, "html.parser")

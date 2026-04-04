@@ -1,11 +1,19 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
 const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+
+// Lazy-init client only when API key is present (avoids crash at module load)
+let _client = null;
+function getClient() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY not set');
+  }
+  if (!_client) {
+    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return _client;
+}
 
 /**
  * SMART TRIGGER CHECK
@@ -16,12 +24,15 @@ const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
  * 4. Last interpretation older than 7 days
  */
 function shouldInterpret(waveCount, previousWaveCount) {
-  if (!waveCount.claude_interpreted_at) return true;
-
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  if (new Date(waveCount.claude_interpreted_at) < sevenDaysAgo) return true;
-
+  // No previous wave count means first interpretation
   if (!previousWaveCount) return true;
+
+  // Check if previous interpretation is stale (>7 days old)
+  if (!previousWaveCount.claude_interpreted_at) return true;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  if (new Date(previousWaveCount.claude_interpreted_at) < sevenDaysAgo) return true;
+
+  // Re-interpret if signal, wave position, or confidence changed
   if (waveCount.tli_signal !== previousWaveCount.tli_signal) return true;
   if (waveCount.current_wave !== previousWaveCount.current_wave) return true;
   if (waveCount.confidence_label !== previousWaveCount.confidence_label) return true;
@@ -62,10 +73,10 @@ Degree: ${waveData.wave_degree}
 Current Wave: ${waveData.current_wave}
 Confidence: ${waveData.confidence_score}% — ${waveData.confidence_label}
 TLI Signal: ${waveData.tli_signal}
-System Reason: ${waveData.tli_reason || 'N/A'}
+System Reason: ${waveData.tli_signal_reason || 'N/A'}
 
 FIBONACCI LEVELS:
-Entry Zone: $${waveData.entry_zone || 'N/A'}
+Entry Zone: $${waveData.entry_zone_low || 'N/A'} — $${waveData.entry_zone_high || 'N/A'}
 Stop Loss: $${waveData.stop_loss || 'N/A'} (invalidation level)
 Target 1: $${waveData.target_1 || 'N/A'}
 Target 2: $${waveData.target_2 || 'N/A'}
@@ -108,7 +119,7 @@ no backticks. Just the raw JSON:
 }`;
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: MODEL,
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
@@ -165,14 +176,14 @@ TLI Score: ${fundamentals.total_score}/100
 Revenue Growth: ${fundamentals.revenue_growth_pct}%
 Price vs 200WMA: ${fundamentals.pct_from_200wma}%
 Price vs 200MMA: ${fundamentals.pct_from_200mma}%
-Entry Zone: $${waveData.entry_zone || 'N/A'}
+Entry Zone: $${waveData.entry_zone_low || 'N/A'} — $${waveData.entry_zone_high || 'N/A'}
 R/R Ratio: ${waveData.reward_risk_ratio || 'N/A'}x
 Conviction from wave analysis: ${waveData.confidence_label}
 
 Respond with ONLY the narrative text. No JSON. No quotes. Just the sentences.`;
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: MODEL,
       max_tokens: 200,
       messages: [{ role: 'user', content: prompt }],
@@ -226,7 +237,7 @@ DISCIPLINE REMINDER
 [One sentence. A TLI principle relevant to current market conditions.]`;
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: MODEL,
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
