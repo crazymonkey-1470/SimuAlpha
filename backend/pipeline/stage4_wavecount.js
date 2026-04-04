@@ -4,7 +4,8 @@ const { runWaveAnalysis } = require('../services/elliott_wave');
 const { runBacktestAll } = require('../services/backtester');
 const { fireAlert } = require('../services/alerts');
 const { interpretWaveCount, generateAlertNarrative, shouldInterpret } = require('../services/claude_interpreter');
-const yahooFinance = require('yahoo-finance2').default;
+
+const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
 // Hard cap on daily Claude calls to control cost
 let claudeCallsToday = 0;
@@ -15,21 +16,10 @@ const CLAUDE_DAILY_LIMIT = 100;
  */
 async function fetchExtendedMonthly(ticker) {
   try {
-    const thirtyYearsAgo = new Date();
-    thirtyYearsAgo.setFullYear(thirtyYearsAgo.getFullYear() - 30);
-
-    const result = await yahooFinance.chart(ticker, {
-      period1: thirtyYearsAgo.toISOString().split('T')[0],
-      interval: '1mo',
-    });
-
-    return (result.quotes || [])
-      .filter((q) => q.close != null)
-      .map((q) => ({
-        date: q.date ? new Date(q.date).toISOString().split('T')[0] : null,
-        close: q.close,
-      }))
-      .filter((q) => q.date != null);
+    const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.monthly || []).filter((q) => q.date && q.close != null);
   } catch (err) {
     console.error(`[Stage 4] Extended monthly fetch failed for ${ticker}:`, err.message);
     return [];
@@ -75,18 +65,11 @@ async function runWaveCount() {
       let monthlyWithDates = [];
       let weeklyWithDates = [];
       try {
-        const [mResult, wResult] = await Promise.all([
-          yahooFinance.chart(ticker, { period1: twentyYearsAgo.toISOString().split('T')[0], interval: '1mo' }),
-          yahooFinance.chart(ticker, { period1: fiveYearsAgo.toISOString().split('T')[0], interval: '1wk' }),
-        ]);
-        monthlyWithDates = (mResult.quotes || []).filter((q) => q.close != null).map((q) => ({
-          date: q.date ? new Date(q.date).toISOString().split('T')[0] : null,
-          close: q.close, high: q.high, low: q.low, open: q.open,
-        })).filter((q) => q.date);
-        weeklyWithDates = (wResult.quotes || []).filter((q) => q.close != null).map((q) => ({
-          date: q.date ? new Date(q.date).toISOString().split('T')[0] : null,
-          close: q.close, high: q.high, low: q.low, open: q.open,
-        })).filter((q) => q.date);
+        const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const histData = await res.json();
+        monthlyWithDates = (histData.monthly || []).filter((q) => q.date && q.close != null);
+        weeklyWithDates = (histData.weekly || []).filter((q) => q.date && q.close != null);
       } catch (e) {
         console.error(`  ${ticker}: price fetch failed -`, e.message);
         await sleep(400);
