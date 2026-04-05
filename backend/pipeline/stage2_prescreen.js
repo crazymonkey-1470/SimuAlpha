@@ -52,7 +52,10 @@ async function runPrescreen() {
         fetchIncomeStatement(ticker),
       ]);
 
-      if (!profile) { await sleep(200); continue; }
+      // Rate limit after API calls (whether we use the data or not)
+      await sleep(200);
+
+      if (!profile) { continue; }
 
       // Pre-screen filters
       const marketCap = profile.marketCap;
@@ -62,9 +65,9 @@ async function runPrescreen() {
       const revCurrent = income.revenueCurrent;
 
       // Hard filters — must pass all
-      if (marketCap == null || marketCap < 500e6) { await sleep(200); continue; }
-      if (price == null || price <= 3) { await sleep(200); continue; }
-      if (revCurrent == null || revCurrent <= 0) { await sleep(200); continue; }
+      if (marketCap == null || marketCap < 500e6) { continue; }
+      if (price == null || price <= 3) { continue; }
+      if (revCurrent == null || revCurrent <= 0) { continue; }
 
       // Soft filter: positive revenue growth preferred but not required
       // (declining revenue stocks can still be TLI candidates if beaten down)
@@ -80,7 +83,7 @@ async function runPrescreen() {
 
       // Must have at least one value signal: growth OR drawdown OR both
       // This catches: beaten-down growers, deep value plays, and turnarounds
-      if (!hasGrowth && !hasDrawdown) { await sleep(200); continue; }
+      if (!hasGrowth && !hasDrawdown) { continue; }
 
       // Passed all filters — this is a candidate
       candidates.push({
@@ -98,8 +101,6 @@ async function runPrescreen() {
       // Skip on error, never crash — but log it
       console.error(`  ${ticker}: prescreen error -`, err.message);
     }
-
-    await sleep(200);
   }
 
   console.log(`[Stage 2] Pre-screen done: ${candidates.length} candidates from ${universe.length} universe`);

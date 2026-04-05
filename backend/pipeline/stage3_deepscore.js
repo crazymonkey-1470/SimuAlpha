@@ -70,7 +70,7 @@ async function runDeepScore() {
         .from('screener_results')
         .select('total_score, signal, current_price, price_200wma, price_200mma')
         .eq('ticker', ticker)
-        .single();
+        .maybeSingle();
 
       const previousScore = prev?.total_score ?? null;
       const previousSignal = prev?.signal ?? null;

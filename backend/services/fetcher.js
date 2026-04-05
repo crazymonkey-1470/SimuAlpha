@@ -121,13 +121,13 @@ async function fetchQuote(ticker) {
 // ── Moving averages ──
 
 function calculate200WMA(closes) {
-  if (!closes || closes.length < 50) return null;
+  if (!closes || closes.length < 200) return null;
   const d = closes.slice(-200);
   return d.reduce((a, b) => a + b, 0) / d.length;
 }
 
 function calculate200MMA(closes) {
-  if (!closes || closes.length < 50) return null;
+  if (!closes || closes.length < 200) return null;
   const d = closes.slice(-200);
   return d.reduce((a, b) => a + b, 0) / d.length;
 }

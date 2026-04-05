@@ -68,15 +68,15 @@ export default function Signals() {
                   }}>
                     {alert.ticker}
                   </span>
-                  <SignalBadge signal={alert.new_signal} size="sm" />
+                  {alert.new_signal && <SignalBadge signal={alert.new_signal} size="sm" />}
                 </div>
                 <span style={{
                   fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)'
                 }}>
-                  {new Date(alert.fired_at).toLocaleDateString('en-US', {
+                  {alert.fired_at ? new Date(alert.fired_at).toLocaleDateString('en-US', {
                     month: 'short', day: 'numeric', year: 'numeric',
                     hour: '2-digit', minute: '2-digit'
-                  })}
+                  }) : ''}
                 </span>
               </div>
 

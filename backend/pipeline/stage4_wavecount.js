@@ -86,7 +86,7 @@ async function runWaveCount() {
           .from('screener_results')
           .select('*')
           .eq('ticker', ticker)
-          .single();
+          .maybeSingle();
 
         // Claude interpretation for the best wave count
         const topWaveForClaude = waveResults[0];
@@ -96,17 +96,26 @@ async function runWaveCount() {
             .select('tli_signal, current_wave, confidence_label, claude_interpreted_at')
             .eq('ticker', ticker)
             .eq('timeframe', topWaveForClaude.timeframe)
-            .single();
+            .maybeSingle();
 
           if (shouldInterpret(topWaveForClaude, prevWave)) {
             console.log(`  Calling Claude for ${ticker}...`);
             claudeCallsToday++;
 
             const backtestData = await getBacktestSummary(ticker);
+            const fundData = fundamentals || {
+              company_name, current_price, sector: null,
+              total_score: 0, signal: 'N/A',
+              price_200wma: null, price_200mma: null,
+              pct_from_200wma: null, pct_from_200mma: null,
+              revenue_current: null, revenue_prior_year: null,
+              revenue_growth_pct: null, pe_ratio: null, ps_ratio: null,
+              week_52_high: null, pct_from_52w_high: null,
+            };
             const interpretation = await interpretWaveCount(
               ticker,
               topWaveForClaude,
-              fundamentals || { company_name, current_price },
+              fundData,
               backtestData
             );
 
@@ -152,10 +161,15 @@ async function runWaveCount() {
             let conviction = null;
             if (process.env.ANTHROPIC_API_KEY && claudeCallsToday < CLAUDE_DAILY_LIMIT) {
               claudeCallsToday++;
+              const alertFundData = fundamentals || {
+                company_name, current_price, sector: null,
+                total_score: 0, signal: 'N/A',
+                revenue_growth_pct: 0, pct_from_200wma: 0, pct_from_200mma: 0,
+              };
               narrative = await generateAlertNarrative(
                 ticker,
                 buyZone,
-                fundamentals || { company_name, current_price, total_score: 0, revenue_growth_pct: 0, pct_from_200wma: 0, pct_from_200mma: 0 },
+                alertFundData,
                 'WAVE_BUY_ZONE'
               );
               // Get conviction from existing interpretation
@@ -164,7 +178,7 @@ async function runWaveCount() {
                 .select('claude_interpretation')
                 .eq('ticker', ticker)
                 .eq('timeframe', buyZone.timeframe)
-                .single();
+                .maybeSingle();
               conviction = interp?.claude_interpretation?.conviction || null;
             }
 
@@ -184,14 +198,21 @@ async function runWaveCount() {
               new_signal: 'WAVE BUY ZONE',
             });
 
-            // Update the alert with claude fields
+            // Update the most recent alert with claude fields
             if (narrative) {
-              await supabase
+              const { data: latestAlert } = await supabase
                 .from('signal_alerts')
-                .update({ claude_narrative: narrative, claude_conviction: conviction })
+                .select('id')
                 .eq('ticker', ticker)
                 .order('fired_at', { ascending: false })
-                .limit(1);
+                .limit(1)
+                .maybeSingle();
+              if (latestAlert) {
+                await supabase
+                  .from('signal_alerts')
+                  .update({ claude_narrative: narrative, claude_conviction: conviction })
+                  .eq('id', latestAlert.id);
+              }
             }
 
             alertsFired++;
@@ -228,16 +249,12 @@ async function runWaveCount() {
 }
 
 async function getBacktestSummary(ticker) {
-  try {
-    const { data } = await supabase
-      .from('backtest_summary')
-      .select('*')
-      .eq('ticker', ticker)
-      .single();
-    return data;
-  } catch {
-    return null;
-  }
+  const { data } = await supabase
+    .from('backtest_summary')
+    .select('*')
+    .eq('ticker', ticker)
+    .maybeSingle();
+  return data;
 }
 
 module.exports = { runWaveCount };
