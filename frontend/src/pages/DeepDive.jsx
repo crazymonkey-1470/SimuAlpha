@@ -6,7 +6,7 @@ import SignalBadge from '../components/SignalBadge';
 import MetricCard from '../components/MetricCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 import supabase from '../supabaseClient';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function DeepDive() {
   const { symbol } = useParams();
@@ -14,9 +14,16 @@ export default function DeepDive() {
   const { result, waveCount, backtest, loading } = useTickerDetail(symbol);
   const [watchlisted, setWatchlisted] = useState(false);
 
+  // Check if already on watchlist
+  useEffect(() => {
+    if (!symbol) return;
+    supabase.from('watchlist').select('id').eq('ticker', symbol).maybeSingle()
+      .then(({ data }) => { if (data) setWatchlisted(true); });
+  }, [symbol]);
+
   async function addToWatchlist() {
-    await supabase.from('watchlist').insert({ ticker: symbol, notes: '' });
-    setWatchlisted(true);
+    const { error } = await supabase.from('watchlist').insert({ ticker: symbol, notes: '' });
+    if (!error) setWatchlisted(true);
   }
 
   if (loading) return <LoadingSpinner />;
@@ -196,7 +203,7 @@ export default function DeepDive() {
           </div>
 
           {/* Fib levels */}
-          {waveCount.entry_zone_low && (
+          {waveCount.entry_zone_low != null && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
               {[
                 { label: 'Entry Zone', value: `$${waveCount.entry_zone_low?.toFixed(2)} \u2014 $${waveCount.entry_zone_high?.toFixed(2)}`, color: 'var(--signal-green)' },
@@ -214,7 +221,7 @@ export default function DeepDive() {
           )}
 
           {/* Claude interpretation */}
-          {waveCount.claude_interpretation && !waveCount.claude_interpretation.error && (
+          {waveCount.claude_interpretation && typeof waveCount.claude_interpretation === 'object' && !waveCount.claude_interpretation.error && (
             <div style={{
               marginTop: '20px', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
               borderLeft: `3px solid ${waveCount.claude_interpretation.conviction === 'HIGH' ? 'var(--signal-green)' : 'var(--signal-amber)'}`,

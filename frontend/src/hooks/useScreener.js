@@ -88,15 +88,17 @@ export function useWatchlist() {
   useEffect(() => { fetchWatchlist(); }, []);
 
   async function addTicker(ticker, notes = '') {
-    await supabase.from('watchlist').insert({
+    const { error } = await supabase.from('watchlist').insert({
       ticker: ticker.toUpperCase(),
       notes
     });
+    if (error) console.error('Failed to add to watchlist:', error.message);
     fetchWatchlist();
   }
 
   async function removeTicker(id) {
-    await supabase.from('watchlist').delete().eq('id', id);
+    const { error } = await supabase.from('watchlist').delete().eq('id', id);
+    if (error) console.error('Failed to remove from watchlist:', error.message);
     fetchWatchlist();
   }
 
@@ -114,13 +116,13 @@ export function useTickerDetail(symbol) {
     async function fetchData() {
       setLoading(true);
       const [r1, r2, r3] = await Promise.all([
-        supabase.from('screener_results').select('*').eq('ticker', symbol).single(),
-        supabase.from('wave_counts').select('*').eq('ticker', symbol).order('confidence_score', { ascending: false }).limit(1).single(),
-        supabase.from('backtest_summary').select('*').eq('ticker', symbol).single()
+        supabase.from('screener_results').select('*').eq('ticker', symbol).maybeSingle(),
+        supabase.from('wave_counts').select('*').eq('ticker', symbol).order('confidence_score', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('backtest_summary').select('*').eq('ticker', symbol).maybeSingle()
       ]);
-      setResult(r1.data);
-      setWaveCount(r2.data);
-      setBacktest(r3.data);
+      setResult(r1.data || null);
+      setWaveCount(r2.data || null);
+      setBacktest(r3.data || null);
       setLoading(false);
     }
     fetchData();
