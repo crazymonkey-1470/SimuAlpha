@@ -29,7 +29,6 @@ async def get_fundamentals(ticker: str) -> dict:
     }
 
     # SOURCE 1a: StockAnalysis overview page (market cap, price, 52w high)
-    print(f"  [Fundamentals] {ticker} -> StockAnalysis overview...")
     try:
         url = f"https://stockanalysis.com/stocks/{ticker.lower()}/"
         html = await fetch_html(url)
@@ -77,13 +76,10 @@ async def get_fundamentals(ticker: str) -> dict:
                         if val and val > 1_000_000:
                             result["market_cap"] = val
 
-            if result["market_cap"] is not None:
-                print(f"  [Fundamentals] {ticker}: market_cap=${result['market_cap']:,.0f}")
     except Exception as e:
-        print(f"  [Fundamentals] {ticker} StockAnalysis overview failed: {e}")
+        print(f"  [Fundamentals] {ticker} overview error: {e}")
 
     # SOURCE 1b: StockAnalysis income statement (revenue)
-    print(f"  [Fundamentals] {ticker} -> StockAnalysis financials...")
     try:
         url = f"https://stockanalysis.com/stocks/{ticker.lower()}/financials/"
         html = await fetch_html(url)
@@ -108,7 +104,7 @@ async def get_fundamentals(ticker: str) -> dict:
                             result["source"] = "StockAnalysis"
                             break
     except Exception as e:
-        print(f"  [Fundamentals] {ticker} StockAnalysis income failed: {e}")
+        print(f"  [Fundamentals] {ticker} income error: {e}")
 
     # SOURCE 1c: StockAnalysis ratios (P/E, P/S if not already found)
     if result["pe_ratio"] is None or result["ps_ratio"] is None:
@@ -132,12 +128,11 @@ async def get_fundamentals(ticker: str) -> dict:
                                 cols[1].get_text(strip=True)
                             )
         except Exception as e:
-            print(f"  [Fundamentals] {ticker} StockAnalysis ratios failed: {e}")
+            print(f"  [Fundamentals] {ticker} ratios error: {e}")
 
     # SOURCE 2: SEC EDGAR fallback (revenue + market cap from shares outstanding)
     needs_edgar = result["revenue_current"] is None or result["market_cap"] is None
     if needs_edgar:
-        print(f"  [Fundamentals] {ticker} -> SEC EDGAR...")
         try:
             tickers_data = await fetch_json(
                 "https://www.sec.gov/files/company_tickers.json"
@@ -198,7 +193,6 @@ async def get_fundamentals(ticker: str) -> dict:
                                 latest = sorted(epf_units, key=lambda x: x.get("end", ""), reverse=True)
                                 if latest:
                                     result["market_cap"] = latest[0]["val"]
-                                    print(f"  [Fundamentals] {ticker}: SEC EDGAR EntityPublicFloat=${result['market_cap']:,.0f}")
 
                     # Try shares outstanding * current price
                     if result["market_cap"] is None and result["current_price"] is not None:
@@ -212,7 +206,6 @@ async def get_fundamentals(ticker: str) -> dict:
                                     latest = sorted(shares_units, key=lambda x: x.get("end", ""), reverse=True)
                                     if latest and latest[0]["val"] > 0:
                                         result["market_cap"] = latest[0]["val"] * result["current_price"]
-                                        print(f"  [Fundamentals] {ticker}: SEC EDGAR shares*price=${result['market_cap']:,.0f}")
                                         break
 
                     if result["company_name"] is None and "EntityRegistrantName" in dei:
@@ -224,7 +217,7 @@ async def get_fundamentals(ticker: str) -> dict:
                                     result["company_name"] = latest[0].get("val", ticker)
                                     break
         except Exception as e:
-            print(f"  [Fundamentals] {ticker} SEC EDGAR failed: {e}")
+            print(f"  [Fundamentals] {ticker} EDGAR error: {e}")
 
     has_data = result["revenue_current"] is not None or result["market_cap"] is not None
     if has_data:

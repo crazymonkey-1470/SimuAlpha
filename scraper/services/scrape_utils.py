@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import random
 from urllib.parse import urlparse
 
 import httpx
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 from bs4 import BeautifulSoup
 
 DESKTOP_AGENTS = [
@@ -57,10 +60,9 @@ async def fetch_html(url: str, needs_js: bool = False) -> str | None:
             ) as client:
                 r = await client.get(url)
                 if r.status_code == 200 and len(r.text) > 500:
-                    print(f"  [httpx] ✓ {domain}")
                     return r.text
-        except Exception as e:
-            print(f"  [httpx] ✗ {domain}: {e}")
+        except Exception:
+            pass
 
         # METHOD 2: curl_cffi (bypasses Cloudflare, 0.3-1s)
         try:
@@ -69,10 +71,9 @@ async def fetch_html(url: str, needs_js: bool = False) -> str | None:
             async with AsyncSession(impersonate="chrome120") as session:
                 r = await session.get(url, timeout=20)
                 if r.status_code == 200 and len(r.text) > 500:
-                    print(f"  [curl_cffi] ✓ {domain}")
                     return r.text
-        except Exception as e:
-            print(f"  [curl_cffi] ✗ {domain}: {e}")
+        except Exception:
+            pass
 
     # METHOD 3: Crawl4AI (JS rendering, 2-5s)
     try:
@@ -81,10 +82,9 @@ async def fetch_html(url: str, needs_js: bool = False) -> str | None:
         async with AsyncWebCrawler(verbose=False) as crawler:
             result = await crawler.arun(url=url, bypass_cache=True)
             if result.success and result.html and len(result.html) > 500:
-                print(f"  [crawl4ai] ✓ {domain}")
                 return result.html
-    except Exception as e:
-        print(f"  [crawl4ai] ✗ {domain}: {e}")
+    except Exception:
+        pass
 
     # METHOD 4: Playwright raw (last resort, 5-10s)
     try:
@@ -103,12 +103,11 @@ async def fetch_html(url: str, needs_js: bool = False) -> str | None:
             html = await page.content()
             await browser.close()
             if len(html) > 500:
-                print(f"  [playwright] ✓ {domain}")
                 return html
-    except Exception as e:
-        print(f"  [playwright] ✗ {domain}: {e}")
+    except Exception:
+        pass
 
-    print(f"  [ALL METHODS FAILED] {url}")
+    print(f"  [WARN] All fetch methods failed: {url}")
     return None
 
 
@@ -129,8 +128,8 @@ async def fetch_json(url: str, headers: dict = None) -> dict | None:
             r = await client.get(url, headers=default_headers)
             if r.status_code == 200:
                 return r.json()
-    except Exception as e:
-        print(f"  [fetch_json] ✗ {url}: {e}")
+    except Exception:
+        pass
     return None
 
 
