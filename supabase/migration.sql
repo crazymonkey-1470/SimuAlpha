@@ -224,3 +224,13 @@ add column if not exists claude_conviction text;
 -- Index for finding stale interpretations
 create index if not exists idx_wave_counts_interpreted_at
 on wave_counts(claude_interpreted_at);
+
+-- ══════════════════════════════════════════════════════
+-- Foreign Key: watchlist → screener_results
+-- Required for Supabase nested select: .select('*, screener_results(*)')
+-- ══════════════════════════════════════════════════════
+
+alter table watchlist
+add constraint fk_watchlist_ticker
+foreign key (ticker) references screener_results(ticker)
+on delete cascade;
