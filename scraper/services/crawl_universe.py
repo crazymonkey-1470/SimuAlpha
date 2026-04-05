@@ -13,7 +13,6 @@ async def get_universe() -> list[dict]:
     stocks = []
 
     # SOURCE 1: StockAnalysis.com
-    print("[Universe] Trying StockAnalysis.com...")
     try:
         html = await fetch_html("https://stockanalysis.com/stocks/")
         if html:
@@ -36,13 +35,11 @@ async def get_universe() -> list[dict]:
                                 "current_price": None,
                             }
                         )
-                print(f"[Universe] StockAnalysis: {len(stocks)} stocks")
     except Exception as e:
-        print(f"[Universe] StockAnalysis failed: {e}")
+        print(f"[Universe] StockAnalysis error: {e}")
 
     # SOURCE 2: SEC EDGAR (never fails)
     if len(stocks) < 100:
-        print("[Universe] Trying SEC EDGAR...")
         try:
             data = await fetch_json(
                 "https://www.sec.gov/files/company_tickers.json"
@@ -60,9 +57,8 @@ async def get_universe() -> list[dict]:
                     }
                     for v in data.values()
                 ]
-                print(f"[Universe] SEC EDGAR: {len(stocks)} stocks")
         except Exception as e:
-            print(f"[Universe] SEC EDGAR failed: {e}")
+            print(f"[Universe] SEC EDGAR error: {e}")
 
     # Filter
     filtered = []
