@@ -1,236 +1,343 @@
--- The Long Screener — Full Supabase Schema
--- Paste and run in the Supabase SQL Editor
+-- ══════════════════════════════════════════════════════════════
+-- The Long Screener — Complete Supabase Schema
+-- ══════════════════════════════════════════════════════════════
+-- Run this ONCE in the Supabase SQL Editor.
+-- Safe to re-run: uses IF NOT EXISTS / IF EXISTS throughout.
+-- Drop all tables first if you want a clean slate:
+--   drop table if exists watchlist, backtest_results, backtest_summary,
+--     wave_counts, signal_alerts, scan_history, screener_results,
+--     screener_candidates, universe cascade;
+-- ══════════════════════════════════════════════════════════════
 
--- Full market universe (Stage 1 output)
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 1: universe (Stage 1 output)                      │
+-- │  Full market universe — NYSE + NASDAQ investable stocks   │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists universe (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null unique,
-  company_name text,
-  exchange text,
-  sector text,
-  industry text,
-  market_cap numeric,
-  last_updated timestamptz default now()
+  id            uuid        default gen_random_uuid() primary key,
+  ticker        text        not null unique,
+  company_name  text,
+  exchange      text,                 -- 'NYSE' | 'NASDAQ'
+  sector        text,
+  industry      text,
+  market_cap    numeric,
+  last_updated  timestamptz default now()
 );
 
--- Pre-screened candidates (Stage 2 output)
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 2: screener_candidates (Stage 2 output)           │
+-- │  Pre-screened universe survivors (~200-400 tickers)       │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists screener_candidates (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null unique,
-  company_name text,
-  sector text,
-  market_cap numeric,
-  current_price numeric,
-  revenue_growth_pct numeric,
-  pct_from_52w_high numeric,
-  prescreen_score integer,
-  last_updated timestamptz default now()
+  id                  uuid        default gen_random_uuid() primary key,
+  ticker              text        not null unique,
+  company_name        text,
+  sector              text,
+  market_cap          numeric,
+  current_price       numeric,
+  revenue_growth_pct  numeric,              -- rounded to 1 decimal, nullable
+  pct_from_52w_high   numeric,              -- rounded to 1 decimal, nullable
+  prescreen_score     integer     default 0,
+  last_updated        timestamptz default now()
 );
 
--- Full TLI scored results (Stage 3 output)
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 3: screener_results (Stage 3 output)              │
+-- │  Deep-scored stocks with TLI signal + fundamentals        │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists screener_results (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null unique,
-  company_name text,
-  sector text,
-  current_price numeric,
-  price_200wma numeric,
-  price_200mma numeric,
-  pct_from_200wma numeric,
-  pct_from_200mma numeric,
-  revenue_current numeric,
-  revenue_prior_year numeric,
-  revenue_growth_pct numeric,
-  pe_ratio numeric,
-  ps_ratio numeric,
-  week_52_high numeric,
-  pct_from_52w_high numeric,
-  fundamental_score integer,
-  technical_score integer,
-  total_score integer,
-  previous_score integer,
-  signal text,
-  previous_signal text,
-  entry_zone boolean,
-  entry_note text,
-  last_updated timestamptz default now()
+  id                  uuid        default gen_random_uuid() primary key,
+  ticker              text        not null unique,
+  company_name        text,
+  sector              text,
+  current_price       numeric,
+  price_200wma        numeric,
+  price_200mma        numeric,
+  pct_from_200wma     numeric,
+  pct_from_200mma     numeric,
+  revenue_current     numeric,
+  revenue_prior_year  numeric,
+  revenue_growth_pct  numeric,
+  pe_ratio            numeric,
+  ps_ratio            numeric,
+  week_52_high        numeric,
+  pct_from_52w_high   numeric,
+  fundamental_score   integer,              -- 0-50
+  technical_score     integer,              -- 0-50
+  total_score         integer,              -- 0-100
+  previous_score      integer,
+  signal              text,                 -- 'PASS' | 'WATCH' | 'ACCUMULATE' | 'LOAD THE BOAT'
+  previous_signal     text,
+  entry_zone          boolean,
+  entry_note          text,
+  last_updated        timestamptz default now()
 );
 
--- Signal change history (fires Telegram alerts)
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 4: signal_alerts                                   │
+-- │  Alert log — signal changes + wave buy zones              │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists signal_alerts (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null,
-  company_name text,
-  alert_type text,
-  previous_signal text,
-  new_signal text,
-  score integer,
-  current_price numeric,
-  price_200wma numeric,
-  price_200mma numeric,
-  entry_note text,
-  fired_at timestamptz default now()
+  id                uuid        default gen_random_uuid() primary key,
+  ticker            text        not null,
+  company_name      text,
+  alert_type        text,                   -- 'LOAD_THE_BOAT' | 'SIGNAL_UPGRADE' | 'CROSSED_200WMA' | 'CROSSED_200MMA' | 'WAVE_BUY_ZONE'
+  previous_signal   text,
+  new_signal        text,
+  score             integer,
+  current_price     numeric,
+  price_200wma      numeric,
+  price_200mma      numeric,
+  entry_note        text,
+  claude_narrative   text,                  -- AI-generated alert narrative
+  claude_conviction  text,                  -- 'HIGH' | 'MEDIUM' | 'LOW'
+  fired_at          timestamptz default now()
 );
 
--- Watchlist
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 5: wave_counts (Stage 4 output)                   │
+-- │  Elliott Wave analysis per ticker/timeframe/degree        │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists wave_counts (
+  id                    uuid        default gen_random_uuid() primary key,
+  ticker                text        not null,
+  timeframe             text        not null,     -- 'monthly' | 'weekly'
+  wave_degree           text        not null,     -- 'primary' | 'intermediate'
+  wave_structure        text,                     -- 'impulse' | 'corrective'
+  current_wave          text,                     -- '1','2','3','4','5','A','B','C','POST-5','POST-C','?'
+  confidence_score      integer,                  -- 0-100
+  confidence_label      text,                     -- 'HIGH CONFIDENCE' | 'PROBABLE' | 'SPECULATIVE' | 'INVALID'
+  tli_signal            text,                     -- 'BUY_ZONE' | 'WATCH' | 'AVOID'
+  tli_signal_reason     text,
+  wave_count_json       jsonb,                    -- array of pivot objects
+  entry_zone_low        numeric,
+  entry_zone_high       numeric,
+  stop_loss             numeric,
+  target_1              numeric,
+  target_2              numeric,
+  target_3              numeric,
+  reward_risk_ratio     numeric,
+  claude_interpretation jsonb,                    -- structured AI analysis
+  claude_model          text,                     -- e.g. 'claude-haiku-4-5-20251001'
+  claude_interpreted_at timestamptz,
+  last_updated          timestamptz default now(),
+  unique(ticker, timeframe, wave_degree)
+);
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 6: backtest_results                                │
+-- │  Individual historical backtest signals (trades)          │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists backtest_results (
+  id                uuid        default gen_random_uuid() primary key,
+  ticker            text        not null,
+  timeframe         text,                   -- 'monthly'
+  wave_degree       text,                   -- 'primary'
+  signal_date       text,                   -- ISO date string
+  signal_wave       text,                   -- wave label
+  entry_price       numeric,
+  stop_loss         numeric,
+  target_1          numeric,
+  target_2          numeric,
+  outcome           text,                   -- 'TARGET_1_HIT' | 'TARGET_2_HIT' | 'STOPPED_OUT' | 'OPEN'
+  exit_price        numeric,
+  exit_date         text,
+  hold_days         integer,
+  pct_return        numeric,
+  max_drawdown_pct  numeric,
+  max_gain_pct      numeric
+);
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 7: backtest_summary                                │
+-- │  Aggregated backtest performance per ticker               │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists backtest_summary (
+  id                uuid        default gen_random_uuid() primary key,
+  ticker            text        not null unique,
+  total_signals     integer,
+  winning_signals   integer,
+  win_rate_pct      numeric,
+  avg_return_pct    numeric,
+  avg_hold_days     integer,
+  avg_reward_risk   numeric,
+  best_return_pct   numeric,
+  worst_return_pct  numeric,
+  total_return_pct  numeric,
+  vs_spy_pct        numeric,
+  last_updated      timestamptz default now()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 8: watchlist                                       │
+-- │  User's personal ticker watchlist                         │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists watchlist (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null unique,
-  added_at timestamptz default now(),
-  notes text
+  id        uuid        default gen_random_uuid() primary key,
+  ticker    text        not null unique,
+  added_at  timestamptz default now(),
+  notes     text
 );
 
--- Scan history log
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE 9: scan_history                                    │
+-- │  Pipeline run logs with summary stats                     │
+-- └──────────────────────────────────────────────────────────┘
+
 create table if not exists scan_history (
-  id uuid default gen_random_uuid() primary key,
-  stage text,
-  tickers_processed integer,
-  tickers_passed integer,
-  load_the_boat_count integer,
-  accumulate_count integer,
-  alerts_fired integer,
-  top_opportunities jsonb,
-  scanned_at timestamptz default now()
+  id                  uuid        default gen_random_uuid() primary key,
+  stage               text,                 -- 'UNIVERSE' | 'PRESCREEN' | 'DEEPSCORE' | 'WAVECOUNT'
+  tickers_processed   integer,
+  tickers_passed      integer,
+  load_the_boat_count integer,              -- Stage 3 only
+  accumulate_count    integer,              -- Stage 3 only
+  alerts_fired        integer,              -- Stage 3 + 4
+  top_opportunities   jsonb,                -- Stage 3 only: [{ ticker, score, signal, entry_zone }]
+  scanned_at          timestamptz default now()
 );
+
+
+-- ══════════════════════════════════════════════════════════════
+-- FOREIGN KEYS
+-- ══════════════════════════════════════════════════════════════
+
+-- Required for Supabase nested select: .select('*, screener_results(*)')
+-- Only add if not already present
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'fk_watchlist_ticker'
+  ) then
+    alter table watchlist
+      add constraint fk_watchlist_ticker
+      foreign key (ticker) references screener_results(ticker)
+      on delete cascade;
+  end if;
+end $$;
+
+
+-- ══════════════════════════════════════════════════════════════
+-- ROW LEVEL SECURITY
+-- ══════════════════════════════════════════════════════════════
 
 -- Enable RLS on all tables
 alter table universe enable row level security;
 alter table screener_candidates enable row level security;
 alter table screener_results enable row level security;
 alter table signal_alerts enable row level security;
+alter table wave_counts enable row level security;
+alter table backtest_results enable row level security;
+alter table backtest_summary enable row level security;
 alter table watchlist enable row level security;
 alter table scan_history enable row level security;
 
 -- Public read policies (frontend reads via anon key)
-create policy "Public read universe" on universe for select using (true);
-create policy "Public read candidates" on screener_candidates for select using (true);
-create policy "Public read screener_results" on screener_results for select using (true);
-create policy "Public read signal_alerts" on signal_alerts for select using (true);
-create policy "Public read scan_history" on scan_history for select using (true);
+-- Backend uses service_role key which bypasses RLS entirely
+do $$
+begin
+  -- universe
+  if not exists (select 1 from pg_policies where policyname = 'Public read universe') then
+    create policy "Public read universe" on universe for select using (true);
+  end if;
 
--- Watchlist: public read, insert, update, delete
-create policy "Public read watchlist" on watchlist for select using (true);
-create policy "Public insert watchlist" on watchlist for insert with check (true);
-create policy "Public update watchlist" on watchlist for update using (true);
-create policy "Public delete watchlist" on watchlist for delete using (true);
+  -- screener_candidates
+  if not exists (select 1 from pg_policies where policyname = 'Public read candidates') then
+    create policy "Public read candidates" on screener_candidates for select using (true);
+  end if;
 
--- Performance indexes
-create index if not exists idx_screener_score on screener_results(total_score desc);
-create index if not exists idx_screener_signal on screener_results(signal);
-create index if not exists idx_screener_entry on screener_results(entry_zone) where entry_zone = true;
-create index if not exists idx_alerts_fired on signal_alerts(fired_at desc);
-create index if not exists idx_alerts_ticker on signal_alerts(ticker);
-create index if not exists idx_scan_history_time on scan_history(scanned_at desc);
+  -- screener_results
+  if not exists (select 1 from pg_policies where policyname = 'Public read screener_results') then
+    create policy "Public read screener_results" on screener_results for select using (true);
+  end if;
 
--- ══════════════════════════════════════════════════════
--- Stage 4: Elliott Wave + Backtesting Tables
--- ══════════════════════════════════════════════════════
+  -- signal_alerts
+  if not exists (select 1 from pg_policies where policyname = 'Public read signal_alerts') then
+    create policy "Public read signal_alerts" on signal_alerts for select using (true);
+  end if;
 
--- Wave count results (Stage 4 output)
-create table if not exists wave_counts (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null,
-  timeframe text not null,            -- 'monthly' | 'weekly'
-  wave_degree text not null,          -- 'primary' | 'intermediate'
-  wave_structure text,                -- 'impulse' | 'corrective'
-  current_wave text,                  -- '1','2','3','4','5','A','B','C'
-  confidence_score integer,           -- 0-100
-  confidence_label text,              -- 'HIGH','PROBABLE','SPECULATIVE'
-  tli_signal text,                    -- 'BUY_ZONE','ACCUMULATE_ZONE','AVOID','NEUTRAL'
-  tli_signal_reason text,
-  wave_count_json jsonb,
-  entry_zone_low numeric,
-  entry_zone_high numeric,
-  stop_loss numeric,
-  target_1 numeric,
-  target_2 numeric,
-  target_3 numeric,
-  reward_risk_ratio numeric,
-  last_updated timestamptz default now(),
-  unique(ticker, timeframe, wave_degree)
-);
+  -- wave_counts
+  if not exists (select 1 from pg_policies where policyname = 'Public read wave_counts') then
+    create policy "Public read wave_counts" on wave_counts for select using (true);
+  end if;
 
--- Historical backtest individual signals
-create table if not exists backtest_results (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null,
-  timeframe text,
-  wave_degree text,
-  signal_date text,
-  signal_wave text,
-  entry_price numeric,
-  stop_loss numeric,
-  target_1 numeric,
-  target_2 numeric,
-  outcome text,                       -- 'TARGET_1_HIT','TARGET_2_HIT','STOPPED_OUT','OPEN'
-  exit_price numeric,
-  exit_date text,
-  hold_days integer,
-  pct_return numeric,
-  max_drawdown_pct numeric,
-  max_gain_pct numeric
-);
+  -- backtest_results
+  if not exists (select 1 from pg_policies where policyname = 'Public read backtest_results') then
+    create policy "Public read backtest_results" on backtest_results for select using (true);
+  end if;
 
--- Backtest summary per ticker
-create table if not exists backtest_summary (
-  id uuid default gen_random_uuid() primary key,
-  ticker text not null unique,
-  total_signals integer,
-  winning_signals integer,
-  win_rate_pct numeric,
-  avg_return_pct numeric,
-  avg_hold_days integer,
-  avg_reward_risk numeric,
-  best_return_pct numeric,
-  worst_return_pct numeric,
-  total_return_pct numeric,
-  vs_spy_pct numeric,
-  last_updated timestamptz default now()
-);
+  -- backtest_summary
+  if not exists (select 1 from pg_policies where policyname = 'Public read backtest_summary') then
+    create policy "Public read backtest_summary" on backtest_summary for select using (true);
+  end if;
 
--- Enable RLS
-alter table wave_counts enable row level security;
-alter table backtest_results enable row level security;
-alter table backtest_summary enable row level security;
+  -- scan_history
+  if not exists (select 1 from pg_policies where policyname = 'Public read scan_history') then
+    create policy "Public read scan_history" on scan_history for select using (true);
+  end if;
 
--- Public read policies
-create policy "Public read wave_counts" on wave_counts for select using (true);
-create policy "Public read backtest_results" on backtest_results for select using (true);
-create policy "Public read backtest_summary" on backtest_summary for select using (true);
+  -- watchlist: full CRUD (frontend manages this directly via anon key)
+  if not exists (select 1 from pg_policies where policyname = 'Public read watchlist') then
+    create policy "Public read watchlist" on watchlist for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Public insert watchlist') then
+    create policy "Public insert watchlist" on watchlist for insert with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Public update watchlist') then
+    create policy "Public update watchlist" on watchlist for update using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Public delete watchlist') then
+    create policy "Public delete watchlist" on watchlist for delete using (true);
+  end if;
+end $$;
 
--- Performance indexes
-create index if not exists idx_wave_ticker on wave_counts(ticker);
-create index if not exists idx_wave_signal on wave_counts(tli_signal);
-create index if not exists idx_backtest_ticker on backtest_results(ticker);
-create index if not exists idx_backtest_outcome on backtest_results(outcome);
+
+-- ══════════════════════════════════════════════════════════════
+-- PERFORMANCE INDEXES
+-- ══════════════════════════════════════════════════════════════
+
+-- screener_results (most queried table)
+create index if not exists idx_screener_score    on screener_results(total_score desc);
+create index if not exists idx_screener_signal   on screener_results(signal);
+create index if not exists idx_screener_ticker   on screener_results(ticker);
+create index if not exists idx_screener_entry    on screener_results(entry_zone) where entry_zone = true;
+
+-- signal_alerts
+create index if not exists idx_alerts_fired      on signal_alerts(fired_at desc);
+create index if not exists idx_alerts_ticker     on signal_alerts(ticker);
+create index if not exists idx_alerts_ticker_fired on signal_alerts(ticker, fired_at desc);
+
+-- wave_counts
+create index if not exists idx_wave_ticker       on wave_counts(ticker);
+create index if not exists idx_wave_signal       on wave_counts(tli_signal);
+create index if not exists idx_wave_confidence   on wave_counts(confidence_score desc);
+create index if not exists idx_wave_interpreted  on wave_counts(claude_interpreted_at);
+
+-- backtest
+create index if not exists idx_backtest_ticker   on backtest_results(ticker);
+create index if not exists idx_backtest_outcome  on backtest_results(outcome);
 create index if not exists idx_bt_summary_ticker on backtest_summary(ticker);
 create index if not exists idx_bt_summary_winrate on backtest_summary(win_rate_pct desc);
 
--- ══════════════════════════════════════════════════════
--- Phase 3: Claude AI Interpretation Columns
--- ══════════════════════════════════════════════════════
+-- scan_history
+create index if not exists idx_scan_history_time on scan_history(scanned_at desc);
 
--- Add Claude interpretation to wave_counts
-alter table wave_counts
-add column if not exists claude_interpretation jsonb,
-add column if not exists claude_model text,
-add column if not exists claude_interpreted_at timestamptz;
-
--- Add Claude narrative to signal_alerts
-alter table signal_alerts
-add column if not exists claude_narrative text,
-add column if not exists claude_conviction text;
-
--- Index for finding stale interpretations
-create index if not exists idx_wave_counts_interpreted_at
-on wave_counts(claude_interpreted_at);
-
--- ══════════════════════════════════════════════════════
--- Foreign Key: watchlist → screener_results
--- Required for Supabase nested select: .select('*, screener_results(*)')
--- ══════════════════════════════════════════════════════
-
-alter table watchlist
-add constraint fk_watchlist_ticker
-foreign key (ticker) references screener_results(ticker)
-on delete cascade;
+-- watchlist
+create index if not exists idx_watchlist_ticker  on watchlist(ticker);
