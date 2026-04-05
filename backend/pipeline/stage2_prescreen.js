@@ -10,13 +10,27 @@ async function runPrescreen() {
   console.log('\n[Stage 2] Starting pre-screen of universe...');
   const startTime = Date.now();
 
-  // Read all universe tickers
-  const { data: universe, error: readErr } = await supabase
-    .from('universe')
-    .select('ticker');
+  // Read all universe tickers (Supabase defaults to 1000 rows, so paginate)
+  let universe = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from('universe')
+      .select('ticker')
+      .range(from, from + pageSize - 1);
+    if (error) {
+      console.error('[Stage 2] Failed to read universe:', error.message);
+      return 0;
+    }
+    if (!data || data.length === 0) break;
+    universe = universe.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
 
-  if (readErr || !universe) {
-    console.error('[Stage 2] Failed to read universe:', readErr?.message);
+  if (universe.length === 0) {
+    console.error('[Stage 2] Universe is empty');
     return 0;
   }
 
@@ -47,18 +61,26 @@ async function runPrescreen() {
       const revGrowth = income.revenueGrowthPct;
       const revCurrent = income.revenueCurrent;
 
-      // Must pass ALL filters
-      if (marketCap == null || marketCap < 1e9) { await sleep(200); continue; }
+      // Hard filters — must pass all
+      if (marketCap == null || marketCap < 500e6) { await sleep(200); continue; }
       if (price == null || price <= 3) { await sleep(200); continue; }
       if (revCurrent == null || revCurrent <= 0) { await sleep(200); continue; }
-      if (revGrowth == null || revGrowth <= 0) { await sleep(200); continue; }
 
-      // Price must be at least 20% below 52-week high
+      // Soft filter: positive revenue growth preferred but not required
+      // (declining revenue stocks can still be TLI candidates if beaten down)
+      const hasGrowth = revGrowth != null && revGrowth > 0;
+
+      // 52-week high drawdown — if data available, prefer ≥15% off highs
+      // If no 52w data from FMP, still allow through (Stage 3 will score properly)
       let pctFrom52w = null;
       if (week52High != null && week52High > 0) {
         pctFrom52w = ((price - week52High) / week52High) * 100;
       }
-      if (pctFrom52w == null || pctFrom52w > -20) { await sleep(200); continue; }
+      const hasDrawdown = pctFrom52w != null && pctFrom52w <= -15;
+
+      // Must have at least one value signal: growth OR drawdown OR both
+      // This catches: beaten-down growers, deep value plays, and turnarounds
+      if (!hasGrowth && !hasDrawdown) { await sleep(200); continue; }
 
       // Passed all filters — this is a candidate
       candidates.push({
@@ -67,8 +89,8 @@ async function runPrescreen() {
         sector: profile.sector,
         market_cap: marketCap,
         current_price: price,
-        revenue_growth_pct: Math.round(revGrowth * 10) / 10,
-        pct_from_52w_high: Math.round(pctFrom52w * 10) / 10,
+        revenue_growth_pct: revGrowth != null ? Math.round(revGrowth * 10) / 10 : null,
+        pct_from_52w_high: pctFrom52w != null ? Math.round(pctFrom52w * 10) / 10 : null,
         prescreen_score: 0,
         last_updated: new Date().toISOString(),
       });

@@ -1,7 +1,9 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
 
-const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+// Validate model ID — must start with "claude-" to catch garbled env vars
+const envModel = process.env.CLAUDE_MODEL;
+const MODEL = (envModel && envModel.startsWith('claude-')) ? envModel : 'claude-haiku-4-5-20251001';
 
 // Lazy-init client only when API key is present (avoids crash at module load)
 let _client = null;
