@@ -6,6 +6,9 @@ import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("crawl4ai").setLevel(logging.WARNING)
 logging.getLogger("playwright").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("peewee").setLevel(logging.WARNING)
 
 from fastapi import FastAPI
 

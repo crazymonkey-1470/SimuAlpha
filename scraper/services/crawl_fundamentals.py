@@ -1,13 +1,61 @@
 from .scrape_utils import fetch_html, fetch_json, parse
+from .yfinance_source import get_fundamentals_yfinance, get_quote_yfinance
 from cache.store import fundamentals_cache
 
-CACHE_TTL = 21600  # 6 hours
+CACHE_TTL = 86400  # 24 hours
 
 
 async def get_fundamentals(ticker: str) -> dict:
     cached = fundamentals_cache.get(f"fund_{ticker}")
     if cached:
         return cached
+
+    # PRIMARY: yfinance (fastest, most reliable)
+    try:
+        yf_fund = await get_fundamentals_yfinance(ticker)
+        yf_quote = await get_quote_yfinance(ticker)
+
+        if yf_fund or yf_quote:
+            yf_result = {
+                "ticker": ticker,
+                "company_name": None,
+                "market_cap": None,
+                "current_price": None,
+                "week_52_high": None,
+                "revenue_current": None,
+                "revenue_prior_year": None,
+                "revenue_growth_pct": None,
+                "pe_ratio": None,
+                "ps_ratio": None,
+                "debt_to_equity": None,
+                "current_ratio": None,
+                "free_cash_flow": None,
+                "gross_margin": None,
+                "sector": None,
+                "source": "yfinance",
+            }
+            if yf_quote:
+                yf_result["current_price"] = yf_quote.get("current_price")
+                yf_result["week_52_high"] = yf_quote.get("week_52_high")
+                yf_result["market_cap"] = yf_quote.get("market_cap")
+                yf_result["company_name"] = yf_quote.get("company_name")
+                yf_result["sector"] = yf_quote.get("sector")
+                yf_result["pe_ratio"] = yf_quote.get("pe_ratio")
+                yf_result["ps_ratio"] = yf_quote.get("ps_ratio")
+            if yf_fund:
+                yf_result["revenue_current"] = yf_fund.get("revenue_current")
+                yf_result["revenue_prior_year"] = yf_fund.get("revenue_prior_year")
+                yf_result["revenue_growth_pct"] = yf_fund.get("revenue_growth_pct")
+                if yf_result["pe_ratio"] is None:
+                    yf_result["pe_ratio"] = yf_fund.get("pe_ratio")
+                if yf_result["ps_ratio"] is None:
+                    yf_result["ps_ratio"] = yf_fund.get("ps_ratio")
+
+            if yf_result["revenue_current"] is not None and yf_result["current_price"] is not None:
+                fundamentals_cache.set(f"fund_{ticker}", yf_result, CACHE_TTL)
+                return yf_result
+    except Exception:
+        pass
 
     result = {
         "ticker": ticker,
@@ -28,7 +76,7 @@ async def get_fundamentals(ticker: str) -> dict:
         "source": None,
     }
 
-    # SOURCE 1a: StockAnalysis overview page (market cap, price, 52w high)
+    # FALLBACK 1a: StockAnalysis overview page (market cap, price, 52w high)
     try:
         url = f"https://stockanalysis.com/stocks/{ticker.lower()}/"
         html = await fetch_html(url)
@@ -79,7 +127,7 @@ async def get_fundamentals(ticker: str) -> dict:
     except Exception as e:
         print(f"  [Fundamentals] {ticker} overview error: {e}")
 
-    # SOURCE 1b: StockAnalysis income statement (revenue)
+    # FALLBACK 1b: StockAnalysis income statement (revenue)
     try:
         url = f"https://stockanalysis.com/stocks/{ticker.lower()}/financials/"
         html = await fetch_html(url)
@@ -106,7 +154,7 @@ async def get_fundamentals(ticker: str) -> dict:
     except Exception as e:
         print(f"  [Fundamentals] {ticker} income error: {e}")
 
-    # SOURCE 1c: StockAnalysis ratios (P/E, P/S if not already found)
+    # FALLBACK 1c: StockAnalysis ratios (P/E, P/S if not already found)
     if result["pe_ratio"] is None or result["ps_ratio"] is None:
         try:
             url = f"https://stockanalysis.com/stocks/{ticker.lower()}/financials/ratios/"
@@ -130,7 +178,7 @@ async def get_fundamentals(ticker: str) -> dict:
         except Exception as e:
             print(f"  [Fundamentals] {ticker} ratios error: {e}")
 
-    # SOURCE 2: SEC EDGAR fallback (revenue + market cap from shares outstanding)
+    # FALLBACK 2: SEC EDGAR (revenue + market cap from shares outstanding)
     needs_edgar = result["revenue_current"] is None or result["market_cap"] is None
     if needs_edgar:
         try:

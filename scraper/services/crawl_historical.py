@@ -3,9 +3,10 @@ import re
 from datetime import datetime, timedelta
 
 from .scrape_utils import fetch_html, parse
+from .yfinance_source import get_historical_yfinance
 from cache.store import historical_cache
 
-CACHE_TTL = 21600  # 6 hours
+CACHE_TTL = 86400  # 24 hours
 
 
 async def get_historical(ticker: str) -> dict:
@@ -13,9 +14,18 @@ async def get_historical(ticker: str) -> dict:
     if cached:
         return cached
 
+    # PRIMARY: yfinance (fastest, most reliable)
+    try:
+        yf_data = await get_historical_yfinance(ticker)
+        if yf_data and len(yf_data.get("monthly", [])) >= 24:
+            historical_cache.set(f"hist_{ticker}", yf_data, CACHE_TTL)
+            return yf_data
+    except Exception:
+        pass
+
     result = {"ticker": ticker, "weekly": [], "monthly": []}
 
-    # SOURCE 1: StockAnalysis
+    # FALLBACK 1: StockAnalysis
     try:
         url = f"https://stockanalysis.com/stocks/{ticker.lower()}/history/"
         html = await fetch_html(url)
@@ -52,7 +62,7 @@ async def get_historical(ticker: str) -> dict:
     except Exception as e:
         print(f"  [Historical] {ticker} error: {e}")
 
-    # SOURCE 2: Macrotrends (JS required)
+    # FALLBACK 2: Macrotrends (JS required)
     if len(result["monthly"]) < 60:
         try:
             url = f"https://www.macrotrends.net/stocks/charts/{ticker}/{ticker.lower()}/stock-price-history"
