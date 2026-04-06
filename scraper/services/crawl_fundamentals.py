@@ -55,25 +55,26 @@ async def get_fundamentals(ticker: str) -> dict:
                 fundamentals_cache.set(f"fund_{ticker}", yf_result, CACHE_TTL)
                 return yf_result
     except Exception:
-        pass
+        yf_result = None
 
+    # Start fallback result — carry forward any yfinance data we already got
     result = {
         "ticker": ticker,
-        "company_name": None,
-        "market_cap": None,
-        "current_price": None,
-        "week_52_high": None,
-        "revenue_current": None,
-        "revenue_prior_year": None,
-        "revenue_growth_pct": None,
-        "pe_ratio": None,
-        "ps_ratio": None,
+        "company_name": (yf_result or {}).get("company_name"),
+        "market_cap": (yf_result or {}).get("market_cap"),
+        "current_price": (yf_result or {}).get("current_price"),
+        "week_52_high": (yf_result or {}).get("week_52_high"),
+        "revenue_current": (yf_result or {}).get("revenue_current"),
+        "revenue_prior_year": (yf_result or {}).get("revenue_prior_year"),
+        "revenue_growth_pct": (yf_result or {}).get("revenue_growth_pct"),
+        "pe_ratio": (yf_result or {}).get("pe_ratio"),
+        "ps_ratio": (yf_result or {}).get("ps_ratio"),
         "debt_to_equity": None,
         "current_ratio": None,
         "free_cash_flow": None,
         "gross_margin": None,
-        "sector": None,
-        "source": None,
+        "sector": (yf_result or {}).get("sector"),
+        "source": (yf_result or {}).get("source"),
     }
 
     # FALLBACK 1a: StockAnalysis overview page (market cap, price, 52w high)
