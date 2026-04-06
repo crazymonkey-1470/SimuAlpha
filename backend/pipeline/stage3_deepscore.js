@@ -72,13 +72,7 @@ async function _runDeepScore() {
         peRatio: fund.peRatio,
       });
 
-      // Skip PASS signals
-      if (scores.signal === 'PASS') {
-        await sleep(300);
-        continue;
-      }
-
-      // Get previous score/signal for comparison
+      // Get previous score/signal for comparison (for alert detection)
       const { data: prev } = await supabase
         .from('screener_results')
         .select('total_score, signal, current_price, price_200wma, price_200mma')
@@ -89,7 +83,7 @@ async function _runDeepScore() {
       const previousSignal = prev?.signal ?? null;
       const prevPrice = prev?.current_price ?? null;
 
-      // Build result row
+      // Build result row (store all scored tickers, including PASS)
       const row = {
         ticker,
         company_name: company_name || fund.companyName,
@@ -119,8 +113,8 @@ async function _runDeepScore() {
 
       results.push(row);
 
-      // Detect alerts
-      const alerts = detectAlerts({
+      // Detect alerts (only for non-PASS signals)
+      const alerts = scores.signal === 'PASS' ? [] : detectAlerts({
         ticker,
         companyName: row.company_name,
         sector: row.sector,
@@ -132,8 +126,8 @@ async function _runDeepScore() {
         previousSignal,
         entryNote: scores.entryNote,
         prevPrice,
-        prevWMA: prev?.price_200wma,
-        prevMMA: prev?.price_200mma,
+        prevWMA: prev?.price_200wma ?? null,
+        prevMMA: prev?.price_200mma ?? null,
       });
 
       for (const alert of alerts) {
@@ -142,7 +136,14 @@ async function _runDeepScore() {
         alertsFired++;
       }
 
-      console.log(`  ${ticker}: ${scores.totalScore} - ${scores.signal}${scores.entryZone ? ' [ENTRY ZONE]' : ''}${alerts.length > 0 ? ` (${alerts.length} alerts)` : ''}`);
+      // Only log non-PASS signals to reduce noise
+      if (scores.signal !== 'PASS') {
+        console.log(`  ${ticker}: ${scores.totalScore} - ${scores.signal}${scores.entryZone ? ' [ENTRY ZONE]' : ''}${alerts.length > 0 ? ` (${alerts.length} alerts)` : ''}`);
+      }
+
+      if ((i + 1) % 100 === 0) {
+        console.log(`[Stage 3] Progress: ${i + 1}/${candidates.length} scored, ${results.filter(r => r.signal !== 'PASS').length} non-PASS so far`);
+      }
     } catch (err) {
       console.error(`  ${ticker}: ERROR -`, err.message);
     }
