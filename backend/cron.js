@@ -52,33 +52,26 @@ async function runFullPipeline() {
 
 /**
  * Start all cron schedules.
+ *
+ * TLI runs 2x/week:
+ *   Sunday 6am ET   — Full scan before the trading week
+ *   Wednesday 6am ET — Midweek check for changes
+ *   Sunday 8am ET   — Weekly brief (after Sunday pipeline)
  */
 function startCron() {
-  // Stage 1 — Universe: daily at midnight
-  cron.schedule('0 0 * * *', () => {
-    console.log('[Cron] Triggering Stage 1 — Universe');
-    fetchUniverse().catch((err) => console.error('[Cron] Stage 1 error:', err.message));
+  // Full pipeline — Sunday 6am ET
+  cron.schedule('0 6 * * 0', () => {
+    console.log('[Cron] Sunday scan — full pipeline');
+    runFullPipeline().catch((err) => console.error('[Cron] Sunday pipeline error:', err.message));
   });
 
-  // Stage 2 — Pre-screen: daily at 12:30am (after Stage 1)
-  cron.schedule('30 0 * * *', () => {
-    console.log('[Cron] Triggering Stage 2 — Pre-screen');
-    runPrescreen().catch((err) => console.error('[Cron] Stage 2 error:', err.message));
+  // Full pipeline — Wednesday 6am ET
+  cron.schedule('0 6 * * 3', () => {
+    console.log('[Cron] Wednesday midweek check — full pipeline');
+    runFullPipeline().catch((err) => console.error('[Cron] Wednesday pipeline error:', err.message));
   });
 
-  // Stage 3 — Deep Score: every 6 hours
-  cron.schedule('0 */6 * * *', () => {
-    console.log('[Cron] Triggering Stage 3 — Deep Score');
-    runDeepScore().catch((err) => console.error('[Cron] Stage 3 error:', err.message));
-  });
-
-  // Stage 4 — Wave Count: daily at 2am (after Stage 3's midnight run)
-  cron.schedule('0 2 * * *', () => {
-    console.log('[Cron] Triggering Stage 4 — Wave Count');
-    runWaveCount().catch((err) => console.error('[Cron] Stage 4 error:', err.message));
-  });
-
-  // Weekly brief — Sunday 8am
+  // Weekly brief — Sunday 8am ET (after Sunday pipeline completes)
   cron.schedule('0 8 * * 0', async () => {
     console.log('[Cron] Generating weekly brief...');
     try {
@@ -119,11 +112,8 @@ function startCron() {
   });
 
   console.log('[Cron] Schedules active:');
-  console.log('  Stage 1 (Universe):    midnight daily');
-  console.log('  Stage 2 (Prescreen):   12:30am daily');
-  console.log('  Stage 3 (Deep Score):  every 6 hours');
-  console.log('  Stage 4 (Wave Count):  2am daily');
-  console.log('  Weekly Brief:          Sunday 8am');
+  console.log('  Full Pipeline:   Sunday 6am ET + Wednesday 6am ET');
+  console.log('  Weekly Brief:    Sunday 8am ET');
 }
 
 module.exports = { runFullPipeline, startCron, runDeepScore, runWaveCount };

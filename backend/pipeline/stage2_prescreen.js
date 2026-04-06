@@ -73,7 +73,7 @@ async function _runPrescreen() {
 
   for (const { ticker } of universe) {
     processed++;
-    if (processed % 500 === 0) {
+    if (processed % 100 === 0) {
       console.log(`[Stage 2] Progress: ${processed}/${universe.length} processed, ${candidates.length} candidates so far`);
       console.log(`[Stage 2] Filter stats: ${JSON.stringify(filterStats)}`);
     }
@@ -95,6 +95,11 @@ async function _runPrescreen() {
       consecutiveErrors = 0;
 
       const data = await res.json();
+
+      // Log first 5 tickers for diagnostics
+      if (processed <= 5) {
+        console.log(`[Stage 2] Sample ${ticker}: price=${data.current_price}, mcap=${data.market_cap}, rev=${data.revenue_current}, source=${data.source}`);
+      }
 
       const marketCap = data.market_cap ?? null;
       const price = data.current_price ?? null;
