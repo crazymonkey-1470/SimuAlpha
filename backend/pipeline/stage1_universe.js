@@ -1,39 +1,84 @@
 const supabase = require('../services/supabase');
-const { fetchStockList } = require('../services/fetcher');
+
+/**
+ * S&P 500 Universe
+ * Curated list — reliable data, large-cap, fundamentally sound.
+ * Expand later: Russell 2000, commodities, international, etc.
+ */
+const SP500 = [
+  'AAPL','ABBV','ABT','ACN','ADBE','ADI','ADM','ADP','ADSK','AEE',
+  'AEP','AES','AFL','AIG','AIZ','AJG','AKAM','ALB','ALGN','ALK',
+  'ALL','ALLE','AMAT','AMCR','AMD','AME','AMGN','AMP','AMT','AMZN',
+  'ANET','ANSS','AON','AOS','APA','APD','APH','APTV','ARE','ATO',
+  'ATVI','AVB','AVGO','AVY','AWK','AXP','AZO','BA','BAC','BAX',
+  'BBWI','BBY','BDX','BEN','BF.B','BG','BIIB','BIO','BK','BKNG',
+  'BKR','BLK','BMY','BR','BRK.B','BRO','BSX','BWA','BXP','C',
+  'CAG','CAH','CARR','CAT','CB','CBOE','CBRE','CCI','CCL','CDAY',
+  'CDNS','CDW','CE','CEG','CF','CFG','CHD','CHRW','CHTR','CI',
+  'CINF','CL','CLX','CMA','CMCSA','CME','CMG','CMI','CMS','CNC',
+  'CNP','COF','COO','COP','COST','CPB','CPRT','CPT','CRL','CRM',
+  'CSCO','CSGP','CSX','CTAS','CTLT','CTRA','CTSH','CTVA','CVS','CVX',
+  'CZR','D','DAL','DD','DE','DFS','DG','DGX','DHI','DHR',
+  'DIS','DISH','DLR','DLTR','DOV','DOW','DPZ','DRI','DTE','DUK',
+  'DVA','DVN','DXC','DXCM','EA','EBAY','ECL','ED','EFX','EIX',
+  'EL','EMN','EMR','ENPH','EOG','EPAM','EQIX','EQR','EQT','ES',
+  'ESS','ETN','ETR','ETSY','EVRG','EW','EXC','EXPD','EXPE','EXR',
+  'F','FANG','FAST','FBHS','FCX','FDS','FDX','FE','FFIV','FIS',
+  'FISV','FITB','FLT','FMC','FOX','FOXA','FRC','FRT','FTNT','FTV',
+  'GD','GE','GEHC','GEN','GILD','GIS','GL','GLW','GM','GNRC',
+  'GOOG','GOOGL','GPC','GPN','GRMN','GS','GWW','HAL','HAS','HBAN',
+  'HCA','HD','HOLX','HON','HPE','HPQ','HRL','HSIC','HST','HSY',
+  'HUM','HWM','IBM','ICE','IDXX','IEX','IFF','ILMN','INCY','INTC',
+  'INTU','INVH','IP','IPG','IQV','IR','IRM','ISRG','IT','ITW',
+  'IVZ','J','JBHT','JCI','JKHY','JNJ','JNPR','JPM','K','KDP',
+  'KEY','KEYS','KHC','KIM','KLAC','KMB','KMI','KMX','KO','KR',
+  'L','LDOS','LEN','LH','LHX','LIN','LKQ','LLY','LMT','LNC',
+  'LNT','LOW','LRCX','LUMN','LUV','LVS','LW','LYB','LYV','MA',
+  'MAA','MAR','MAS','MCD','MCHP','MCK','MCO','MDLZ','MDT','MET',
+  'META','MGM','MHK','MKC','MKTX','MLM','MMC','MMM','MNST','MO',
+  'MOH','MOS','MPC','MPWR','MRK','MRNA','MRO','MS','MSCI','MSFT',
+  'MSI','MTB','MTCH','MTD','MU','NCLH','NDAQ','NDSN','NEE','NEM',
+  'NFLX','NI','NKE','NOC','NOW','NRG','NSC','NTAP','NTRS','NUE',
+  'NVDA','NVR','NWL','NWS','NWSA','NXPI','O','ODFL','OGN','OKE',
+  'OMC','ON','ORCL','ORLY','OTIS','OXY','PARA','PAYC','PAYX','PCAR',
+  'PCG','PEAK','PEG','PEP','PFE','PFG','PG','PGR','PH','PHM',
+  'PKG','PKI','PLD','PM','PNC','PNR','PNW','POOL','PPG','PPL',
+  'PRU','PSA','PSX','PTC','PVH','PWR','PXD','PYPL','QCOM','QRVO',
+  'RCL','RE','REG','REGN','RF','RHI','RJF','RL','RMD','ROK',
+  'ROL','ROP','ROST','RSG','RTX','RVTY','SBAC','SBNY','SBUX','SCHW',
+  'SEE','SHW','SIVB','SJM','SLB','SNA','SNPS','SO','SPG','SPGI',
+  'SRE','STE','STT','STX','STZ','SWK','SWKS','SYF','SYK','SYY',
+  'T','TAP','TDG','TDY','TECH','TEL','TER','TFC','TFX','TGT',
+  'TMO','TMUS','TPR','TRGP','TRMB','TROW','TRV','TSCO','TSLA','TSN',
+  'TT','TTWO','TXN','TXT','TYL','UAL','UDR','UHS','ULTA','UNH',
+  'UNP','UPS','URI','USB','V','VFC','VICI','VLO','VMC','VNO',
+  'VRSK','VRSN','VRTX','VTR','VTRS','VZ','WAB','WAT','WBA','WBD',
+  'WDC','WEC','WELL','WFC','WHR','WM','WMB','WMT','WRB','WRK',
+  'WST','WTW','WY','WYNN','XEL','XOM','XRAY','XYL','YUM','ZBH',
+  'ZBRA','ZION','ZTS',
+];
 
 /**
  * Stage 1 — Universe
- * Fetches all NYSE + NASDAQ stocks from FMP, filters to investable universe,
- * and upserts into the `universe` table.
+ * Seeds the universe table with S&P 500 tickers.
+ * Clean, reliable, data-rich — no scraper dependency.
  */
 async function fetchUniverse() {
-  console.log('\n[Stage 1] Fetching full stock universe from FMP...');
+  console.log('\n[Stage 1] Seeding S&P 500 universe...');
   const startTime = Date.now();
 
-  const allStocks = await fetchStockList();
-  console.log(`[Stage 1] Received ${allStocks.length} total listings`);
+  // Filter out tickers with dots (BRK.B, BF.B) — scraper may not handle them
+  const tickers = SP500.filter((t) => !/[.]/.test(t));
 
-  // Filter to investable universe
-  const validExchanges = ['NYSE', 'NASDAQ'];
-  const survivors = allStocks.filter((s) => {
-    if (!s.symbol || !s.name) return false;
-    if (!validExchanges.includes(s.exchangeShortName)) return false;
-    if (s.type === 'etf' || s.type === 'fund') return false;
-    if (s.price != null && s.price < 2) return false;
-    // Skip tickers with special characters (warrants, units, etc.)
-    if (/[.\-]/.test(s.symbol)) return false;
-    return true;
-  });
+  console.log(`[Stage 1] ${tickers.length} S&P 500 tickers (${SP500.length - tickers.length} skipped with special chars)`);
 
-  console.log(`[Stage 1] Filtered to ${survivors.length} investable stocks`);
-
-  // Upsert in batches of 500
-  const batchSize = 500;
-  for (let i = 0; i < survivors.length; i += batchSize) {
-    const batch = survivors.slice(i, i + batchSize).map((s) => ({
-      ticker: s.symbol,
-      company_name: s.name,
-      exchange: s.exchangeShortName,
+  // Upsert in batches of 100
+  const batchSize = 100;
+  for (let i = 0; i < tickers.length; i += batchSize) {
+    const batch = tickers.slice(i, i + batchSize).map((ticker) => ({
+      ticker,
+      company_name: null,
+      exchange: 'NYSE',
       sector: null,
       industry: null,
       market_cap: null,
@@ -50,13 +95,13 @@ async function fetchUniverse() {
   // Log scan history
   await supabase.from('scan_history').insert({
     stage: 'UNIVERSE',
-    tickers_processed: allStocks.length,
-    tickers_passed: survivors.length,
+    tickers_processed: SP500.length,
+    tickers_passed: tickers.length,
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[Stage 1] Complete: ${allStocks.length} fetched → ${survivors.length} stored (${elapsed}s)`);
-  return survivors.length;
+  console.log(`[Stage 1] Complete: ${tickers.length} S&P 500 tickers seeded (${elapsed}s)`);
+  return tickers.length;
 }
 
 module.exports = { fetchUniverse };
