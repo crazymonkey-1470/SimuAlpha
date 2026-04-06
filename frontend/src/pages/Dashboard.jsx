@@ -159,7 +159,7 @@ export default function Dashboard() {
           gap: '24px'
         }}>
           {[
-            { step: '01', title: 'Universe Scan', desc: '8,500+ US stocks scanned daily for fundamental quality \u2014 revenue growth, valuation, and drawdown from highs.' },
+            { step: '01', title: 'Universe Scan', desc: 'S&P 500 scanned twice weekly (Sun + Wed) for fundamental quality \u2014 revenue growth, valuation, and drawdown from highs.' },
             { step: '02', title: 'TLI Scoring', desc: 'Each stock scored 0-100 on two pillars: fundamentals (50pts) and technical position relative to 200WMA/MMA (50pts).' },
             { step: '03', title: 'Elliott Wave', desc: 'High-scoring stocks analyzed for wave position. Only Wave 2, 4, or C entries flagged. Wave 5 always avoided.' },
             { step: '04', title: 'Entry Signals', desc: 'When a stock hits the TLI sweet spot \u2014 fundamentally undervalued AND at its 200MA \u2014 you get alerted.' },
@@ -178,6 +178,10 @@ export default function Dashboard() {
           ))}
         </div>
       </motion.div>
+
+      <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)', padding: '20px 0', borderTop: '1px solid var(--border)' }}>
+        Not financial advice. AI-generated analysis for educational purposes only. Do your own research before investing.
+      </div>
     </div>
   );
 }

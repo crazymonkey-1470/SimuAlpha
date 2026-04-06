@@ -32,7 +32,7 @@ async def get_fundamentals(ticker: str) -> dict:
 
     # Run all 4 Polygon calls concurrently (rate limiter serializes them,
     # but this avoids wasted time between calls)
-    details, prev, week_52, fin = await asyncio.gather(
+    raw = await asyncio.gather(
         get_ticker_details(ticker),
         get_previous_close(ticker),
         get_week_52_high(ticker),
@@ -40,31 +40,54 @@ async def get_fundamentals(ticker: str) -> dict:
         return_exceptions=True,
     )
 
+    # Explicitly convert exceptions to None
+    details = raw[0] if not isinstance(raw[0], BaseException) else None
+    prev = raw[1] if not isinstance(raw[1], BaseException) else None
+    week_52 = raw[2] if not isinstance(raw[2], BaseException) else None
+    fin = raw[3] if not isinstance(raw[3], BaseException) else None
+
+    # Log any exceptions
+    for i, label in enumerate(["details", "prev_close", "52w_high", "financials"]):
+        if isinstance(raw[i], BaseException):
+            print(f"  [Fundamentals] {ticker} {label} error: {raw[i]}")
+
     # 1) Ticker details (company name, market cap, sector)
     if isinstance(details, dict):
         result["company_name"] = details.get("company_name")
-        result["market_cap"] = details.get("market_cap")
+        mc = details.get("market_cap")
+        if isinstance(mc, (int, float)) and mc > 0:
+            result["market_cap"] = mc
         result["sector"] = details.get("sector")
         result["source"] = "polygon"
 
     # 2) Previous close (current price)
     if isinstance(prev, dict):
-        result["current_price"] = prev.get("current_price")
+        price = prev.get("current_price")
+        if isinstance(price, (int, float)) and price > 0:
+            result["current_price"] = float(price)
         result["source"] = result["source"] or "polygon"
 
     # 3) 52-week high
-    if isinstance(week_52, (int, float)):
-        result["week_52_high"] = week_52
+    if isinstance(week_52, (int, float)) and week_52 > 0:
+        result["week_52_high"] = float(week_52)
 
-    # 4) Financials (revenue)
+    # 4) Financials (revenue) — validate types
     if isinstance(fin, dict):
-        result["revenue_current"] = fin.get("revenue_current")
-        result["revenue_prior_year"] = fin.get("revenue_prior_year")
-        result["revenue_growth_pct"] = fin.get("revenue_growth_pct")
+        rev = fin.get("revenue_current")
+        if isinstance(rev, (int, float)):
+            result["revenue_current"] = float(rev)
+        rev_prior = fin.get("revenue_prior_year")
+        if isinstance(rev_prior, (int, float)):
+            result["revenue_prior_year"] = float(rev_prior)
+        growth = fin.get("revenue_growth_pct")
+        if isinstance(growth, (int, float)):
+            result["revenue_growth_pct"] = float(growth)
         result["source"] = result["source"] or "polygon"
 
-    # P/S ratio: market_cap / revenue
-    if result["market_cap"] and result["revenue_current"] and result["revenue_current"] > 0:
+    # P/S ratio: market_cap / revenue (both must be valid numbers)
+    if (isinstance(result["market_cap"], (int, float))
+            and isinstance(result["revenue_current"], (int, float))
+            and result["revenue_current"] > 0):
         result["ps_ratio"] = round(result["market_cap"] / result["revenue_current"], 2)
 
     # Cache strategy: full data = 24h, partial = 1h, nothing = skip

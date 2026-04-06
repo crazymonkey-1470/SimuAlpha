@@ -110,7 +110,7 @@ export default function Watchlist() {
                       <div>
                         <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)' }}>PRICE</div>
                         <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '14px', color: 'var(--text-primary)' }}>
-                          ${stock.current_price?.toFixed(2)}
+                          {stock.current_price != null ? `$${stock.current_price.toFixed(2)}` : '\u2014'}
                         </div>
                       </div>
                       <div>
@@ -119,7 +119,7 @@ export default function Watchlist() {
                           fontFamily: 'IBM Plex Mono', fontSize: '14px',
                           color: stock.pct_from_200wma <= 0 ? 'var(--signal-green)' : 'var(--text-primary)'
                         }}>
-                          {stock.pct_from_200wma?.toFixed(1)}%
+                          {stock.pct_from_200wma != null ? `${stock.pct_from_200wma.toFixed(1)}%` : '\u2014'}
                         </div>
                       </div>
                     </div>

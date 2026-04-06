@@ -76,8 +76,9 @@ function getSignal(totalScore) {
 function getEntryZone({ currentPrice, price200WMA, price200MMA, pctFrom200WMA, pctFrom200MMA }) {
   const belowWMA = pctFrom200WMA != null && pctFrom200WMA <= 0;
   const belowMMA = pctFrom200MMA != null && pctFrom200MMA <= 0;
-  const nearWMA = pctFrom200WMA != null && Math.abs(pctFrom200WMA) <= 3;
-  const nearMMA = pctFrom200MMA != null && Math.abs(pctFrom200MMA) <= 3;
+  // "Near" means within 3% ABOVE the MA (approaching from above) — not below (already in zone)
+  const nearWMA = pctFrom200WMA != null && pctFrom200WMA > 0 && pctFrom200WMA <= 3;
+  const nearMMA = pctFrom200MMA != null && pctFrom200MMA > 0 && pctFrom200MMA <= 3;
   const within8WMA = pctFrom200WMA != null && pctFrom200WMA <= 8;
   const within8MMA = pctFrom200MMA != null && pctFrom200MMA <= 8;
 
@@ -97,8 +98,11 @@ function getEntryZone({ currentPrice, price200WMA, price200MMA, pctFrom200WMA, p
     entryNote = `Price $${f(currentPrice)} is within 3% of ${nearWMA ? '200WMA' : '200MMA'} — entry zone approaching`;
   } else if (within8WMA || within8MMA) {
     entryZone = false;
+    const pctAbove = pctFrom200WMA != null && pctFrom200MMA != null
+      ? Math.min(pctFrom200WMA, pctFrom200MMA)
+      : (pctFrom200WMA ?? pctFrom200MMA ?? 0);
     const target = price200WMA != null ? price200WMA : price200MMA;
-    entryNote = `Price $${f(currentPrice)} is ${f(Math.min(pctFrom200WMA || 999, pctFrom200MMA || 999), 1)}% above MA — wait for pullback to $${f(target)}`;
+    entryNote = `Price $${f(currentPrice)} is ${f(pctAbove, 1)}% above MA — wait for pullback to $${f(target)}`;
   } else {
     entryZone = false;
     entryNote = `Price $${f(currentPrice)} is above both MAs — wait for pullback`;

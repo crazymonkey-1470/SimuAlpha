@@ -85,17 +85,19 @@ Target 2: $${waveData.target_2 || 'N/A'}
 Reward/Risk: ${waveData.reward_risk_ratio || 'N/A'}x
 
 FUNDAMENTAL PICTURE:
-TLI Score: ${fundamentals.total_score}/100 (${fundamentals.signal})
-Current Price: $${fundamentals.current_price}
-200 Weekly MA: $${fundamentals.price_200wma} (${fundamentals.pct_from_200wma}% away)
-200 Monthly MA: $${fundamentals.price_200mma} (${fundamentals.pct_from_200mma}% away)
-Revenue (current): $${fundamentals.revenue_current}
-Revenue (prior yr): $${fundamentals.revenue_prior_year}
-Revenue Growth: ${fundamentals.revenue_growth_pct}%
-P/E Ratio: ${fundamentals.pe_ratio || 'N/A'}
-P/S Ratio: ${fundamentals.ps_ratio || 'N/A'}
-52-Week High: $${fundamentals.week_52_high}
-% From 52W High: ${fundamentals.pct_from_52w_high}%
+TLI Score: ${fundamentals.total_score ?? 'N/A'}/100 (${fundamentals.signal || 'N/A'})
+Current Price: ${fundamentals.current_price != null ? '$' + fundamentals.current_price : 'UNAVAILABLE'}
+200 Weekly MA: ${fundamentals.price_200wma != null ? '$' + fundamentals.price_200wma : 'UNAVAILABLE'} (${fundamentals.pct_from_200wma != null ? fundamentals.pct_from_200wma + '% away' : 'N/A'})
+200 Monthly MA: ${fundamentals.price_200mma != null ? '$' + fundamentals.price_200mma : 'UNAVAILABLE'} (${fundamentals.pct_from_200mma != null ? fundamentals.pct_from_200mma + '% away' : 'N/A'})
+Revenue (current): ${fundamentals.revenue_current != null ? '$' + fundamentals.revenue_current : 'UNAVAILABLE'}
+Revenue (prior yr): ${fundamentals.revenue_prior_year != null ? '$' + fundamentals.revenue_prior_year : 'UNAVAILABLE'}
+Revenue Growth: ${fundamentals.revenue_growth_pct != null ? fundamentals.revenue_growth_pct + '%' : 'UNAVAILABLE'}
+P/E Ratio: ${fundamentals.pe_ratio != null ? fundamentals.pe_ratio : 'N/A'}
+P/S Ratio: ${fundamentals.ps_ratio != null ? fundamentals.ps_ratio : 'N/A'}
+52-Week High: ${fundamentals.week_52_high != null ? '$' + fundamentals.week_52_high : 'UNAVAILABLE'}
+% From 52W High: ${fundamentals.pct_from_52w_high != null ? fundamentals.pct_from_52w_high + '%' : 'UNAVAILABLE'}
+
+NOTE: Fields marked "UNAVAILABLE" mean data is missing. Do NOT fabricate values for unavailable fields. State clearly if data is insufficient for a recommendation.
 
 BACKTEST HISTORY (how this pattern performed historically):
 Total Historical Signals: ${backtest?.total_signals || 'Insufficient data'}
@@ -139,7 +141,7 @@ no backticks. Just the raw JSON:
   } catch (error) {
     console.error(`Claude interpretation failed for ${ticker}:`, error.message);
     return {
-      conviction: 'UNKNOWN',
+      conviction: null,
       summary: 'Interpretation unavailable.',
       entry_guidance: 'See Fibonacci levels above.',
       confirmation_signals: 'Monitor price action at entry zone.',
