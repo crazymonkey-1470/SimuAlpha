@@ -1,3 +1,5 @@
+import httpx
+
 from .scrape_utils import fetch_html, fetch_json, parse
 from .yfinance_source import get_fundamentals_yfinance, get_quote_yfinance
 from cache.store import fundamentals_cache
@@ -5,77 +7,146 @@ from cache.store import fundamentals_cache
 CACHE_TTL = 86400  # 24 hours
 
 
+async def _fetch_yahoo_chart_price(ticker: str) -> dict | None:
+    """Direct Yahoo Finance chart API — no yfinance library needed.
+    Returns {current_price, week_52_high, market_cap, company_name} or None."""
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=1d&interval=1d"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(url, headers=headers)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
+            price = meta.get("regularMarketPrice")
+            if price is None:
+                return None
+            return {
+                "current_price": float(price),
+                "week_52_high": float(meta["fiftyTwoWeekHigh"]) if meta.get("fiftyTwoWeekHigh") else None,
+                "market_cap": None,  # chart API doesn't return market cap
+                "company_name": meta.get("longName") or meta.get("shortName"),
+            }
+    except Exception as e:
+        print(f"  [Yahoo Chart] {ticker} error: {e}")
+        return None
+
+
+async def _fetch_yahoo_quote_price(ticker: str) -> dict | None:
+    """Yahoo Finance v6 quote API — another direct fallback for price data."""
+    try:
+        url = f"https://query1.finance.yahoo.com/v6/finance/quote?symbols={ticker}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(url, headers=headers)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            quotes = data.get("quoteResponse", {}).get("result", [])
+            if not quotes:
+                return None
+            q = quotes[0]
+            price = q.get("regularMarketPrice")
+            if price is None:
+                return None
+            return {
+                "current_price": float(price),
+                "week_52_high": float(q["fiftyTwoWeekHigh"]) if q.get("fiftyTwoWeekHigh") else None,
+                "market_cap": float(q["marketCap"]) if q.get("marketCap") else None,
+                "company_name": q.get("longName") or q.get("shortName"),
+                "sector": q.get("sector"),
+                "pe_ratio": round(float(q["trailingPE"]), 2) if q.get("trailingPE") else None,
+                "ps_ratio": round(float(q["priceToSalesTrailing12Months"]), 2) if q.get("priceToSalesTrailing12Months") else None,
+            }
+    except Exception as e:
+        print(f"  [Yahoo Quote] {ticker} error: {e}")
+        return None
+
+
 async def get_fundamentals(ticker: str) -> dict:
     cached = fundamentals_cache.get(f"fund_{ticker}")
     if cached:
         return cached
 
-    # PRIMARY: yfinance (fastest, most reliable)
-    try:
-        yf_fund = await get_fundamentals_yfinance(ticker)
-        yf_quote = await get_quote_yfinance(ticker)
-
-        if yf_fund or yf_quote:
-            yf_result = {
-                "ticker": ticker,
-                "company_name": None,
-                "market_cap": None,
-                "current_price": None,
-                "week_52_high": None,
-                "revenue_current": None,
-                "revenue_prior_year": None,
-                "revenue_growth_pct": None,
-                "pe_ratio": None,
-                "ps_ratio": None,
-                "debt_to_equity": None,
-                "current_ratio": None,
-                "free_cash_flow": None,
-                "gross_margin": None,
-                "sector": None,
-                "source": "yfinance",
-            }
-            if yf_quote:
-                yf_result["current_price"] = yf_quote.get("current_price")
-                yf_result["week_52_high"] = yf_quote.get("week_52_high")
-                yf_result["market_cap"] = yf_quote.get("market_cap")
-                yf_result["company_name"] = yf_quote.get("company_name")
-                yf_result["sector"] = yf_quote.get("sector")
-                yf_result["pe_ratio"] = yf_quote.get("pe_ratio")
-                yf_result["ps_ratio"] = yf_quote.get("ps_ratio")
-            if yf_fund:
-                yf_result["revenue_current"] = yf_fund.get("revenue_current")
-                yf_result["revenue_prior_year"] = yf_fund.get("revenue_prior_year")
-                yf_result["revenue_growth_pct"] = yf_fund.get("revenue_growth_pct")
-                if yf_result["pe_ratio"] is None:
-                    yf_result["pe_ratio"] = yf_fund.get("pe_ratio")
-                if yf_result["ps_ratio"] is None:
-                    yf_result["ps_ratio"] = yf_fund.get("ps_ratio")
-
-            if yf_result["revenue_current"] is not None and yf_result["current_price"] is not None:
-                fundamentals_cache.set(f"fund_{ticker}", yf_result, CACHE_TTL)
-                return yf_result
-    except Exception:
-        yf_result = None
-
-    # Start fallback result — carry forward any yfinance data we already got
+    # Build result dict — we'll fill it from multiple sources
     result = {
         "ticker": ticker,
-        "company_name": (yf_result or {}).get("company_name"),
-        "market_cap": (yf_result or {}).get("market_cap"),
-        "current_price": (yf_result or {}).get("current_price"),
-        "week_52_high": (yf_result or {}).get("week_52_high"),
-        "revenue_current": (yf_result or {}).get("revenue_current"),
-        "revenue_prior_year": (yf_result or {}).get("revenue_prior_year"),
-        "revenue_growth_pct": (yf_result or {}).get("revenue_growth_pct"),
-        "pe_ratio": (yf_result or {}).get("pe_ratio"),
-        "ps_ratio": (yf_result or {}).get("ps_ratio"),
+        "company_name": None,
+        "market_cap": None,
+        "current_price": None,
+        "week_52_high": None,
+        "revenue_current": None,
+        "revenue_prior_year": None,
+        "revenue_growth_pct": None,
+        "pe_ratio": None,
+        "ps_ratio": None,
         "debt_to_equity": None,
         "current_ratio": None,
         "free_cash_flow": None,
         "gross_margin": None,
-        "sector": (yf_result or {}).get("sector"),
-        "source": (yf_result or {}).get("source"),
+        "sector": None,
+        "source": None,
     }
+
+    # === SOURCE 1: yfinance (fastest for full data) ===
+    try:
+        yf_fund = await get_fundamentals_yfinance(ticker)
+        yf_quote = await get_quote_yfinance(ticker)
+
+        if yf_quote:
+            result["current_price"] = yf_quote.get("current_price")
+            result["week_52_high"] = yf_quote.get("week_52_high")
+            result["market_cap"] = yf_quote.get("market_cap")
+            result["company_name"] = yf_quote.get("company_name")
+            result["sector"] = yf_quote.get("sector")
+            result["pe_ratio"] = yf_quote.get("pe_ratio")
+            result["ps_ratio"] = yf_quote.get("ps_ratio")
+            result["source"] = "yfinance"
+        if yf_fund:
+            result["revenue_current"] = yf_fund.get("revenue_current")
+            result["revenue_prior_year"] = yf_fund.get("revenue_prior_year")
+            result["revenue_growth_pct"] = yf_fund.get("revenue_growth_pct")
+            if result["pe_ratio"] is None:
+                result["pe_ratio"] = yf_fund.get("pe_ratio")
+            if result["ps_ratio"] is None:
+                result["ps_ratio"] = yf_fund.get("ps_ratio")
+            result["source"] = result["source"] or "yfinance"
+
+        # If we have both price and revenue, we're done
+        if result["current_price"] is not None and result["revenue_current"] is not None:
+            fundamentals_cache.set(f"fund_{ticker}", result, CACHE_TTL)
+            return result
+    except Exception as e:
+        print(f"  [yfinance] {ticker} error: {e}")
+
+    # === SOURCE 2: Direct Yahoo Finance API (if yfinance failed for price) ===
+    if result["current_price"] is None:
+        print(f"  [Fundamentals] {ticker}: yfinance had no price, trying Yahoo API direct...")
+        yahoo_data = await _fetch_yahoo_chart_price(ticker)
+        if yahoo_data is None:
+            yahoo_data = await _fetch_yahoo_quote_price(ticker)
+        if yahoo_data:
+            result["current_price"] = yahoo_data.get("current_price") or result["current_price"]
+            result["week_52_high"] = yahoo_data.get("week_52_high") or result["week_52_high"]
+            result["market_cap"] = yahoo_data.get("market_cap") or result["market_cap"]
+            result["company_name"] = yahoo_data.get("company_name") or result["company_name"]
+            if yahoo_data.get("sector"):
+                result["sector"] = result["sector"] or yahoo_data["sector"]
+            if yahoo_data.get("pe_ratio"):
+                result["pe_ratio"] = result["pe_ratio"] or yahoo_data["pe_ratio"]
+            if yahoo_data.get("ps_ratio"):
+                result["ps_ratio"] = result["ps_ratio"] or yahoo_data["ps_ratio"]
+            result["source"] = result["source"] or "yahoo_api"
+
+        # If we now have both, we're done
+        if result["current_price"] is not None and result["revenue_current"] is not None:
+            fundamentals_cache.set(f"fund_{ticker}", result, CACHE_TTL)
+            return result
 
     # FALLBACK 1a: StockAnalysis overview page (market cap, price, 52w high)
     try:
@@ -268,9 +339,16 @@ async def get_fundamentals(ticker: str) -> dict:
         except Exception as e:
             print(f"  [Fundamentals] {ticker} EDGAR error: {e}")
 
-    has_data = result["revenue_current"] is not None or result["market_cap"] is not None
-    if has_data:
+    # Only cache if we got meaningful data (price or revenue).
+    # Do NOT cache null-price results — they'd block retries for 24h.
+    has_price = result["current_price"] is not None
+    has_revenue = result["revenue_current"] is not None
+    if has_price and has_revenue:
         fundamentals_cache.set(f"fund_{ticker}", result, CACHE_TTL)
+    elif has_price or has_revenue:
+        # Partial data — cache for shorter period (1 hour)
+        fundamentals_cache.set(f"fund_{ticker}", result, 3600)
+    # else: don't cache at all — let next request retry
 
     return result
 
