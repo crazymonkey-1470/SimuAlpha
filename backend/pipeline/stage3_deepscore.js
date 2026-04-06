@@ -1,5 +1,5 @@
 const supabase = require('../services/supabase');
-const { fetchHistoricalPrices, fetchQuote, fetchRatios, fetchIncomeStatement, calculate200WMA, calculate200MMA, sleep } = require('../services/fetcher');
+const { fetchHistoricalPrices, fetchFundamentals, calculate200WMA, calculate200MMA, sleep } = require('../services/fetcher');
 const { runScorer } = require('../services/scorer');
 const { fireAlert } = require('../services/alerts');
 
@@ -8,7 +8,22 @@ const { fireAlert } = require('../services/alerts');
  * For each candidate: fetch full data, run TLI scorer, detect signal changes,
  * fire Telegram alerts, and upsert into screener_results.
  */
+let isRunning = false;
+
 async function runDeepScore() {
+  if (isRunning) {
+    console.log('[Stage 3] Already running, skipping duplicate trigger');
+    return;
+  }
+  isRunning = true;
+  try {
+    await _runDeepScore();
+  } finally {
+    isRunning = false;
+  }
+}
+
+async function _runDeepScore() {
   console.log('\n[Stage 3] Starting deep scoring of candidates...');
   const startTime = Date.now();
 
@@ -30,33 +45,31 @@ async function runDeepScore() {
     const { ticker, company_name, sector } = candidates[i];
 
     try {
-      // Fetch all data in parallel
-      const [historicals, quote, ratios, income] = await Promise.all([
+      // Fetch fundamentals (single call) + historical prices (separate call)
+      const [fund, historicals] = await Promise.all([
+        fetchFundamentals(ticker),
         fetchHistoricalPrices(ticker),
-        fetchQuote(ticker),
-        fetchRatios(ticker),
-        fetchIncomeStatement(ticker),
       ]);
 
-      const price200WMA = calculate200WMA(historicals.weeklyCloses);
-      const price200MMA = calculate200MMA(historicals.monthlyCloses);
-      const currentPrice = quote.currentPrice;
-
-      if (currentPrice == null) {
-        console.log(`  ${ticker}: no price, skipping`);
+      if (!fund || fund.currentPrice == null) {
+        console.log(`  ${ticker}: no data, skipping`);
         await sleep(300);
         continue;
       }
 
+      const price200WMA = calculate200WMA(historicals.weeklyCloses);
+      const price200MMA = calculate200MMA(historicals.monthlyCloses);
+      const currentPrice = fund.currentPrice;
+
       // Run TLI scorer
       const scores = runScorer({
         currentPrice,
-        week52High: quote.week52High,
+        week52High: fund.week52High,
         price200WMA,
         price200MMA,
-        revenueGrowthPct: income.revenueGrowthPct,
-        psRatio: ratios.psRatio,
-        peRatio: ratios.peRatio,
+        revenueGrowthPct: fund.revenueGrowthPct,
+        psRatio: fund.psRatio,
+        peRatio: fund.peRatio,
       });
 
       // Skip PASS signals
@@ -79,19 +92,19 @@ async function runDeepScore() {
       // Build result row
       const row = {
         ticker,
-        company_name: company_name || quote.companyName,
-        sector: sector || null,
+        company_name: company_name || fund.companyName,
+        sector: sector || fund.sector,
         current_price: currentPrice,
         price_200wma: price200WMA != null ? Math.round(price200WMA * 100) / 100 : null,
         price_200mma: price200MMA != null ? Math.round(price200MMA * 100) / 100 : null,
         pct_from_200wma: scores.pctFrom200WMA,
         pct_from_200mma: scores.pctFrom200MMA,
-        revenue_current: income.revenueCurrent,
-        revenue_prior_year: income.revenuePrior,
-        revenue_growth_pct: income.revenueGrowthPct != null ? Math.round(income.revenueGrowthPct * 10) / 10 : null,
-        pe_ratio: ratios.peRatio != null ? Math.round(ratios.peRatio * 10) / 10 : null,
-        ps_ratio: ratios.psRatio != null ? Math.round(ratios.psRatio * 10) / 10 : null,
-        week_52_high: quote.week52High,
+        revenue_current: fund.revenueCurrent,
+        revenue_prior_year: fund.revenuePrior,
+        revenue_growth_pct: fund.revenueGrowthPct != null ? Math.round(fund.revenueGrowthPct * 10) / 10 : null,
+        pe_ratio: fund.peRatio != null ? Math.round(fund.peRatio * 10) / 10 : null,
+        ps_ratio: fund.psRatio != null ? Math.round(fund.psRatio * 10) / 10 : null,
+        week_52_high: fund.week52High,
         pct_from_52w_high: scores.pctFrom52wHigh,
         fundamental_score: scores.fundamentalScore,
         technical_score: scores.technicalScore,

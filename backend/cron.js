@@ -9,7 +9,15 @@ const supabase = require('./services/supabase');
 /**
  * Run the full pipeline: Stage 1 → 2 → 3 → 4 sequentially.
  */
+let pipelineRunning = false;
+
 async function runFullPipeline() {
+  if (pipelineRunning) {
+    console.log('[Pipeline] Already running, skipping duplicate trigger');
+    return;
+  }
+  pipelineRunning = true;
+
   console.log('\n════════════════════════════════════════');
   console.log('[Pipeline] Starting full pipeline run...');
   console.log('════════════════════════════════════════');
@@ -39,6 +47,7 @@ async function runFullPipeline() {
   }
 
   console.log('\n[Pipeline] Full pipeline complete.\n');
+  pipelineRunning = false;
 }
 
 /**
