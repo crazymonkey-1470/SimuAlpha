@@ -1,3 +1,5 @@
+import asyncio
+
 from .polygon_source import get_ticker_details, get_previous_close, get_financials, get_week_52_high
 from cache.store import fundamentals_cache
 
@@ -28,28 +30,34 @@ async def get_fundamentals(ticker: str) -> dict:
         "source": None,
     }
 
+    # Run all 4 Polygon calls concurrently (rate limiter serializes them,
+    # but this avoids wasted time between calls)
+    details, prev, week_52, fin = await asyncio.gather(
+        get_ticker_details(ticker),
+        get_previous_close(ticker),
+        get_week_52_high(ticker),
+        get_financials(ticker),
+        return_exceptions=True,
+    )
+
     # 1) Ticker details (company name, market cap, sector)
-    details = await get_ticker_details(ticker)
-    if details:
+    if isinstance(details, dict):
         result["company_name"] = details.get("company_name")
         result["market_cap"] = details.get("market_cap")
         result["sector"] = details.get("sector")
         result["source"] = "polygon"
 
     # 2) Previous close (current price)
-    prev = await get_previous_close(ticker)
-    if prev:
+    if isinstance(prev, dict):
         result["current_price"] = prev.get("current_price")
         result["source"] = result["source"] or "polygon"
 
     # 3) 52-week high
-    week_52 = await get_week_52_high(ticker)
-    if week_52:
+    if isinstance(week_52, (int, float)):
         result["week_52_high"] = week_52
 
     # 4) Financials (revenue)
-    fin = await get_financials(ticker)
-    if fin:
+    if isinstance(fin, dict):
         result["revenue_current"] = fin.get("revenue_current")
         result["revenue_prior_year"] = fin.get("revenue_prior_year")
         result["revenue_growth_pct"] = fin.get("revenue_growth_pct")
