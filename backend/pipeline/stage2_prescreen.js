@@ -1,12 +1,32 @@
 const supabase = require('../services/supabase');
-const { fetchProfile, fetchIncomeStatement, sleep } = require('../services/fetcher');
+const { sleep } = require('../services/fetcher');
+
+const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
 /**
  * Stage 2 — Pre-screen
- * Reads universe, applies lightweight filters via FMP data,
+ * Reads universe, applies lightweight filters via scraper data,
  * stores survivors (~200-400) in `screener_candidates`.
  */
+
+// Prevent concurrent runs
+let isRunning = false;
+
 async function runPrescreen() {
+  if (isRunning) {
+    console.log('[Stage 2] Already running, skipping duplicate trigger');
+    return 0;
+  }
+  isRunning = true;
+
+  try {
+    return await _runPrescreen();
+  } finally {
+    isRunning = false;
+  }
+}
+
+async function _runPrescreen() {
   console.log('\n[Stage 2] Starting pre-screen of universe...');
   const startTime = Date.now();
 
@@ -38,43 +58,60 @@ async function runPrescreen() {
 
   const candidates = [];
   let processed = 0;
+  let consecutiveErrors = 0;
 
-  // Process in sequential order with delays to respect rate limits
+  // Diagnostic counters
+  const filterStats = {
+    fetchFailed: 0,
+    noMarketCap: 0,
+    lowMarketCap: 0,
+    noPrice: 0,
+    noRevenue: 0,
+    noValueSignal: 0,
+    passed: 0,
+  };
+
   for (const { ticker } of universe) {
     processed++;
-    if (processed % 100 === 0) {
+    if (processed % 500 === 0) {
       console.log(`[Stage 2] Progress: ${processed}/${universe.length} processed, ${candidates.length} candidates so far`);
+      console.log(`[Stage 2] Filter stats: ${JSON.stringify(filterStats)}`);
     }
 
     try {
-      const [profile, income] = await Promise.all([
-        fetchProfile(ticker),
-        fetchIncomeStatement(ticker),
-      ]);
+      // Single API call — profile and income come from the same scraper endpoint
+      const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+      await sleep(100);
 
-      // Rate limit after API calls (whether we use the data or not)
-      await sleep(200);
+      if (!res.ok) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 20) {
+          console.error(`[Stage 2] ${consecutiveErrors} consecutive errors — scraper may be down. Stopping.`);
+          break;
+        }
+        filterStats.fetchFailed++;
+        continue;
+      }
+      consecutiveErrors = 0;
 
-      if (!profile) { continue; }
+      const data = await res.json();
 
-      // Pre-screen filters
-      const marketCap = profile.marketCap;
-      const price = profile.currentPrice;
-      const week52High = profile.week52High;
-      const revGrowth = income.revenueGrowthPct;
-      const revCurrent = income.revenueCurrent;
+      const marketCap = data.market_cap ?? null;
+      const price = data.current_price ?? null;
+      const week52High = data.week_52_high ?? null;
+      const revGrowth = data.revenue_growth_pct ?? null;
+      const revCurrent = data.revenue_current ?? null;
 
       // Hard filters — must pass all
-      if (marketCap == null || marketCap < 500e6) { continue; }
-      if (price == null || price <= 3) { continue; }
-      if (revCurrent == null || revCurrent <= 0) { continue; }
+      if (marketCap == null) { filterStats.noMarketCap++; continue; }
+      if (marketCap < 500e6) { filterStats.lowMarketCap++; continue; }
+      if (price == null || price <= 3) { filterStats.noPrice++; continue; }
+      if (revCurrent == null || revCurrent <= 0) { filterStats.noRevenue++; continue; }
 
       // Soft filter: positive revenue growth preferred but not required
-      // (declining revenue stocks can still be TLI candidates if beaten down)
       const hasGrowth = revGrowth != null && revGrowth > 0;
 
-      // 52-week high drawdown — if data available, prefer ≥15% off highs
-      // If no 52w data from FMP, still allow through (Stage 3 will score properly)
+      // 52-week high drawdown
       let pctFrom52w = null;
       if (week52High != null && week52High > 0) {
         pctFrom52w = ((price - week52High) / week52High) * 100;
@@ -82,14 +119,14 @@ async function runPrescreen() {
       const hasDrawdown = pctFrom52w != null && pctFrom52w <= -15;
 
       // Must have at least one value signal: growth OR drawdown OR both
-      // This catches: beaten-down growers, deep value plays, and turnarounds
-      if (!hasGrowth && !hasDrawdown) { continue; }
+      if (!hasGrowth && !hasDrawdown) { filterStats.noValueSignal++; continue; }
 
-      // Passed all filters — this is a candidate
+      filterStats.passed++;
+
       candidates.push({
         ticker,
-        company_name: profile.companyName,
-        sector: profile.sector,
+        company_name: data.company_name || ticker,
+        sector: data.sector || null,
         market_cap: marketCap,
         current_price: price,
         revenue_growth_pct: revGrowth != null ? Math.round(revGrowth * 10) / 10 : null,
@@ -98,16 +135,16 @@ async function runPrescreen() {
         last_updated: new Date().toISOString(),
       });
     } catch (err) {
-      // Skip on error, never crash — but log it
-      console.error(`  ${ticker}: prescreen error -`, err.message);
+      consecutiveErrors++;
+      filterStats.fetchFailed++;
     }
   }
 
-  console.log(`[Stage 2] Pre-screen done: ${candidates.length} candidates from ${universe.length} universe`);
+  console.log(`[Stage 2] Pre-screen done: ${candidates.length} candidates from ${processed} processed`);
+  console.log(`[Stage 2] Final filter stats: ${JSON.stringify(filterStats)}`);
 
-  // Clear old candidates and upsert new ones
+  // Upsert candidates
   if (candidates.length > 0) {
-    // Upsert in batches
     const batchSize = 100;
     for (let i = 0; i < candidates.length; i += batchSize) {
       const batch = candidates.slice(i, i + batchSize);
@@ -121,12 +158,12 @@ async function runPrescreen() {
   // Log scan history
   await supabase.from('scan_history').insert({
     stage: 'PRESCREEN',
-    tickers_processed: universe.length,
+    tickers_processed: processed,
     tickers_passed: candidates.length,
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[Stage 2] Complete: ${universe.length} screened → ${candidates.length} candidates (${elapsed}s)`);
+  console.log(`[Stage 2] Complete: ${processed} screened → ${candidates.length} candidates (${elapsed}s)`);
   return candidates.length;
 }
 

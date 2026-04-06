@@ -132,6 +132,31 @@ function calculate200MMA(closes) {
   return d.reduce((a, b) => a + b, 0) / d.length;
 }
 
+// ── Combined fundamentals (single call instead of 3) ──
+
+async function fetchFundamentals(ticker) {
+  try {
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return {
+      companyName: data.company_name || data.ticker || ticker,
+      sector: data.sector || null,
+      marketCap: data.market_cap ?? null,
+      currentPrice: data.current_price ?? null,
+      week52High: data.week_52_high ?? null,
+      revenueCurrent: data.revenue_current ?? null,
+      revenuePrior: data.revenue_prior_year ?? null,
+      revenueGrowthPct: data.revenue_growth_pct ?? null,
+      peRatio: data.pe_ratio ?? null,
+      psRatio: data.ps_ratio ?? null,
+    };
+  } catch (err) {
+    console.error(`[fetcher] fundamentals failed ${ticker}:`, err.message);
+    return null;
+  }
+}
+
 module.exports = {
   fetchStockList,
   fetchProfile,
@@ -139,6 +164,7 @@ module.exports = {
   fetchRatios,
   fetchHistoricalPrices,
   fetchQuote,
+  fetchFundamentals,
   calculate200WMA,
   calculate200MMA,
   sleep,
