@@ -72,6 +72,43 @@ async function fetchUniverse() {
 
   console.log(`[Stage 1] ${tickers.length} S&P 500 tickers (${SP500.length - tickers.length} skipped with special chars)`);
 
+  // Remove old tickers that are NOT in S&P 500 list
+  // Paginate reads (Supabase defaults to 1000 rows)
+  let allTickers = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data } = await supabase
+      .from('universe')
+      .select('ticker')
+      .range(from, from + pageSize - 1);
+    if (!data || data.length === 0) break;
+    allTickers = allTickers.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  if (allTickers && allTickers.length > 0) {
+    const sp500Set = new Set(tickers);
+    const toDelete = allTickers
+      .map((r) => r.ticker)
+      .filter((t) => !sp500Set.has(t));
+
+    if (toDelete.length > 0) {
+      console.log(`[Stage 1] Removing ${toDelete.length} old tickers not in S&P 500...`);
+      // Delete in batches of 100 (Supabase .in() limit)
+      for (let i = 0; i < toDelete.length; i += 100) {
+        const batch = toDelete.slice(i, i + 100);
+        const { error } = await supabase
+          .from('universe')
+          .delete()
+          .in('ticker', batch);
+        if (error) console.error(`[Stage 1] Delete batch error:`, error.message);
+      }
+      console.log(`[Stage 1] Removed ${toDelete.length} old tickers`);
+    }
+  }
+
   // Upsert in batches of 100
   const batchSize = 100;
   for (let i = 0; i < tickers.length; i += batchSize) {
@@ -90,6 +127,26 @@ async function fetchUniverse() {
       .upsert(batch, { onConflict: 'ticker' });
 
     if (error) console.error(`[Stage 1] Upsert batch error:`, error.message);
+  }
+
+  // Clean up screener_candidates that are no longer in universe
+  const sp500SetFinal = new Set(tickers);
+  const { data: oldCandidates } = await supabase
+    .from('screener_candidates')
+    .select('ticker');
+
+  if (oldCandidates && oldCandidates.length > 0) {
+    const staleCandidates = oldCandidates
+      .map((r) => r.ticker)
+      .filter((t) => !sp500SetFinal.has(t));
+
+    if (staleCandidates.length > 0) {
+      console.log(`[Stage 1] Removing ${staleCandidates.length} stale candidates not in S&P 500...`);
+      for (let i = 0; i < staleCandidates.length; i += 100) {
+        const batch = staleCandidates.slice(i, i + 100);
+        await supabase.from('screener_candidates').delete().in('ticker', batch);
+      }
+    }
   }
 
   // Log scan history
