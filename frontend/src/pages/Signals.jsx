@@ -73,7 +73,7 @@ export default function Signals() {
                 <span style={{
                   fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)'
                 }}>
-                  {alert.fired_at ? new Date(alert.fired_at).toLocaleDateString('en-US', {
+                  {alert.fired_at ? new Date(alert.fired_at).toLocaleString('en-US', {
                     month: 'short', day: 'numeric', year: 'numeric',
                     hour: '2-digit', minute: '2-digit'
                   }) : ''}
@@ -98,7 +98,7 @@ export default function Signals() {
                 {alert.current_price && (
                   <div>
                     <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginRight: '8px' }}>PRICE AT SIGNAL</span>
-                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-primary)' }}>${alert.current_price?.toFixed(2)}</span>
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-primary)' }}>{alert.current_price != null ? `$${alert.current_price.toFixed(2)}` : '\u2014'}</span>
                   </div>
                 )}
               </div>
@@ -117,6 +117,10 @@ export default function Signals() {
           ))}
         </div>
       )}
+
+      <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)', padding: '20px 0', borderTop: '1px solid var(--border)', marginTop: '24px' }}>
+        Not financial advice. AI-generated analysis for educational purposes only. Do your own research before investing.
+      </div>
     </div>
   );
 }

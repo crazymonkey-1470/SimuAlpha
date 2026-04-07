@@ -119,16 +119,22 @@ async function fetchQuote(ticker) {
 }
 
 // ── Moving averages ──
+// 200 WMA = 200-Week Simple Moving Average (SMA of last 200 weekly closes)
+// 200 MMA = 200-Month Simple Moving Average (SMA of last 200 monthly closes)
+// TLI methodology uses SMA, not exponential or weighted averages.
+// Falls back to shorter periods if insufficient data (min 50 weeks / 12 months).
 
 function calculate200WMA(closes) {
-  if (!closes || closes.length < 200) return null;
-  const d = closes.slice(-200);
+  if (!closes || closes.length < 50) return null;
+  const period = Math.min(closes.length, 200);
+  const d = closes.slice(-period);
   return d.reduce((a, b) => a + b, 0) / d.length;
 }
 
 function calculate200MMA(closes) {
-  if (!closes || closes.length < 200) return null;
-  const d = closes.slice(-200);
+  if (!closes || closes.length < 12) return null;
+  const period = Math.min(closes.length, 200);
+  const d = closes.slice(-period);
   return d.reduce((a, b) => a + b, 0) / d.length;
 }
 

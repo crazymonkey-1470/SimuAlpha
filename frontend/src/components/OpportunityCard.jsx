@@ -82,7 +82,7 @@ export default function OpportunityCard({ stock, index }) {
             fontSize: '14px',
             color: stock.pct_from_200wma <= 0 ? 'var(--signal-green)' : 'var(--text-primary)'
           }}>
-            {stock.pct_from_200wma?.toFixed(1)}%
+            {stock.pct_from_200wma != null ? `${stock.pct_from_200wma.toFixed(1)}%` : '\u2014'}
           </div>
         </div>
         <div>
@@ -94,7 +94,7 @@ export default function OpportunityCard({ stock, index }) {
             fontSize: '14px',
             color: stock.revenue_growth_pct > 0 ? 'var(--signal-green)' : 'var(--red)'
           }}>
-            {stock.revenue_growth_pct > 0 ? '+' : ''}{stock.revenue_growth_pct?.toFixed(1)}%
+            {stock.revenue_growth_pct != null ? `${stock.revenue_growth_pct > 0 ? '+' : ''}${stock.revenue_growth_pct.toFixed(1)}%` : '\u2014'}
           </div>
         </div>
         <div>
@@ -102,7 +102,7 @@ export default function OpportunityCard({ stock, index }) {
             PRICE
           </div>
           <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '14px', color: 'var(--text-primary)' }}>
-            ${stock.current_price?.toFixed(2)}
+            {stock.current_price != null ? `$${stock.current_price.toFixed(2)}` : '\u2014'}
           </div>
         </div>
         <div>
@@ -110,7 +110,7 @@ export default function OpportunityCard({ stock, index }) {
             FROM 52W HIGH
           </div>
           <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '14px', color: 'var(--text-primary)' }}>
-            {stock.pct_from_52w_high?.toFixed(1)}%
+            {stock.pct_from_52w_high != null ? `${stock.pct_from_52w_high.toFixed(1)}%` : '\u2014'}
           </div>
         </div>
       </div>

@@ -47,6 +47,7 @@ function formatAlert(data) {
     msg += `⚡ Signal: ${data.previous_signal} → ${data.new_signal}\n`;
   }
 
+  msg += `\n<i>Not financial advice. AI-generated analysis for educational purposes only. Do your own research.</i>`;
   return msg;
 }
 

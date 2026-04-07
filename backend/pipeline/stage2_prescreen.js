@@ -118,7 +118,7 @@ async function _runPrescreen() {
 
       // 52-week high drawdown
       let pctFrom52w = null;
-      if (week52High != null && week52High > 0) {
+      if (price != null && week52High != null && week52High > 0) {
         pctFrom52w = ((price - week52High) / week52High) * 100;
       }
       const hasDrawdown = pctFrom52w != null && pctFrom52w <= -15;

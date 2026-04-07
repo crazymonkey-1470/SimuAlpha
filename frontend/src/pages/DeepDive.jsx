@@ -116,10 +116,10 @@ export default function DeepDive() {
             </span>
           </div>
           {[
-            { label: 'Revenue Growth', value: `${result.revenue_growth_pct?.toFixed(1)}% YoY`, good: result.revenue_growth_pct > 10 },
-            { label: 'From 52W High', value: `${result.pct_from_52w_high?.toFixed(1)}%`, good: result.pct_from_52w_high < -25 },
-            { label: 'P/S Ratio', value: result.ps_ratio?.toFixed(1) ?? '\u2014', good: result.ps_ratio < 5 },
-            { label: 'P/E Ratio', value: result.pe_ratio?.toFixed(1) ?? '\u2014', good: result.pe_ratio < 20 },
+            { label: 'Revenue Growth', value: result.revenue_growth_pct != null ? `${result.revenue_growth_pct.toFixed(1)}% YoY` : '\u2014', good: result.revenue_growth_pct > 10 },
+            { label: 'From 52W High', value: result.pct_from_52w_high != null ? `${result.pct_from_52w_high.toFixed(1)}%` : '\u2014', good: result.pct_from_52w_high < -25 },
+            { label: 'P/S Ratio', value: result.ps_ratio != null ? result.ps_ratio.toFixed(1) : '\u2014', good: result.ps_ratio < 5 },
+            { label: 'P/E Ratio', value: result.pe_ratio != null ? result.pe_ratio.toFixed(1) : '\u2014', good: result.pe_ratio < 20 },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)' }}>{item.label}</span>
@@ -136,11 +136,11 @@ export default function DeepDive() {
             </span>
           </div>
           {[
-            { label: 'Current Price', value: `$${result.current_price?.toFixed(2)}` },
-            { label: '200 Weekly MA', value: result.price_200wma ? `$${result.price_200wma?.toFixed(2)}` : '\u2014', good: result.pct_from_200wma <= 0 },
-            { label: '200 Monthly MA', value: result.price_200mma ? `$${result.price_200mma?.toFixed(2)}` : '\u2014', good: result.pct_from_200mma <= 0 },
-            { label: '% from 200WMA', value: `${result.pct_from_200wma?.toFixed(1)}%`, good: result.pct_from_200wma <= 0 },
-            { label: '% from 200MMA', value: `${result.pct_from_200mma?.toFixed(1)}%`, good: result.pct_from_200mma <= 0 },
+            { label: 'Current Price', value: result.current_price != null ? `$${result.current_price.toFixed(2)}` : '\u2014' },
+            { label: '200 Weekly MA', value: result.price_200wma != null ? `$${result.price_200wma.toFixed(2)}` : '\u2014', good: result.pct_from_200wma <= 0 },
+            { label: '200 Monthly MA', value: result.price_200mma != null ? `$${result.price_200mma.toFixed(2)}` : '\u2014', good: result.pct_from_200mma <= 0 },
+            { label: '% from 200WMA', value: result.pct_from_200wma != null ? `${result.pct_from_200wma.toFixed(1)}%` : '\u2014', good: result.pct_from_200wma <= 0 },
+            { label: '% from 200MMA', value: result.pct_from_200mma != null ? `${result.pct_from_200mma.toFixed(1)}%` : '\u2014', good: result.pct_from_200mma <= 0 },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)' }}>{item.label}</span>
@@ -154,9 +154,9 @@ export default function DeepDive() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '32px' }}>
         <MetricCard label="Revenue (Current)" value={result.revenue_current ? `$${(result.revenue_current / 1e9).toFixed(1)}B` : '\u2014'} />
         <MetricCard label="Revenue (Prior)" value={result.revenue_prior_year ? `$${(result.revenue_prior_year / 1e9).toFixed(1)}B` : '\u2014'} />
-        <MetricCard label="Rev Growth" value={`${result.revenue_growth_pct?.toFixed(1)}%`} highlight={result.revenue_growth_pct > 10} />
-        <MetricCard label="52W High" value={`$${result.week_52_high?.toFixed(2)}`} />
-        <MetricCard label="From 52W High" value={`${result.pct_from_52w_high?.toFixed(1)}%`} highlight={result.pct_from_52w_high < -25} />
+        <MetricCard label="Rev Growth" value={result.revenue_growth_pct != null ? `${result.revenue_growth_pct.toFixed(1)}%` : '\u2014'} highlight={result.revenue_growth_pct > 10} />
+        <MetricCard label="52W High" value={result.week_52_high != null ? `$${result.week_52_high.toFixed(2)}` : '\u2014'} />
+        <MetricCard label="From 52W High" value={result.pct_from_52w_high != null ? `${result.pct_from_52w_high.toFixed(1)}%` : '\u2014'} highlight={result.pct_from_52w_high < -25} />
         <MetricCard label="P/E Ratio" value={result.pe_ratio?.toFixed(1) ?? '\u2014'} />
         <MetricCard label="P/S Ratio" value={result.ps_ratio?.toFixed(1) ?? '\u2014'} />
       </div>
@@ -206,11 +206,11 @@ export default function DeepDive() {
           {waveCount.entry_zone_low != null && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
               {[
-                { label: 'Entry Zone', value: `$${waveCount.entry_zone_low?.toFixed(2)} \u2014 $${waveCount.entry_zone_high?.toFixed(2)}`, color: 'var(--signal-green)' },
-                { label: 'Stop Loss', value: `$${waveCount.stop_loss?.toFixed(2)}`, color: 'var(--red)' },
-                { label: 'Target 1', value: `$${waveCount.target_1?.toFixed(2)}`, color: 'var(--signal-amber)' },
-                { label: 'Target 2', value: waveCount.target_2 ? `$${waveCount.target_2?.toFixed(2)}` : '\u2014', color: 'var(--signal-green)' },
-                { label: 'R/R Ratio', value: `${waveCount.reward_risk_ratio?.toFixed(1)}x`, color: waveCount.reward_risk_ratio >= 2 ? 'var(--signal-green)' : 'var(--text-secondary)' },
+                { label: 'Entry Zone', value: waveCount.entry_zone_low != null && waveCount.entry_zone_high != null ? `$${waveCount.entry_zone_low.toFixed(2)} \u2014 $${waveCount.entry_zone_high.toFixed(2)}` : '\u2014', color: 'var(--signal-green)' },
+                { label: 'Stop Loss', value: waveCount.stop_loss != null ? `$${waveCount.stop_loss.toFixed(2)}` : '\u2014', color: 'var(--red)' },
+                { label: 'Target 1', value: waveCount.target_1 != null ? `$${waveCount.target_1.toFixed(2)}` : '\u2014', color: 'var(--signal-amber)' },
+                { label: 'Target 2', value: waveCount.target_2 != null ? `$${waveCount.target_2.toFixed(2)}` : '\u2014', color: 'var(--signal-green)' },
+                { label: 'R/R Ratio', value: waveCount.reward_risk_ratio != null ? `${waveCount.reward_risk_ratio.toFixed(1)}x` : '\u2014', color: waveCount.reward_risk_ratio >= 2 ? 'var(--signal-green)' : 'var(--text-secondary)' },
               ].map(item => (
                 <div key={item.label} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px 12px' }}>
                   <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{item.label}</div>
@@ -257,11 +257,11 @@ export default function DeepDive() {
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
             {[
-              { label: 'Total Signals', value: backtest.total_signals },
-              { label: 'Win Rate', value: `${backtest.win_rate_pct?.toFixed(1)}%`, good: backtest.win_rate_pct > 60 },
-              { label: 'Avg Return', value: `+${backtest.avg_return_pct?.toFixed(1)}%`, good: backtest.avg_return_pct > 0 },
-              { label: 'Avg Hold', value: `${Math.round(backtest.avg_hold_days / 30)}mo` },
-              { label: 'vs S&P 500', value: `+${backtest.vs_spy_pct?.toFixed(1)}%`, good: backtest.vs_spy_pct > 0 },
+              { label: 'Total Signals', value: backtest.total_signals ?? '\u2014' },
+              { label: 'Win Rate', value: backtest.win_rate_pct != null ? `${backtest.win_rate_pct.toFixed(1)}%` : '\u2014', good: backtest.win_rate_pct > 60 },
+              { label: 'Avg Return', value: backtest.avg_return_pct != null ? `${backtest.avg_return_pct > 0 ? '+' : ''}${backtest.avg_return_pct.toFixed(1)}%` : '\u2014', good: backtest.avg_return_pct > 0 },
+              { label: 'Avg Hold', value: backtest.avg_hold_days != null ? `${Math.round(backtest.avg_hold_days / 30)}mo` : '\u2014' },
+              { label: 'vs S&P 500', value: backtest.vs_spy_pct != null ? `${backtest.vs_spy_pct > 0 ? '+' : ''}${backtest.vs_spy_pct.toFixed(1)}%` : '\u2014', good: backtest.vs_spy_pct > 0 },
             ].map(item => (
               <MetricCard key={item.label} label={item.label} value={item.value} highlight={item.good} />
             ))}

@@ -9,7 +9,17 @@ const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
 // Hard cap on daily Claude calls to control cost
 let claudeCallsToday = 0;
+let claudeCallsDate = new Date().toDateString();
 const CLAUDE_DAILY_LIMIT = 100;
+
+function getClaudeCallCount() {
+  const today = new Date().toDateString();
+  if (today !== claudeCallsDate) {
+    claudeCallsToday = 0;
+    claudeCallsDate = today;
+  }
+  return claudeCallsToday;
+}
 
 /**
  * Fetch extended monthly price history for backtesting (max available).
@@ -90,7 +100,7 @@ async function runWaveCount() {
 
         // Claude interpretation for the best wave count
         const topWaveForClaude = waveResults[0];
-        if (topWaveForClaude && claudeCallsToday < CLAUDE_DAILY_LIMIT && process.env.ANTHROPIC_API_KEY) {
+        if (topWaveForClaude && getClaudeCallCount() < CLAUDE_DAILY_LIMIT && process.env.ANTHROPIC_API_KEY) {
           const { data: prevWave } = await supabase
             .from('wave_counts')
             .select('tli_signal, current_wave, confidence_label, claude_interpreted_at')
@@ -135,7 +145,7 @@ async function runWaveCount() {
           } else {
             console.log(`  Skipping Claude for ${ticker} — interpretation still fresh`);
           }
-        } else if (claudeCallsToday >= CLAUDE_DAILY_LIMIT) {
+        } else if (getClaudeCallCount() >= CLAUDE_DAILY_LIMIT) {
           console.log(`  Claude daily limit reached (${CLAUDE_DAILY_LIMIT}). Skipping remaining interpretations.`);
         }
 
@@ -159,12 +169,12 @@ async function runWaveCount() {
             // Generate Claude narrative for the alert if available
             let narrative = null;
             let conviction = null;
-            if (process.env.ANTHROPIC_API_KEY && claudeCallsToday < CLAUDE_DAILY_LIMIT) {
+            if (process.env.ANTHROPIC_API_KEY && getClaudeCallCount() < CLAUDE_DAILY_LIMIT) {
               claudeCallsToday++;
               const alertFundData = fundamentals || {
                 company_name, current_price, sector: null,
                 total_score: 0, signal: 'N/A',
-                revenue_growth_pct: 0, pct_from_200wma: 0, pct_from_200mma: 0,
+                revenue_growth_pct: null, pct_from_200wma: null, pct_from_200mma: null,
               };
               narrative = await generateAlertNarrative(
                 ticker,
