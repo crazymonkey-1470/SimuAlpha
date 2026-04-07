@@ -4,6 +4,7 @@ os.environ["TERM"] = "dumb"
 
 import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 from fastapi import FastAPI
 
