@@ -23,31 +23,34 @@ async function runFullPipeline() {
   console.log('════════════════════════════════════════');
 
   try {
-    await fetchUniverse();
-  } catch (err) {
-    console.error('[Pipeline] Stage 1 failed:', err.message);
-  }
+    try {
+      await fetchUniverse();
+    } catch (err) {
+      console.error('[Pipeline] Stage 1 failed:', err.message);
+    }
 
-  try {
-    await runPrescreen();
-  } catch (err) {
-    console.error('[Pipeline] Stage 2 failed:', err.message);
-  }
+    try {
+      await runPrescreen();
+    } catch (err) {
+      console.error('[Pipeline] Stage 2 failed:', err.message);
+    }
 
-  try {
-    await runDeepScore();
-  } catch (err) {
-    console.error('[Pipeline] Stage 3 failed:', err.message);
-  }
+    try {
+      await runDeepScore();
+    } catch (err) {
+      console.error('[Pipeline] Stage 3 failed:', err.message);
+    }
 
-  try {
-    await runWaveCount();
-  } catch (err) {
-    console.error('[Pipeline] Stage 4 failed:', err.message);
-  }
+    try {
+      await runWaveCount();
+    } catch (err) {
+      console.error('[Pipeline] Stage 4 failed:', err.message);
+    }
 
-  console.log('\n[Pipeline] Full pipeline complete.\n');
-  pipelineRunning = false;
+    console.log('\n[Pipeline] Full pipeline complete.\n');
+  } finally {
+    pipelineRunning = false;
+  }
 }
 
 /**

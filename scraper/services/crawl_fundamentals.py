@@ -71,7 +71,7 @@ async def get_fundamentals(ticker: str) -> dict:
     if isinstance(week_52, (int, float)) and week_52 > 0:
         result["week_52_high"] = float(week_52)
 
-    # 4) Financials (revenue) — validate types
+    # 4) Financials (revenue + EPS) — validate types
     if isinstance(fin, dict):
         rev = fin.get("revenue_current")
         if isinstance(rev, (int, float)):
@@ -83,6 +83,13 @@ async def get_fundamentals(ticker: str) -> dict:
         if isinstance(growth, (int, float)):
             result["revenue_growth_pct"] = float(growth)
         result["source"] = result["source"] or "polygon"
+
+    # P/E ratio: current_price / EPS (both must be valid positive numbers)
+    eps = fin.get("eps") if isinstance(fin, dict) else None
+    if (isinstance(result["current_price"], (int, float))
+            and isinstance(eps, (int, float))
+            and eps > 0):
+        result["pe_ratio"] = round(result["current_price"] / eps, 2)
 
     # P/S ratio: market_cap / revenue (both must be valid numbers)
     if (isinstance(result["market_cap"], (int, float))

@@ -121,8 +121,7 @@ async def get_financials(ticker: str) -> dict | None:
     revenue_current = None
     revenue_prior = None
     revenue_growth_pct = None
-    pe_ratio = None
-    ps_ratio = None
+    eps = None
 
     # Extract revenue from income statement
     if len(results) >= 1:
@@ -148,6 +147,7 @@ async def get_financials(ticker: str) -> dict | None:
         "revenue_current": revenue_current,
         "revenue_prior_year": revenue_prior,
         "revenue_growth_pct": revenue_growth_pct,
+        "eps": eps if len(results) >= 1 else None,
     }
 
 
