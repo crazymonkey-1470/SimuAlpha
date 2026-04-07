@@ -12,12 +12,15 @@ import httpx
 API_KEY = os.environ.get("POLYGON_API_KEY", "")
 BASE = "https://api.polygon.io"
 
-# Rate limiting: Polygon free tier = 5 req/min
-# We'll do 1 request per 1.5s to stay safe (40/min for paid tiers)
+# Rate limiting: Polygon free tier = 5 req/min = 12s between requests.
+# Paid tiers can lower this via POLYGON_RATE_DELAY env var (e.g. "1.5").
 _last_call = 0.0
 _lock = asyncio.Lock()
 
-RATE_LIMIT_DELAY = float(os.environ.get("POLYGON_RATE_DELAY", "1.5"))
+RATE_LIMIT_DELAY = float(os.environ.get("POLYGON_RATE_DELAY", "12"))
+
+# Track 429s to auto-throttle if delay is set too low
+_consecutive_429s = 0
 
 
 async def _rate_limit():
@@ -31,7 +34,9 @@ async def _rate_limit():
 
 
 async def _get(path: str, params: dict = None) -> dict | None:
-    """Make a rate-limited GET request to Polygon API."""
+    """Make a rate-limited GET request to Polygon API with exponential backoff."""
+    global RATE_LIMIT_DELAY, _consecutive_429s
+
     if not API_KEY:
         print("  [Polygon] POLYGON_API_KEY not set!")
         return None
@@ -43,23 +48,35 @@ async def _get(path: str, params: dict = None) -> dict | None:
         params = {}
     params["apiKey"] = API_KEY
 
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(url, params=params)
-            if r.status_code == 200:
-                return r.json()
-            elif r.status_code == 429:
-                print(f"  [Polygon] Rate limited, waiting 60s...")
-                await asyncio.sleep(60)
-                # Retry once
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
                 r = await client.get(url, params=params)
                 if r.status_code == 200:
+                    _consecutive_429s = 0
                     return r.json()
-            print(f"  [Polygon] {path} returned {r.status_code}")
+                elif r.status_code == 429:
+                    _consecutive_429s += 1
+                    backoff = min(15 * (2 ** attempt), 65)  # 15s, 30s, 60s
+                    print(f"  [Polygon] Rate limited on {path}, backoff {backoff}s (attempt {attempt + 1}/{max_retries})")
+
+                    # Auto-throttle: if we keep hitting 429s, increase base delay
+                    if _consecutive_429s >= 3 and RATE_LIMIT_DELAY < 12:
+                        RATE_LIMIT_DELAY = 12.0
+                        print(f"  [Polygon] Auto-throttled: delay increased to {RATE_LIMIT_DELAY}s")
+
+                    await asyncio.sleep(backoff)
+                    continue
+                else:
+                    print(f"  [Polygon] {path} returned {r.status_code}")
+                    return None
+        except Exception as e:
+            print(f"  [Polygon] {path} error: {e}")
             return None
-    except Exception as e:
-        print(f"  [Polygon] {path} error: {e}")
-        return None
+
+    print(f"  [Polygon] {path} failed after {max_retries} retries")
+    return None
 
 
 async def get_ticker_details(ticker: str) -> dict | None:
