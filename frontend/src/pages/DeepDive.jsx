@@ -5,6 +5,14 @@ import ScoreRing from '../components/ScoreRing';
 import SignalBadge from '../components/SignalBadge';
 import MetricCard from '../components/MetricCard';
 import LoadingSpinner from '../components/LoadingSpinner';
+import MADistanceBar from '../components/MADistanceBar';
+import FibTargetLadder from '../components/FibTargetLadder';
+import WavePositionIndicator from '../components/WavePositionIndicator';
+import RevenueSparkline from '../components/RevenueSparkline';
+import MarginTrend from '../components/MarginTrend';
+import VolumeTrendBadge from '../components/VolumeTrendBadge';
+import BacktestBadge from '../components/BacktestBadge';
+import SectorStrength from '../components/SectorStrength';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -150,6 +158,54 @@ export default function DeepDive() {
         </div>
       </div>
 
+      {/* Technical Picture */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '24px', marginBottom: '32px' }}
+      >
+        <h3 style={{ fontFamily: 'Cormorant Garamond', fontSize: '24px', fontWeight: 400, marginBottom: '20px', color: 'var(--text-primary)' }}>
+          Technical Picture
+        </h3>
+        <div style={{ marginBottom: '20px' }}>
+          <MADistanceBar
+            currentPrice={result.current_price}
+            price200wma={result.price_200wma}
+            price200mma={result.price_200mma}
+            pctFrom200wma={result.pct_from_200wma}
+            pctFrom200mma={result.pct_from_200mma}
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          {waveCount && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                Wave Position
+              </div>
+              <WavePositionIndicator
+                waveStructure={waveCount.wave_structure}
+                currentWave={waveCount.current_wave}
+                tliSignal={waveCount.tli_signal}
+              />
+            </div>
+          )}
+          {waveCount?.entry_zone_low != null && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                Price Targets
+              </div>
+              <FibTargetLadder
+                entryZoneLow={waveCount.entry_zone_low}
+                entryZoneHigh={waveCount.entry_zone_high}
+                stopLoss={waveCount.stop_loss}
+                target1={waveCount.target_1}
+                target2={waveCount.target_2}
+                currentPrice={result.current_price}
+                rewardRiskRatio={waveCount.reward_risk_ratio}
+              />
+            </div>
+          )}
+        </div>
+      </motion.div>
+
       {/* Key metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px', marginBottom: '32px' }}>
         <MetricCard label="Revenue (Current)" value={result.revenue_current ? `$${(result.revenue_current / 1e9).toFixed(1)}B` : '\u2014'} />
@@ -160,6 +216,35 @@ export default function DeepDive() {
         <MetricCard label="P/E Ratio" value={result.pe_ratio?.toFixed(1) ?? '\u2014'} />
         <MetricCard label="P/S Ratio" value={result.ps_ratio?.toFixed(1) ?? '\u2014'} />
       </div>
+
+      {/* Fundamental Trend */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25 }}
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '24px', marginBottom: '32px' }}
+      >
+        <h3 style={{ fontFamily: 'Cormorant Garamond', fontSize: '24px', fontWeight: 400, marginBottom: '20px', color: 'var(--text-primary)' }}>
+          Fundamental Trend
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', alignItems: 'start' }}>
+          <div>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+              Revenue History
+            </div>
+            <RevenueSparkline revenueHistory={result.revenue_history} />
+          </div>
+          <div>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+              Gross Margin
+            </div>
+            <MarginTrend grossMarginHistory={result.gross_margin_history} grossMarginCurrent={result.gross_margin_current} />
+          </div>
+          <div>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+              Volume Trend
+            </div>
+            <VolumeTrendBadge volumeTrend={result.volume_trend} volumeTrendRatio={result.volume_trend_ratio} />
+          </div>
+        </div>
+      </motion.div>
 
       {/* Wave Count */}
       {waveCount && (
@@ -187,13 +272,13 @@ export default function DeepDive() {
           {/* TLI Signal */}
           <div style={{
             padding: '12px 16px',
-            background: waveCount.tli_signal === 'BUY_ZONE' ? 'var(--signal-green-dim)' : waveCount.tli_signal === 'AVOID' ? 'rgba(232, 68, 68, 0.08)' : 'var(--bg-secondary)',
-            border: `1px solid ${waveCount.tli_signal === 'BUY_ZONE' ? 'var(--signal-green)30' : waveCount.tli_signal === 'AVOID' ? 'rgba(232, 68, 68, 0.2)' : 'var(--border)'}`,
+            background: ['WAVE_C_BOTTOM','WAVE_2_BOTTOM','WAVE_4_BOTTOM'].includes(waveCount.tli_signal) ? 'var(--signal-green-dim)' : ['WAVE_3_IN_PROGRESS','WAVE_5_IN_PROGRESS','WAVE_B_BOUNCE'].includes(waveCount.tli_signal) ? 'rgba(232, 68, 68, 0.08)' : 'var(--bg-secondary)',
+            border: `1px solid ${['WAVE_C_BOTTOM','WAVE_2_BOTTOM','WAVE_4_BOTTOM'].includes(waveCount.tli_signal) ? 'var(--signal-green)30' : ['WAVE_3_IN_PROGRESS','WAVE_5_IN_PROGRESS','WAVE_B_BOUNCE'].includes(waveCount.tli_signal) ? 'rgba(232, 68, 68, 0.2)' : 'var(--border)'}`,
             borderRadius: '6px', marginBottom: '16px'
           }}>
             <div style={{
               fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 500, marginBottom: '4px',
-              color: waveCount.tli_signal === 'BUY_ZONE' ? 'var(--signal-green)' : waveCount.tli_signal === 'AVOID' ? 'var(--red)' : 'var(--text-secondary)'
+              color: ['WAVE_C_BOTTOM','WAVE_2_BOTTOM','WAVE_4_BOTTOM'].includes(waveCount.tli_signal) ? 'var(--signal-green)' : ['WAVE_3_IN_PROGRESS','WAVE_5_IN_PROGRESS','WAVE_B_BOUNCE'].includes(waveCount.tli_signal) ? 'var(--red)' : 'var(--text-secondary)'
             }}>
               {waveCount.tli_signal}
             </div>
@@ -269,6 +354,20 @@ export default function DeepDive() {
           <p style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
             Past performance does not guarantee future results.
           </p>
+        </motion.div>
+      )}
+
+      {/* Sector Strength */}
+      {result.sector && result.sector_avg_score != null && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          style={{ marginBottom: '24px' }}
+        >
+          <SectorStrength
+            sector={result.sector}
+            totalScore={result.total_score}
+            sectorAvgScore={result.sector_avg_score}
+            sectorRank={result.sector_rank}
+          />
         </motion.div>
       )}
 

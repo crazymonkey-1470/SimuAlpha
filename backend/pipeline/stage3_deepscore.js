@@ -64,6 +64,23 @@ async function _runDeepScore() {
       const last52Weeks = historicals.weeklyCloses.slice(-52);
       const week52Low = last52Weeks.length > 0 ? Math.min(...last52Weeks) : null;
 
+      // Volume trend: compare avg volume of last 4 weeks vs prior 8 weeks
+      let volumeTrend = null;
+      let volumeTrendRatio = null;
+      const vols = historicals.weeklyVolumes || [];
+      if (vols.length >= 12) {
+        const recent4 = vols.slice(-4);
+        const prior8 = vols.slice(-12, -4);
+        const avgRecent = recent4.reduce((a, b) => a + b, 0) / recent4.length;
+        const avgPrior = prior8.reduce((a, b) => a + b, 0) / prior8.length;
+        if (avgPrior > 0) {
+          volumeTrendRatio = Math.round((avgRecent / avgPrior) * 100) / 100;
+          if (volumeTrendRatio > 1.2) volumeTrend = 'UP';
+          else if (volumeTrendRatio < 0.8) volumeTrend = 'DOWN';
+          else volumeTrend = 'NEUTRAL';
+        }
+      }
+
       // Run TLI scorer
       const scores = runScorer({
         currentPrice,
@@ -100,6 +117,9 @@ async function _runDeepScore() {
         revenue_current: fund.revenueCurrent,
         revenue_prior_year: fund.revenuePrior,
         revenue_growth_pct: fund.revenueGrowthPct != null ? Math.round(fund.revenueGrowthPct * 10) / 10 : null,
+        revenue_history: fund.revenueHistory?.length > 0 ? fund.revenueHistory : null,
+        gross_margin_current: fund.grossMarginCurrent ?? null,
+        gross_margin_history: fund.grossMarginHistory?.length > 0 ? fund.grossMarginHistory : null,
         pe_ratio: fund.peRatio != null ? Math.round(fund.peRatio * 10) / 10 : null,
         ps_ratio: fund.psRatio != null ? Math.round(fund.psRatio * 10) / 10 : null,
         week_52_high: fund.week52High,
@@ -115,6 +135,8 @@ async function _runDeepScore() {
         previous_signal: previousSignal,
         entry_zone: scores.entryZone,
         entry_note: scores.entryNote,
+        volume_trend: volumeTrend,
+        volume_trend_ratio: volumeTrendRatio,
         last_updated: new Date().toISOString(),
       };
 
@@ -156,6 +178,33 @@ async function _runDeepScore() {
     }
 
     await sleep(300);
+  }
+
+  // Calculate sector averages and rank each stock within its sector
+  if (results.length > 0) {
+    const sectorGroups = {};
+    for (const r of results) {
+      if (!r.sector) continue;
+      if (!sectorGroups[r.sector]) sectorGroups[r.sector] = [];
+      sectorGroups[r.sector].push(r);
+    }
+
+    for (const [sector, stocks] of Object.entries(sectorGroups)) {
+      const avg = Math.round(stocks.reduce((s, r) => s + r.total_score, 0) / stocks.length * 10) / 10;
+      const sorted = [...stocks].sort((a, b) => b.total_score - a.total_score);
+
+      for (let j = 0; j < sorted.length; j++) {
+        const pct = stocks.length > 1 ? (j / (stocks.length - 1)) * 100 : 50;
+        let rank;
+        if (pct <= 10) rank = 'TOP 10%';
+        else if (pct <= 25) rank = 'TOP 25%';
+        else if (pct <= 75) rank = 'AVERAGE';
+        else rank = 'BELOW AVERAGE';
+
+        sorted[j].sector_avg_score = avg;
+        sorted[j].sector_rank = rank;
+      }
+    }
   }
 
   // Upsert all results
