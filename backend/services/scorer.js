@@ -116,7 +116,7 @@ function f(val, dec = 2) {
   return Number(val).toFixed(dec);
 }
 
-function runScorer({ currentPrice, week52High, price200WMA, price200MMA, revenueGrowthPct, psRatio, peRatio }) {
+function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200MMA, revenueGrowthPct, psRatio, peRatio }) {
   const pctFrom52wHigh = (week52High != null && currentPrice != null && week52High > 0)
     ? ((currentPrice - week52High) / week52High) * 100
     : null;
@@ -131,7 +131,31 @@ function runScorer({ currentPrice, week52High, price200WMA, price200MMA, revenue
 
   const fundamentalScore = scoreFundamental({ revenueGrowthPct, pctFrom52wHigh, psRatio, peRatio });
   const technicalScore = scoreTechnical({ pctFrom200WMA, pctFrom200MMA });
-  const totalScore = fundamentalScore + technicalScore;
+  let totalScore = fundamentalScore + technicalScore;
+
+  // Confluence zone: 200WMA and 0.618 Fib retracement converge at the same price
+  let confluenceZone = false;
+  let confluenceNote = '';
+
+  if (week52High != null && week52Low != null && price200WMA != null && currentPrice != null) {
+    const range = week52High - week52Low;
+    if (range > 0) {
+      const fib618Level = week52High - 0.618 * range;
+      const wmaFibDiff = Math.abs(price200WMA - fib618Level) / fib618Level;
+
+      // 200WMA and 0.618 Fib within 5% of each other = confluence
+      if (wmaFibDiff <= 0.05) {
+        const confluenceLevel = (price200WMA + fib618Level) / 2;
+        // Price is at or below the confluence level (within 3% above)
+        if (currentPrice <= confluenceLevel * 1.03) {
+          confluenceZone = true;
+          totalScore += 15;
+          confluenceNote = `CONFLUENCE ZONE: 200WMA ($${f(price200WMA)}) and 0.618 Fib ($${f(fib618Level)}) converge at the same price level. Price $${f(currentPrice)} is at this zone — highest conviction TLI setup.`;
+        }
+      }
+    }
+  }
+
   const signal = getSignal(totalScore);
 
   const { entryZone, entryNote } = getEntryZone({
@@ -152,6 +176,8 @@ function runScorer({ currentPrice, week52High, price200WMA, price200MMA, revenue
     signal,
     entryZone,
     entryNote,
+    confluenceZone,
+    confluenceNote,
   };
 }
 

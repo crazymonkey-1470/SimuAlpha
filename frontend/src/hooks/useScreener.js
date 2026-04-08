@@ -105,6 +105,26 @@ export function useWatchlist() {
   return { data, loading, addTicker, removeTicker };
 }
 
+export function useConfluenceZones() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data } = await supabase
+        .from('screener_results')
+        .select('*')
+        .eq('confluence_zone', true)
+        .order('total_score', { ascending: false });
+      setData(data || []);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  return { data, loading };
+}
+
 export function useTickerDetail(symbol) {
   const [result, setResult] = useState(null);
   const [waveCount, setWaveCount] = useState(null);

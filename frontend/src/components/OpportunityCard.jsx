@@ -14,7 +14,7 @@ export default function OpportunityCard({ stock, index }) {
       onClick={() => navigate(`/ticker/${stock.ticker}`)}
       style={{
         background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
+        border: stock.confluence_zone ? '1px solid var(--gold, #D4A017)' : '1px solid var(--border)',
         borderRadius: '12px',
         padding: '24px',
         cursor: 'pointer',
@@ -27,12 +27,14 @@ export default function OpportunityCard({ stock, index }) {
         background: 'var(--bg-card-hover)'
       }}
     >
-      {stock.signal === 'LOAD THE BOAT' && (
+      {(stock.signal === 'LOAD THE BOAT' || stock.confluence_zone) && (
         <div style={{
           position: 'absolute',
           top: 0, left: 0, right: 0,
           height: '2px',
-          background: 'linear-gradient(90deg, var(--signal-green), transparent)'
+          background: stock.confluence_zone
+            ? 'linear-gradient(90deg, var(--gold, #D4A017), transparent)'
+            : 'linear-gradient(90deg, var(--signal-green), transparent)'
         }} />
       )}
 
@@ -65,6 +67,24 @@ export default function OpportunityCard({ stock, index }) {
       </div>
 
       <div style={{ marginBottom: '16px' }}>
+        {stock.confluence_zone && (
+          <span style={{
+            display: 'inline-block',
+            fontFamily: 'IBM Plex Mono',
+            fontSize: '10px',
+            fontWeight: 600,
+            color: 'var(--gold, #D4A017)',
+            background: 'rgba(212, 160, 23, 0.1)',
+            border: '1px solid var(--gold, #D4A017)',
+            borderRadius: '4px',
+            padding: '3px 8px',
+            letterSpacing: '0.08em',
+            marginBottom: '6px'
+          }}>
+            CONFLUENCE ZONE
+          </span>
+        )}
+        {stock.confluence_zone && <br />}
         <SignalBadge signal={stock.signal} />
       </div>
 

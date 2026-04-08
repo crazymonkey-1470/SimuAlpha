@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useScreenerResults, useScanHistory } from '../hooks/useScreener';
+import { useScreenerResults, useScanHistory, useConfluenceZones } from '../hooks/useScreener';
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -9,6 +9,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { data: allStocks, loading } = useScreenerResults();
   const { data: scanHistory } = useScanHistory();
+  const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
 
   const topOpportunities = allStocks
     .filter(s => s.signal === 'LOAD THE BOAT')
@@ -94,6 +95,63 @@ export default function Dashboard() {
           </div>
         )}
       </motion.div>
+
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '24px'
+        }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--gold, #D4A017)'
+          }}>
+            Confluence Zones
+          </h2>
+          <span style={{
+            fontFamily: 'IBM Plex Mono', fontSize: '11px',
+            color: 'var(--text-dim)'
+          }}>
+            200WMA + 0.618 Fib
+          </span>
+        </div>
+
+        {confluenceLoading ? (
+          <LoadingSpinner />
+        ) : confluenceStocks.length === 0 ? (
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--gold, #D4A017)20',
+            borderRadius: '12px',
+            padding: '32px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontFamily: 'Cormorant Garamond', fontSize: '20px',
+              fontWeight: 400, color: 'var(--text-secondary)', marginBottom: '8px'
+            }}>
+              No confluence zones detected
+            </div>
+            <div style={{
+              fontFamily: 'IBM Plex Mono', fontSize: '11px',
+              color: 'var(--text-dim)', lineHeight: 1.7
+            }}>
+              Confluence zones are rare and high conviction. They occur when the 200 Weekly Moving Average
+              and the 0.618 Fibonacci retracement converge at the same price level. When one appears, it
+              will show here first.
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '16px'
+          }}>
+            {confluenceStocks.map((stock, i) => (
+              <OpportunityCard key={stock.ticker} stock={stock} index={i} />
+            ))}
+          </div>
+        )}
+      </div>
 
       <div style={{ marginBottom: '48px' }}>
         <div style={{

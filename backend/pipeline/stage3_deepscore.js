@@ -60,10 +60,15 @@ async function _runDeepScore() {
       const price200MMA = calculate200MMA(historicals.monthlyCloses);
       const currentPrice = fund.currentPrice;
 
+      // 52-week low from last 52 weekly closes
+      const last52Weeks = historicals.weeklyCloses.slice(-52);
+      const week52Low = last52Weeks.length > 0 ? Math.min(...last52Weeks) : null;
+
       // Run TLI scorer
       const scores = runScorer({
         currentPrice,
         week52High: fund.week52High,
+        week52Low,
         price200WMA,
         price200MMA,
         revenueGrowthPct: fund.revenueGrowthPct,
@@ -98,7 +103,10 @@ async function _runDeepScore() {
         pe_ratio: fund.peRatio != null ? Math.round(fund.peRatio * 10) / 10 : null,
         ps_ratio: fund.psRatio != null ? Math.round(fund.psRatio * 10) / 10 : null,
         week_52_high: fund.week52High,
+        week_52_low: week52Low,
         pct_from_52w_high: scores.pctFrom52wHigh,
+        confluence_zone: scores.confluenceZone,
+        confluence_note: scores.confluenceNote || null,
         fundamental_score: scores.fundamentalScore,
         technical_score: scores.technicalScore,
         total_score: scores.totalScore,
@@ -137,7 +145,7 @@ async function _runDeepScore() {
 
       // Only log non-PASS signals to reduce noise
       if (scores.signal !== 'PASS') {
-        console.log(`  ${ticker}: ${scores.totalScore} - ${scores.signal}${scores.entryZone ? ' [ENTRY ZONE]' : ''}${alerts.length > 0 ? ` (${alerts.length} alerts)` : ''}`);
+        console.log(`  ${ticker}: ${scores.totalScore} - ${scores.signal}${scores.entryZone ? ' [ENTRY ZONE]' : ''}${scores.confluenceZone ? ' [CONFLUENCE]' : ''}${alerts.length > 0 ? ` (${alerts.length} alerts)` : ''}`);
       }
 
       if ((i + 1) % 100 === 0) {

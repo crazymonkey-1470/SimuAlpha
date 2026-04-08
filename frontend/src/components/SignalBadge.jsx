@@ -18,6 +18,42 @@ export default function SignalBadge({ signal, size = 'md' }) {
       label: '\u25CB WATCH',
       pulse: false,
       border: '1px solid var(--border-light)'
+    },
+    'WAVE_C_BOTTOM': {
+      color: 'var(--signal-green)',
+      bg: 'var(--signal-green-dim)',
+      label: '\u25CF WAVE C \u2014 BUY',
+      pulse: true
+    },
+    'WAVE_2_BOTTOM': {
+      color: 'var(--signal-green)',
+      bg: 'var(--signal-green-dim)',
+      label: '\u25CF WAVE 2 \u2014 BUY',
+      pulse: true
+    },
+    'WAVE_4_BOTTOM': {
+      color: 'var(--signal-amber)',
+      bg: 'var(--signal-amber-dim)',
+      label: '\u25D0 WAVE 4 \u2014 ADD',
+      pulse: false
+    },
+    'WAVE_3_IN_PROGRESS': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\u25CF WAVE 3 \u2014 WAIT',
+      pulse: false
+    },
+    'WAVE_5_IN_PROGRESS': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\u25CF WAVE 5 \u2014 SELL',
+      pulse: false
+    },
+    'WAVE_B_BOUNCE': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\u25CF WAVE B \u2014 AVOID',
+      pulse: false
     }
   };
 
