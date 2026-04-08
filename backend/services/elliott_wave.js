@@ -233,7 +233,7 @@ function validateCorrectiveWave(pivots) {
 
 // ─── LAYER 3: CURRENT WAVE POSITION ───
 
-function identifyCurrentWave(structure, pivotCount, currentPrice, lastPivot) {
+function identifyCurrentWave(structure, pivotCount, currentPrice, lastPivot, pivots) {
   let currentWave = '?';
   let tliSignal = 'WATCH';
   let tliReason = '';
@@ -245,20 +245,56 @@ function identifyCurrentWave(structure, pivotCount, currentPrice, lastPivot) {
       tliReason = 'Wave 1 potentially forming — too early to confirm.';
     } else if (pivotCount === 2) {
       currentWave = '2';
-      tliSignal = 'BUY_ZONE';
-      tliReason = 'Wave 2 retracement of new impulse — early entry opportunity before Wave 3.';
+      // Wave 2 must retrace between 50% and 100% of Wave 1
+      if (pivots && pivots.length >= 2) {
+        const w1Len = pivots[1].price - pivots[0].price;
+        const retrace = w1Len > 0 ? (pivots[1].price - currentPrice) / w1Len : 0;
+        if (retrace >= 1.0) {
+          tliSignal = 'WATCH';
+          tliReason = 'Wave 2 exceeded 100% retracement of Wave 1 — wave count is invalid.';
+        } else if (retrace >= 0.5) {
+          const w3Target = currentPrice + w1Len * 1.618;
+          tliSignal = 'WAVE_2_BOTTOM';
+          tliReason = `Wave 2 pullback to 0.618 Fib of Wave 1 — deep and scary but this is TLI's highest conviction entry. Smart money accumulates here while retail panics. Wave 3 target: $${round(w3Target)}.`;
+        } else {
+          tliSignal = 'WATCH';
+          tliReason = `Wave 2 retracement at ${round(retrace * 100, 0)}% — waiting for deeper pullback to 50-61.8% zone.`;
+        }
+      } else {
+        tliSignal = 'WAVE_2_BOTTOM';
+        tliReason = 'Wave 2 retracement of new impulse — entry opportunity before Wave 3.';
+      }
     } else if (pivotCount === 3) {
       currentWave = '3';
-      tliSignal = 'AVOID';
-      tliReason = 'Wave 3 in progress — do not chase. Wait for Wave 4 pullback.';
+      tliSignal = 'WAVE_3_IN_PROGRESS';
+      tliReason = 'TLI deadly sin #2 — never chase Wave 3 in progress. The move is already underway. Wait for Wave 4 pullback to add.';
     } else if (pivotCount === 4) {
       currentWave = '4';
-      tliSignal = 'WATCH';
-      tliReason = 'Wave 4 correction — potential add opportunity but higher risk than Wave 2 or C entries.';
+      if (pivots && pivots.length >= 4) {
+        const w1Len = pivots[1].price - pivots[0].price;
+        const w3Len = pivots[3].price - pivots[2].price;
+        const w4Retrace = w3Len > 0 ? (pivots[3].price - currentPrice) / w3Len : 0;
+        const overlapsW1 = currentPrice <= pivots[1].price;
+
+        if (overlapsW1) {
+          tliSignal = 'WATCH';
+          tliReason = 'Wave 4 entered Wave 1 price territory — violates Elliott Wave rules. Wave count invalid.';
+        } else if (w4Retrace > 0.5) {
+          tliSignal = 'WATCH';
+          tliReason = 'Wave 4 retracement exceeds 50% of Wave 3 — wave count may be invalid.';
+        } else {
+          const w5Target = currentPrice + w1Len;
+          tliSignal = 'WAVE_4_BOTTOM';
+          tliReason = `Wave 4 pullback to 0.382 Fib of Wave 3 — shallower than Wave 2, less scary, less reward. Add cautiously. Wave 5 target: $${round(w5Target)}.`;
+        }
+      } else {
+        tliSignal = 'WAVE_4_BOTTOM';
+        tliReason = 'Wave 4 correction — potential add opportunity but lower conviction than Wave 2 or C entries.';
+      }
     } else if (pivotCount === 5) {
       currentWave = '5';
-      tliSignal = 'AVOID';
-      tliReason = 'Wave 5 — TLI deadly sin to buy here. Take profits. Correction coming.';
+      tliSignal = 'WAVE_5_IN_PROGRESS';
+      tliReason = 'TLI deadly sin #1 — Wave 5 is the final leg up. Begin taking profits. An A-B-C correction is coming after Wave 5 completes.';
     } else {
       currentWave = 'POST-5';
       tliSignal = 'WATCH';
@@ -271,16 +307,22 @@ function identifyCurrentWave(structure, pivotCount, currentPrice, lastPivot) {
       tliReason = 'Wave A decline in progress — do not catch falling knife.';
     } else if (pivotCount === 2) {
       currentWave = 'B';
-      tliSignal = 'AVOID';
-      tliReason = 'Wave B relief bounce — exit liquidity. Do not buy. Wave C decline still ahead.';
+      tliSignal = 'WAVE_B_BOUNCE';
+      tliReason = 'Exit liquidity — smart money exits Wave B bounces. Retail buys thinking recovery has started. Wave C decline is still ahead. Do not buy.';
     } else if (pivotCount === 3) {
       currentWave = 'C';
-      tliSignal = 'BUY_ZONE';
-      tliReason = 'Wave C correction approaching terminus — primary TLI entry. Fundamentals permitting, load the position.';
+      tliSignal = 'WAVE_C_BOTTOM';
+      if (pivots && pivots.length >= 4) {
+        const wA_len = pivots[0].price - pivots[1].price;
+        const newImpulseTarget = currentPrice + wA_len * 1.618;
+        tliReason = `A-B-C correction completing at 0.618 Fib of the prior impulse — TLI's primary entry signal. New impulse wave starting. Initial target: $${round(newImpulseTarget)}. Fundamentals permitting, load the position.`;
+      } else {
+        tliReason = 'A-B-C correction completing at 0.618 Fib — TLI\'s primary entry signal. New impulse wave starting. Fundamentals permitting, load the position.';
+      }
     } else {
       currentWave = 'POST-C';
-      tliSignal = 'BUY_ZONE';
-      tliReason = 'Correction complete — new impulse expected. Accumulate.';
+      tliSignal = 'WAVE_C_BOTTOM';
+      tliReason = 'Correction complete — new impulse beginning. This is equivalent to a Wave C bottom entry. Accumulate.';
     }
   }
 
@@ -310,28 +352,31 @@ function calculateFibTargets(structure, currentWave, pivots, currentPrice) {
     target2 = target1 + wA_len;
     target3 = corrStart * 1.618;
   } else if (currentWave === '2' && pivots.length >= 2) {
-    // Buying early impulse
+    // Wave 2 bottom: project Wave 3 using 1.618x Wave 1 from Wave 2 low
     const w1_len = pivots[1].price - pivots[0].price;
     const w1_start = pivots[0].price;
 
-    entryZoneHigh = pivots[1].price - w1_len * 0.382;
+    entryZoneHigh = pivots[1].price - w1_len * 0.500;
     entryZoneLow = pivots[1].price - w1_len * 0.618;
-    stopLoss = w1_start * 0.99;
+    stopLoss = w1_start * 0.99; // Just below Wave 1 start
 
+    // Wave 3 target = 1.618x Wave 1 length from Wave 2 low
     target1 = entryZoneLow + w1_len * 1.618;
-    target2 = target1 + w1_len;
-    target3 = target1 * 1.272;
+    target2 = entryZoneLow + w1_len * 2.618;
+    target3 = pivots[1].price * 1.618; // Extended target
   } else if (currentWave === '4' && pivots.length >= 4) {
-    // Wave 4 entry
+    // Wave 4 bottom: project Wave 5 as ~equal to Wave 1 from Wave 4 low
     const w1_len = pivots[1].price - pivots[0].price;
     const w1_high = pivots[1].price;
+    const w3_len = pivots[3].price - pivots[2].price;
 
-    entryZoneHigh = pivots[3].price - (pivots[3].price - pivots[2].price) * 0.382;
-    entryZoneLow = pivots[3].price - (pivots[3].price - pivots[2].price) * 0.500;
-    stopLoss = w1_high; // Wave 4 cannot overlap Wave 1
+    entryZoneHigh = pivots[3].price - w3_len * 0.382;
+    entryZoneLow = pivots[3].price - w3_len * 0.500;
+    stopLoss = w1_high * 0.99; // Just below Wave 1 high (Wave 4 cannot overlap Wave 1)
 
+    // Wave 5 ≈ Wave 1 length from Wave 4 low
     target1 = currentPrice + w1_len;
-    target2 = target1 * 1.272;
+    target2 = currentPrice + w1_len * 1.272;
     target3 = null;
   }
 
@@ -384,11 +429,12 @@ function runWaveAnalysis(ticker, monthlyPrices, weeklyPrices, currentPrice) {
         const result = validateImpulseWave(candidate);
         if (result.valid && result.confidence >= 40) {
           const pivotCount = getPivotCountSinceStart(candidate, pivots, currentPrice);
-          const position = identifyCurrentWave('impulse', pivotCount, currentPrice, candidate[candidate.length - 1]);
+          const position = identifyCurrentWave('impulse', pivotCount, currentPrice, candidate[candidate.length - 1], candidate);
           const targets = calculateFibTargets('impulse', position.currentWave, candidate, currentPrice);
 
-          // Skip if reward/risk too low for BUY_ZONE signals
-          if (position.tliSignal === 'BUY_ZONE' && targets.reward_risk_ratio != null && targets.reward_risk_ratio < 2.0) {
+          // Skip if reward/risk too low for buy signals
+          const buySignals = ['WAVE_C_BOTTOM', 'WAVE_2_BOTTOM', 'WAVE_4_BOTTOM'];
+          if (buySignals.includes(position.tliSignal) && targets.reward_risk_ratio != null && targets.reward_risk_ratio < 2.0) {
             continue;
           }
 
@@ -423,10 +469,11 @@ function runWaveAnalysis(ticker, monthlyPrices, weeklyPrices, currentPrice) {
         const result = validateCorrectiveWave(candidate);
         if (result.valid && result.confidence >= 40) {
           const pivotCount = getPivotCountSinceStart(candidate, pivots, currentPrice);
-          const position = identifyCurrentWave('corrective', pivotCount, currentPrice, candidate[candidate.length - 1]);
+          const position = identifyCurrentWave('corrective', pivotCount, currentPrice, candidate[candidate.length - 1], candidate);
           const targets = calculateFibTargets('corrective', position.currentWave, candidate, currentPrice);
 
-          if (position.tliSignal === 'BUY_ZONE' && targets.reward_risk_ratio != null && targets.reward_risk_ratio < 2.0) {
+          const buySignals = ['WAVE_C_BOTTOM', 'WAVE_2_BOTTOM', 'WAVE_4_BOTTOM'];
+          if (buySignals.includes(position.tliSignal) && targets.reward_risk_ratio != null && targets.reward_risk_ratio < 2.0) {
             continue;
           }
 
