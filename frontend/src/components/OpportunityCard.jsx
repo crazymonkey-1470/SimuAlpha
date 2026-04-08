@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ScoreRing from './ScoreRing';
 import SignalBadge from './SignalBadge';
+import VolumeTrendBadge from './VolumeTrendBadge';
 
 export default function OpportunityCard({ stock, index }) {
   const navigate = useNavigate();
@@ -134,6 +135,71 @@ export default function OpportunityCard({ stock, index }) {
           </div>
         </div>
       </div>
+
+      {/* Compact enrichment data */}
+      {(stock.volume_trend || stock.gross_margin_current != null) && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px 12px',
+          marginTop: '12px',
+          paddingTop: '10px',
+          borderTop: '1px solid var(--border)'
+        }}>
+          {stock.volume_trend && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-dim)', marginBottom: '2px' }}>
+                VOLUME
+              </div>
+              <VolumeTrendBadge volumeTrend={stock.volume_trend} volumeTrendRatio={stock.volume_trend_ratio} compact />
+            </div>
+          )}
+          {stock.gross_margin_current != null && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-dim)', marginBottom: '2px' }}>
+                GROSS MARGIN
+              </div>
+              <div style={{
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '13px',
+                color: stock.gross_margin_current > 40 ? 'var(--signal-green)' : stock.gross_margin_current >= 20 ? 'var(--signal-amber)' : 'var(--red, #ef4444)'
+              }}>
+                {stock.gross_margin_current.toFixed(1)}%
+                {stock.gross_margin_history?.length >= 2 && (() => {
+                  const curr = stock.gross_margin_history[stock.gross_margin_history.length - 1];
+                  const prev = stock.gross_margin_history[stock.gross_margin_history.length - 2];
+                  return curr > prev ? ' ↑' : curr < prev ? ' ↓' : '';
+                })()}
+              </div>
+            </div>
+          )}
+          {stock.current_wave && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-dim)', marginBottom: '2px' }}>
+                WAVE
+              </div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                {stock.current_wave}
+              </div>
+            </div>
+          )}
+          {stock.backtest_win_rate != null && (
+            <div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-dim)', marginBottom: '2px' }}>
+                BACKTEST WIN
+              </div>
+              <div style={{
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '13px',
+                fontWeight: 500,
+                color: stock.backtest_win_rate > 65 ? 'var(--signal-green)' : stock.backtest_win_rate >= 50 ? 'var(--signal-amber)' : 'var(--red, #ef4444)'
+              }}>
+                {stock.backtest_win_rate.toFixed(0)}%
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {stock.entry_zone && (
         <div style={{

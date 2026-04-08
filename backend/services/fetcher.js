@@ -32,8 +32,9 @@ async function fetchHistoricalPrices(ticker) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const weeklyCloses = (data.weekly || []).map((d) => d.close).filter((c) => c != null);
+    const weeklyVolumes = (data.weekly || []).map((d) => d.volume).filter((v) => v != null);
     const monthlyCloses = (data.monthly || []).map((d) => d.close).filter((c) => c != null);
-    return { weeklyCloses, monthlyCloses };
+    return { weeklyCloses, weeklyVolumes, monthlyCloses };
   } catch (err) {
     console.error(`[fetcher] historical failed ${ticker}:`, err.message);
     return { weeklyCloses: [], monthlyCloses: [] };
@@ -76,6 +77,9 @@ async function fetchFundamentals(ticker) {
       revenueCurrent: data.revenue_current ?? null,
       revenuePrior: data.revenue_prior_year ?? null,
       revenueGrowthPct: data.revenue_growth_pct ?? null,
+      revenueHistory: data.revenue_history ?? [],
+      grossMarginCurrent: data.gross_margin_current ?? null,
+      grossMarginHistory: data.gross_margin_history ?? [],
       peRatio: data.pe_ratio ?? null,
       psRatio: data.ps_ratio ?? null,
     };

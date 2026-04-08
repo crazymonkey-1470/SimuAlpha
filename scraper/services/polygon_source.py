@@ -126,7 +126,7 @@ async def get_financials(ticker: str) -> dict | None:
             "ticker": ticker,
             "timeframe": "annual",
             "order": "desc",
-            "limit": 2,
+            "limit": 5,
             "sort": "filing_date",
         },
     )
@@ -139,8 +139,31 @@ async def get_financials(ticker: str) -> dict | None:
     revenue_prior = None
     revenue_growth_pct = None
     eps = None
+    revenue_history = []
+    gross_margin_history = []
 
-    # Extract revenue from income statement
+    # Extract revenue and gross margin from each year (up to 5)
+    for entry in results:
+        income = entry.get("financials", {}).get("income_statement", {})
+        rev_val = income.get("revenues", {}).get("value")
+        cost_val = income.get("cost_of_revenue", {}).get("value")
+
+        if isinstance(rev_val, (int, float)):
+            revenue_history.append(rev_val)
+            if isinstance(cost_val, (int, float)) and rev_val > 0:
+                gm = round((rev_val - cost_val) / rev_val * 100, 2)
+                gross_margin_history.append(gm)
+            else:
+                gross_margin_history.append(None)
+        else:
+            revenue_history.append(None)
+            gross_margin_history.append(None)
+
+    # Reverse to oldest-first order
+    revenue_history = list(reversed(revenue_history))
+    gross_margin_history = list(reversed(gross_margin_history))
+
+    # Extract current and prior revenue
     if len(results) >= 1:
         income = results[0].get("financials", {}).get("income_statement", {})
         revenues = income.get("revenues", {})
@@ -160,10 +183,20 @@ async def get_financials(ticker: str) -> dict | None:
                 (revenue_current - revenue_prior) / revenue_prior * 100, 2
             )
 
+    # Current gross margin (most recent year)
+    gross_margin_current = None
+    for gm in reversed(gross_margin_history):
+        if gm is not None:
+            gross_margin_current = gm
+            break
+
     return {
         "revenue_current": revenue_current,
         "revenue_prior_year": revenue_prior,
         "revenue_growth_pct": revenue_growth_pct,
+        "revenue_history": revenue_history,
+        "gross_margin_current": gross_margin_current,
+        "gross_margin_history": gross_margin_history,
         "eps": eps if len(results) >= 1 else None,
     }
 
@@ -204,10 +237,13 @@ async def get_historical_prices(ticker: str) -> dict | None:
         for bar in weekly_data["results"]:
             if bar.get("c") and bar.get("t"):
                 dt = datetime.fromtimestamp(bar["t"] / 1000)
-                result["weekly"].append({
+                entry = {
                     "date": dt.strftime("%Y-%m-%d"),
                     "close": round(float(bar["c"]), 2),
-                })
+                }
+                if bar.get("v") is not None:
+                    entry["volume"] = int(bar["v"])
+                result["weekly"].append(entry)
 
     # Monthly: 20 years
     from_monthly = (datetime.now() - timedelta(days=365 * 20)).strftime("%Y-%m-%d")

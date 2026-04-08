@@ -20,6 +20,9 @@ async def get_fundamentals(ticker: str) -> dict:
         "revenue_current": None,
         "revenue_prior_year": None,
         "revenue_growth_pct": None,
+        "revenue_history": [],
+        "gross_margin_current": None,
+        "gross_margin_history": [],
         "pe_ratio": None,
         "ps_ratio": None,
         "debt_to_equity": None,
@@ -82,6 +85,12 @@ async def get_fundamentals(ticker: str) -> dict:
         growth = fin.get("revenue_growth_pct")
         if isinstance(growth, (int, float)):
             result["revenue_growth_pct"] = float(growth)
+        if isinstance(fin.get("revenue_history"), list):
+            result["revenue_history"] = fin["revenue_history"]
+        if isinstance(fin.get("gross_margin_current"), (int, float)):
+            result["gross_margin_current"] = fin["gross_margin_current"]
+        if isinstance(fin.get("gross_margin_history"), list):
+            result["gross_margin_history"] = fin["gross_margin_history"]
         result["source"] = result["source"] or "polygon"
 
     # P/E ratio: current_price / EPS (both must be valid positive numbers)
@@ -105,7 +114,7 @@ async def get_fundamentals(ticker: str) -> dict:
     elif has_price or has_revenue:
         fundamentals_cache.set(f"fund_{ticker}", result, 3600)
 
-    fields_filled = sum(1 for v in result.values() if v is not None)
-    print(f"  [Fundamentals] {ticker}: {fields_filled}/16 fields filled (source={result['source']})")
+    fields_filled = sum(1 for v in result.values() if v is not None and v != [])
+    print(f"  [Fundamentals] {ticker}: {fields_filled}/{len(result)} fields filled (source={result['source']})")
 
     return result
