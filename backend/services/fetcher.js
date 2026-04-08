@@ -24,64 +24,6 @@ async function fetchStockList() {
   }));
 }
 
-// ── Scraper: Company profile ──
-
-async function fetchProfile(ticker) {
-  try {
-    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    return {
-      companyName: data.company_name || data.ticker || ticker,
-      sector: data.sector || null,
-      industry: null,
-      marketCap: data.market_cap ?? null,
-      currentPrice: data.current_price ?? null,
-      week52High: data.week_52_high ?? null,
-      exchange: null,
-    };
-  } catch (err) {
-    console.error(`[fetcher] profile failed ${ticker}:`, err.message);
-    return null;
-  }
-}
-
-// ── Scraper: Income statement (revenue) ──
-
-async function fetchIncomeStatement(ticker) {
-  try {
-    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return {
-      revenueCurrent: data.revenue_current ?? null,
-      revenuePrior: data.revenue_prior_year ?? null,
-      revenueGrowthPct: data.revenue_growth_pct ?? null,
-    };
-  } catch (err) {
-    console.error(`[fetcher] income failed ${ticker}:`, err.message);
-    return { revenueCurrent: null, revenuePrior: null, revenueGrowthPct: null };
-  }
-}
-
-// ── Scraper: Ratios (P/E, P/S) ──
-
-async function fetchRatios(ticker) {
-  try {
-    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return {
-      peRatio: data.pe_ratio ?? null,
-      psRatio: data.ps_ratio ?? null,
-    };
-  } catch (err) {
-    console.error(`[fetcher] ratios failed ${ticker}:`, err.message);
-    return { peRatio: null, psRatio: null };
-  }
-}
-
 // ── Scraper: Historical prices ──
 
 async function fetchHistoricalPrices(ticker) {
@@ -95,26 +37,6 @@ async function fetchHistoricalPrices(ticker) {
   } catch (err) {
     console.error(`[fetcher] historical failed ${ticker}:`, err.message);
     return { weeklyCloses: [], monthlyCloses: [] };
-  }
-}
-
-// ── Scraper: Current quote ──
-
-async function fetchQuote(ticker) {
-  try {
-    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    return {
-      currentPrice: data.current_price ?? null,
-      week52High: data.week_52_high ?? null,
-      companyName: data.company_name || data.ticker || ticker,
-      sector: data.sector || null,
-    };
-  } catch (err) {
-    console.error(`[fetcher] quote failed ${ticker}:`, err.message);
-    return { currentPrice: null, week52High: null, companyName: ticker, sector: null };
   }
 }
 
@@ -165,11 +87,7 @@ async function fetchFundamentals(ticker) {
 
 module.exports = {
   fetchStockList,
-  fetchProfile,
-  fetchIncomeStatement,
-  fetchRatios,
   fetchHistoricalPrices,
-  fetchQuote,
   fetchFundamentals,
   calculate200WMA,
   calculate200MMA,

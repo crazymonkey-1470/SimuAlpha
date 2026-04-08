@@ -45,11 +45,10 @@ async function _runDeepScore() {
     const { ticker, company_name, sector } = candidates[i];
 
     try {
-      // Fetch fundamentals (single call) + historical prices (separate call)
-      const [fund, historicals] = await Promise.all([
-        fetchFundamentals(ticker),
-        fetchHistoricalPrices(ticker),
-      ]);
+      // Fetch fundamentals then historical prices sequentially
+      // (parallel requests caused duplicate simultaneous scraper hits per ticker)
+      const fund = await fetchFundamentals(ticker);
+      const historicals = await fetchHistoricalPrices(ticker);
 
       if (!fund || fund.currentPrice == null) {
         console.log(`  ${ticker}: no data, skipping`);
