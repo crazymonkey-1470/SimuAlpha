@@ -14,6 +14,7 @@ import VolumeTrendBadge from '../components/VolumeTrendBadge';
 import BacktestBadge from '../components/BacktestBadge';
 import SectorStrength from '../components/SectorStrength';
 import ValuationDisplay from '../components/ValuationDisplay';
+import ThesisDisplay from '../components/ThesisDisplay';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -234,6 +235,13 @@ export default function DeepDive() {
             </div>
           )}
         </div>
+      </motion.div>
+
+      {/* AI Investment Thesis */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.17 }}
+        style={{ marginBottom: '32px' }}
+      >
+        <ThesisDisplay ticker={symbol} />
       </motion.div>
 
       {/* Three-Pillar Valuation */}

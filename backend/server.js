@@ -348,6 +348,227 @@ app.post('/api/exit-signals/:id/acknowledge', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// AGENTIC INTELLIGENCE ENDPOINTS (Sprint 8)
+// ═══════════════════════════════════════════
+
+const { analyzeStock, runLearningCycle } = require('./services/orchestrator');
+const { invoke: invokeSkill, listSkills } = require('./skills');
+const { retrieve: knowledgeRetrieve, getStats: knowledgeStats } = require('./services/knowledge');
+const { ingestDocument } = require('./services/ingest');
+
+// --- Analysis ---
+
+// Run full agentic analysis for a ticker
+app.post('/api/analyze/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    res.json({ status: 'started', ticker });
+    // Run analysis in background (don't block response)
+    analyzeStock(ticker).catch(err =>
+      console.error(`[API] Analysis error for ${ticker}:`, err.message)
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get stored analysis for a ticker
+app.get('/api/analysis/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('stock_analysis')
+      .select('*')
+      .eq('ticker', ticker)
+      .single();
+    if (error) return res.json({ ticker, analysis: null });
+    res.json({ ticker, analysis: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get thesis for a ticker
+app.get('/api/analysis/:ticker/thesis', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('stock_analysis')
+      .select('ticker, signal, composite_score, thesis_text, thesis_json, greats_comparison, analyzed_at')
+      .eq('ticker', ticker)
+      .single();
+    if (error) return res.json({ ticker, thesis: null });
+    res.json({ ticker, thesis: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Knowledge Base ---
+
+// Ingest a document (plain text)
+app.post('/api/knowledge/ingest', async (req, res) => {
+  const { text, sourceName, sourceType, sourceDate } = req.body;
+  if (!text || !sourceName || !sourceType) {
+    return res.status(400).json({ error: 'Missing text, sourceName, or sourceType' });
+  }
+  try {
+    const result = await ingestDocument({ text, sourceName, sourceType, sourceDate });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Search knowledge base
+app.post('/api/knowledge/search', async (req, res) => {
+  const { query, ticker, topics, sourceTypes, limit } = req.body;
+  if (!query) return res.status(400).json({ error: 'Missing query' });
+  try {
+    const results = await knowledgeRetrieve({
+      query,
+      ticker: ticker || null,
+      topics: topics || null,
+      sourceTypes: sourceTypes || null,
+      limit: limit || 10,
+    });
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Knowledge base stats
+app.get('/api/knowledge/stats', async (_req, res) => {
+  try {
+    const stats = await knowledgeStats();
+    res.json({ stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Skills ---
+
+// List all available skills
+app.get('/api/skills', (_req, res) => {
+  res.json({ skills: listSkills() });
+});
+
+// Invoke a specific skill
+app.post('/api/skills/:skillName', async (req, res) => {
+  const { skillName } = req.params;
+  try {
+    const result = await invokeSkill(skillName, req.body);
+    res.json({ skill: skillName, result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Learning ---
+
+// Run a learning cycle
+app.post('/api/learning/cycle', async (_req, res) => {
+  try {
+    res.json({ status: 'started' });
+    runLearningCycle().catch(err =>
+      console.error('[API] Learning cycle error:', err.message)
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get pending weight adjustments
+app.get('/api/learning/adjustments', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('weight_adjustments')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ adjustments: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Approve or reject a weight adjustment
+app.put('/api/learning/adjustments/:id', async (req, res) => {
+  const { status } = req.body;
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
+  }
+  try {
+    const { error } = await supabase
+      .from('weight_adjustments')
+      .update({ status, reviewed_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get learned principles
+app.get('/api/learning/principles', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('learned_principles')
+      .select('*')
+      .order('confidence', { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ principles: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Compare to Greats ---
+
+app.post('/api/compare-greats/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const { data: analysis } = await supabase
+      .from('stock_analysis')
+      .select('greats_comparison')
+      .eq('ticker', ticker)
+      .single();
+    if (analysis?.greats_comparison) {
+      return res.json({ ticker, comparison: analysis.greats_comparison });
+    }
+    // Run fresh comparison
+    const { data: stockData } = await supabase
+      .from('screener_results')
+      .select('*')
+      .eq('ticker', ticker)
+      .single();
+    if (!stockData) return res.status(404).json({ error: `${ticker} not found` });
+
+    const result = await invokeSkill('compare_to_greats', {
+      ticker,
+      profile: {
+        company_name: stockData.company_name,
+        sector: stockData.sector,
+        market_cap: stockData.market_cap,
+        pe_ratio: stockData.pe_ratio,
+        revenue_growth_pct: stockData.revenue_growth_pct,
+      },
+      scoring: { total_score: stockData.total_score, signal: stockData.signal },
+      valuation: null,
+      moat: null,
+    });
+    res.json({ ticker, comparison: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
 
 app.get('/health', async (_req, res) => {
   let candidatesCount = 0;
