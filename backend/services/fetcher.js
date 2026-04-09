@@ -95,6 +95,12 @@ async function fetchFundamentals(ticker) {
       debtToEquity: data.debt_to_equity ?? null,
       sharesOutstandingChange: data.shares_outstanding_change ?? null,
       dividendPerShare: data.dividend_per_share ?? null,
+      // Sprint 7 fields
+      operatingIncome: data.operating_income ?? null,
+      operatingMargin: data.operating_margin ?? null,
+      ebitda: data.ebitda ?? null,
+      dilutedShares: data.diluted_shares ?? null,
+      sharesOutstanding: data.shares_outstanding ?? null,
     };
   } catch (err) {
     console.error(`[fetcher] fundamentals failed ${ticker}:`, err.message);

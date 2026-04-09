@@ -24,15 +24,48 @@ const SECTOR_WACC = {
   'Real Estate': 7.0,
 };
 
+// Sector-specific EV/Sales defaults (used when no 5yr historical available)
+const SECTOR_EV_SALES = {
+  'Consumer Staples': 2.0,
+  'Healthcare': 4.0,
+  'Financials': 2.5,
+  'Industrials': 2.0,
+  'Energy': 1.5,
+  'Information Technology': 6.0,
+  'Consumer Discretionary': 2.5,
+  'Communication Services': 3.5,
+  'Communications': 3.5,
+  'Materials': 1.8,
+  'Utilities': 2.5,
+  'Real Estate': 5.0,
+};
+
+const SECTOR_EV_EBITDA = {
+  'Consumer Staples': 12.0,
+  'Healthcare': 15.0,
+  'Financials': 10.0,
+  'Industrials': 11.0,
+  'Energy': 7.0,
+  'Information Technology': 18.0,
+  'Consumer Discretionary': 12.0,
+  'Communication Services': 14.0,
+  'Communications': 14.0,
+  'Materials': 9.0,
+  'Utilities': 10.0,
+  'Real Estate': 15.0,
+};
+
 function estimateWACC(stock) {
   let wacc = SECTOR_WACC[stock.sector] || 8.0;
 
+  // Use real beta if available, otherwise skip the beta adjustment
   if (stock.beta != null && stock.beta > 1.5) wacc += 1.0;
+  else if (stock.beta != null && stock.beta < 0.7) wacc -= 0.5; // low beta = lower risk
   if (stock.debtToEquity != null && stock.debtToEquity > 1.5) wacc += 0.5;
   if (stock.marketCap != null && stock.marketCap < 2e9) wacc += 1.0;
   if (stock.revenueGrowth3YrAvg != null && stock.revenueGrowth3YrAvg < 0) wacc += 1.0;
 
-  return Math.min(wacc, 12);
+  return Math.min(Math.max(wacc, 3), 12); // floor at 3%
 }
 
 function estimateTerminalRate(stock) {
@@ -76,9 +109,10 @@ function computeDCF({ ttmFCF, sharesOutstanding, growthRate, terminalRate, wacc,
 // EV/SALES VALUATION
 // ═══════════════════════════════════════════
 
-function computeEVSales({ ttmRevenue, historicalEVSales, netDebt, sharesOutstanding }) {
+function computeEVSales({ ttmRevenue, historicalEVSales, netDebt, sharesOutstanding, sector }) {
   if (!ttmRevenue || ttmRevenue <= 0 || !sharesOutstanding || sharesOutstanding <= 0) return null;
-  const multiple = historicalEVSales || 3.0; // default if no history
+  // Priority: real 5yr historical > sector default > global default
+  const multiple = historicalEVSales || SECTOR_EV_SALES[sector] || 3.0;
   const ev = ttmRevenue * multiple;
   const equityValue = ev - (netDebt || 0);
   if (equityValue <= 0) return null;
@@ -89,9 +123,10 @@ function computeEVSales({ ttmRevenue, historicalEVSales, netDebt, sharesOutstand
 // EV/EBITDA VALUATION
 // ═══════════════════════════════════════════
 
-function computeEVEBITDA({ ttmEBITDA, historicalEVEBITDA, netDebt, sharesOutstanding }) {
+function computeEVEBITDA({ ttmEBITDA, historicalEVEBITDA, netDebt, sharesOutstanding, sector }) {
   if (!ttmEBITDA || ttmEBITDA <= 0 || !sharesOutstanding || sharesOutstanding <= 0) return null;
-  const multiple = historicalEVEBITDA || 12.0; // default if no history
+  // Priority: real 5yr historical > sector default > global default
+  const multiple = historicalEVEBITDA || SECTOR_EV_EBITDA[sector] || 12.0;
   const ev = ttmEBITDA * multiple;
   const equityValue = ev - (netDebt || 0);
   if (equityValue <= 0) return null;
@@ -129,6 +164,7 @@ function computeThreePillarValuation(stock) {
     historicalEVSales: stock.historicalEVSales5YrAvg,
     netDebt,
     sharesOutstanding: shares,
+    sector: stock.sector,
   });
 
   // EV/EBITDA
@@ -137,6 +173,7 @@ function computeThreePillarValuation(stock) {
     historicalEVEBITDA: stock.historicalEVEBITDA5YrAvg,
     netDebt,
     sharesOutstanding: shares,
+    sector: stock.sector,
   });
 
   // Average of available methods
@@ -166,8 +203,8 @@ function computeThreePillarValuation(stock) {
 
   return {
     dcf: { target: dcfTarget, upside: upside(dcfTarget), growthRate, terminalRate },
-    evSales: { target: evSalesTarget, upside: upside(evSalesTarget), multiple: stock.historicalEVSales5YrAvg || 3.0 },
-    evEbitda: { target: evEbitdaTarget, upside: upside(evEbitdaTarget), multiple: stock.historicalEVEBITDA5YrAvg || 12.0 },
+    evSales: { target: evSalesTarget, upside: upside(evSalesTarget), multiple: stock.historicalEVSales5YrAvg || SECTOR_EV_SALES[stock.sector] || 3.0 },
+    evEbitda: { target: evEbitdaTarget, upside: upside(evEbitdaTarget), multiple: stock.historicalEVEBITDA5YrAvg || SECTOR_EV_EBITDA[stock.sector] || 12.0 },
     avgTarget,
     avgUpside,
     rating,
@@ -190,12 +227,17 @@ function scoreValuation(valuation) {
   const evSUp = valuation.evSales?.upside;
   const evEUp = valuation.evEbitda?.upside;
 
-  // All 3 methods >15% upside
-  if (dcfUp > 15 && evSUp > 15 && evEUp > 15) {
+  // Collect available upsides (handle null pillars gracefully)
+  const availableUpsides = [dcfUp, evSUp, evEUp].filter(u => u != null);
+  const allAbove = (threshold) => availableUpsides.length >= 2 && availableUpsides.every(u => u > threshold);
+  const anyBelow = (threshold) => availableUpsides.some(u => u < threshold);
+
+  // Multiple methods agree on >15% upside
+  if (allAbove(15)) {
     pts += 10; flags.push('STRONG_UNDERVALUATION');
   }
-  // All 3 methods >10%
-  else if (dcfUp > 10 && evSUp > 10 && evEUp > 10) {
+  // Multiple methods agree on >10% upside
+  else if (allAbove(10)) {
     pts += 7; flags.push('MODERATE_UNDERVALUATION');
   }
   // Avg 5-10%
@@ -204,10 +246,10 @@ function scoreValuation(valuation) {
   }
 
   // Any method shows >10% downside
-  if (dcfUp < -10 || evSUp < -10 || evEUp < -10) {
+  if (anyBelow(-10)) {
     pts -= 5; flags.push('OVERVALUATION_WARNING');
   }
-  // DCF >20% downside
+  // DCF >20% downside (strongest signal)
   if (dcfUp != null && dcfUp < -20) {
     pts -= 10; flags.push('SIGNIFICANTLY_OVERVALUED');
   }

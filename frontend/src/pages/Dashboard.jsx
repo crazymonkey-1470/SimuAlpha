@@ -5,6 +5,7 @@ import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MarketRiskBanner from '../components/MarketRiskBanner';
+import ExitSignalPanel from '../components/ExitSignalPanel';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export default function Dashboard() {
   return (
     <div style={{ paddingTop: '48px' }}>
       <MarketRiskBanner />
+      <ExitSignalPanel />
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}

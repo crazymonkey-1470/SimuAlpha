@@ -296,6 +296,58 @@ app.get('/api/signals/accuracy', async (_req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// EXIT SIGNAL ENDPOINTS (Sprint 7)
+// ═══════════════════════════════════════════
+
+// Active (unacknowledged) exit signals
+app.get('/api/exit-signals', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  try {
+    const { data, error } = await supabase
+      .from('exit_signals')
+      .select('*')
+      .eq('acknowledged', false)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ signals: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Exit signals for a specific ticker
+app.get('/api/exit-signals/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('exit_signals')
+      .select('*')
+      .eq('ticker', ticker)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ticker, signals: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Acknowledge an exit signal
+app.post('/api/exit-signals/:id/acknowledge', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('exit_signals')
+      .update({ acknowledged: true })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
 
 app.get('/health', async (_req, res) => {
   let candidatesCount = 0;
