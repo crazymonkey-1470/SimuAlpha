@@ -1,11 +1,11 @@
 /**
  * Document Ingestion Pipeline — Sprint 8
  *
- * Chunks text, extracts metadata via LLM, embeds, and stores in knowledge_chunks.
+ * Chunks text, extracts metadata via LLM, and stores in knowledge_chunks.
+ * No external embedding API needed — retrieval uses metadata + full-text search.
  */
 
 const { completeJSON } = require('./llm');
-const { embed } = require('./embeddings');
 const supabase = require('./supabase');
 
 const METADATA_EXTRACTION_PROMPT = `You are a financial document analyzer for SimuAlpha, a stock discovery platform.
@@ -54,10 +54,7 @@ async function ingestDocument({ text, sourceName, sourceType, sourceDate }) {
         maxTokens: 500,
       });
 
-      // Step 3: Embed the chunk
-      const chunkEmbedding = await embed(chunks[i]);
-
-      // Step 4: Store in knowledge_chunks
+      // Step 3: Store in knowledge_chunks (metadata-based retrieval, no embedding needed)
       const { error } = await supabase.from('knowledge_chunks').insert({
         source_type: sourceType,
         source_name: sourceName,
@@ -68,7 +65,6 @@ async function ingestDocument({ text, sourceName, sourceType, sourceDate }) {
         investors_mentioned: metadata?.investors || [],
         sectors_mentioned: metadata?.sectors || [],
         topics: metadata?.topics || [],
-        embedding: chunkEmbedding,
       });
 
       if (error) {

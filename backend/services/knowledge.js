@@ -1,15 +1,19 @@
 /**
  * Knowledge Base Retrieval Service — Sprint 8
  *
- * Semantic search over the knowledge_chunks table using pgvector.
- * Supports metadata filtering by ticker, topic, and source type.
+ * Metadata filtering + PostgreSQL full-text search over knowledge_chunks.
+ * Zero external dependencies — just Supabase.
  */
 
-const { embed } = require('./embeddings');
 const supabase = require('./supabase');
 
 /**
- * Retrieve relevant knowledge chunks using vector similarity search.
+ * Retrieve relevant knowledge chunks using metadata filters + full-text search.
+ *
+ * Strategy:
+ *   1. Build a Supabase query with array overlap filters (tickers, topics, etc.)
+ *   2. Use the search_knowledge RPC for full-text ranking when a text query is provided
+ *   3. Fall back to metadata-only filtering if RPC is not available
  */
 async function retrieve({
   query,
@@ -17,38 +21,89 @@ async function retrieve({
   topics = null,
   sourceTypes = null,
   limit = 10,
-  similarityThreshold = 0.7,
 }) {
-  const queryEmbedding = await embed(query);
+  // Try the full-text search RPC first (metadata + ts_rank)
+  const searchTerms = buildSearchTerms(query, ticker);
 
-  // Use Supabase RPC for vector similarity search
-  let { data, error } = await supabase.rpc('match_knowledge', {
-    query_embedding: queryEmbedding,
-    match_threshold: similarityThreshold,
-    match_count: limit * 3, // fetch extra to allow for post-filtering
-  });
+  if (searchTerms) {
+    const { data, error } = await supabase.rpc('search_knowledge', {
+      search_query: searchTerms,
+      filter_ticker: ticker || '',
+      filter_topics: topics || [],
+      filter_source_types: sourceTypes || [],
+      match_count: limit,
+    });
+
+    if (!error && data && data.length > 0) {
+      return data;
+    }
+
+    // If RPC fails (e.g., function doesn't exist yet), fall back to direct query
+    if (error) {
+      console.log('[Knowledge] RPC not available, falling back to metadata query:', error.message);
+    }
+  }
+
+  // Fallback: direct metadata filtering via Supabase client
+  let q = supabase
+    .from('knowledge_chunks')
+    .select('id, source_type, source_name, source_date, chunk_text, chunk_index, tickers_mentioned, investors_mentioned, sectors_mentioned, topics');
+
+  if (sourceTypes && sourceTypes.length > 0) {
+    q = q.in('source_type', sourceTypes);
+  }
+
+  // Supabase JS doesn't support && (array overlap) directly,
+  // so we filter by ticker using contains if provided
+  if (ticker) {
+    q = q.contains('tickers_mentioned', [ticker]);
+  }
+
+  if (topics && topics.length > 0) {
+    q = q.overlaps('topics', topics);
+  }
+
+  q = q.order('created_at', { ascending: false }).limit(limit * 3);
+
+  const { data, error } = await q;
 
   if (error) {
     console.error('[Knowledge] Retrieval error:', error.message);
     return [];
   }
 
-  if (!data) return [];
-
-  // Post-filter by metadata
-  if (ticker) {
-    data = data.filter(d => d.tickers_mentioned?.includes(ticker));
-  }
-  if (topics && topics.length > 0) {
-    data = data.filter(d =>
-      d.topics?.some(t => topics.includes(t))
-    );
-  }
-  if (sourceTypes && sourceTypes.length > 0) {
-    data = data.filter(d => sourceTypes.includes(d.source_type));
+  if (!data || data.length === 0) {
+    // If metadata filtering returned nothing, broaden: fetch recent chunks
+    const { data: fallback } = await supabase
+      .from('knowledge_chunks')
+      .select('id, source_type, source_name, source_date, chunk_text, chunk_index, tickers_mentioned, investors_mentioned, sectors_mentioned, topics')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    return fallback || [];
   }
 
   return data.slice(0, limit);
+}
+
+/**
+ * Build a PostgreSQL tsquery-compatible search string from the query and ticker.
+ */
+function buildSearchTerms(query, ticker) {
+  if (!query) return null;
+
+  // Extract meaningful words (skip very short ones)
+  const words = query
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2)
+    .slice(0, 10);
+
+  if (ticker) words.unshift(ticker);
+
+  if (words.length === 0) return null;
+
+  // Join with | (OR) for broader matching
+  return words.join(' | ');
 }
 
 /**
