@@ -4,6 +4,8 @@ const { runPrescreen } = require('./pipeline/stage2_prescreen');
 const { runDeepScore } = require('./pipeline/stage3_deepscore');
 const { runWaveCount } = require('./pipeline/stage4_wavecount');
 const { generateWeeklyBrief } = require('./services/claude_interpreter');
+const { batchComputeValuations } = require('./services/valuation');
+const { updateOutcomes } = require('./services/signalTracker');
 const supabase = require('./services/supabase');
 
 /**
@@ -39,6 +41,22 @@ async function runFullPipeline() {
       await runDeepScore();
     } catch (err) {
       console.error('[Pipeline] Stage 3 failed:', err.message);
+    }
+
+    // Post-Stage-3: Batch valuation recompute + signal outcome tracking
+    try {
+      console.log('\n[Pipeline] Running batch valuations...');
+      const valResult = await batchComputeValuations();
+      console.log(`[Pipeline] Valuations: ${valResult.computed} computed, ${valResult.failed} failed`);
+    } catch (err) {
+      console.error('[Pipeline] Batch valuations failed:', err.message);
+    }
+
+    try {
+      console.log('[Pipeline] Updating signal outcomes...');
+      await updateOutcomes();
+    } catch (err) {
+      console.error('[Pipeline] Signal outcomes update failed:', err.message);
     }
 
     try {

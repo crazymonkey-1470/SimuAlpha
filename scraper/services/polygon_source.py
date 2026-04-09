@@ -156,6 +156,10 @@ async def get_financials(ticker: str) -> dict | None:
     shares_outstanding_change = None
     dividend_per_share = None
     net_income = None
+    operating_income = None
+    operating_margin = None
+    ebitda = None
+    diluted_shares = None
 
     # Extract revenue and gross margin from each year (up to 5)
     for entry in results:
@@ -201,6 +205,24 @@ async def get_financials(ticker: str) -> dict | None:
         if isinstance(ni, (int, float)):
             net_income = ni
 
+        # Operating income & margin
+        op_inc = income.get("operating_income_loss", {}).get("value")
+        if isinstance(op_inc, (int, float)):
+            operating_income = op_inc
+            if isinstance(revenue_current, (int, float)) and revenue_current > 0:
+                operating_margin = round(op_inc / revenue_current * 100, 2)
+
+        # Diluted shares (weighted average diluted)
+        diluted_shares_data = income.get("diluted_average_shares", {}).get("value")
+        if not isinstance(diluted_shares_data, (int, float)):
+            # Fallback: try weighted_average_shares_diluted or basic weighted_average_shares
+            diluted_shares_data = income.get("weighted_average_shares_diluted", {}).get("value")
+        if isinstance(diluted_shares_data, (int, float)) and diluted_shares_data > 0:
+            diluted_shares = int(diluted_shares_data)
+        elif isinstance(shares_outstanding, (int, float)) and shares_outstanding > 0:
+            # Fallback to basic shares if diluted not available
+            diluted_shares = shares_outstanding
+
         # Cash flow: operating cash flow - capex = FCF
         op_cf = cashflow.get("net_cash_flow_from_operating_activities", {}).get("value")
         cap_ex = cashflow.get("net_cash_flow_from_investing_activities", {}).get("value")
@@ -224,6 +246,19 @@ async def get_financials(ticker: str) -> dict | None:
                 free_cash_flow = op_cf + cap_ex  # cap_ex is negative
             else:
                 free_cash_flow = op_cf  # fallback: just operating CF
+
+        # EBITDA: operating income + depreciation & amortization
+        if isinstance(operating_income, (int, float)):
+            da = cashflow.get("depreciation_amortization", {}).get("value")
+            if not isinstance(da, (int, float)):
+                da = cashflow.get("depreciation_and_amortization", {}).get("value")
+            if not isinstance(da, (int, float)):
+                da = cashflow.get("depreciation", {}).get("value")
+            if isinstance(da, (int, float)):
+                ebitda = operating_income + abs(da)
+            else:
+                # Rough fallback: EBITDA ≈ operating income * 1.15 (if no D&A found)
+                ebitda = None
 
         # Dividends per share
         div_data = cashflow.get("payment_of_dividends", {}).get("value")
@@ -347,6 +382,10 @@ async def get_financials(ticker: str) -> dict | None:
         "shares_outstanding": shares_outstanding,
         "shares_outstanding_change": shares_outstanding_change,
         "dividend_per_share": dividend_per_share,
+        "operating_income": operating_income,
+        "operating_margin": operating_margin,
+        "ebitda": ebitda,
+        "diluted_shares": diluted_shares,
     }
 
 

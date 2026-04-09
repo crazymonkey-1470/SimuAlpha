@@ -37,6 +37,11 @@ async def get_fundamentals(ticker: str) -> dict:
         "debt_to_equity": None,
         "shares_outstanding_change": None,
         "dividend_per_share": None,
+        "operating_income": None,
+        "operating_margin": None,
+        "ebitda": None,
+        "diluted_shares": None,
+        "shares_outstanding": None,
         "sector": None,
         "source": None,
     }
@@ -100,12 +105,14 @@ async def get_fundamentals(ticker: str) -> dict:
         if isinstance(fin.get("gross_margin_history"), list):
             result["gross_margin_history"] = fin["gross_margin_history"]
 
-        # Extended financial fields (Sprint 6A)
+        # Extended financial fields (Sprint 6A + Sprint 7)
         for field in [
             "revenue_growth_3yr", "eps_diluted", "net_income",
             "free_cash_flow", "fcf_margin", "fcf_growth_yoy", "capex",
             "cash_and_equivalents", "total_debt", "debt_to_equity",
             "shares_outstanding_change", "dividend_per_share",
+            "operating_income", "operating_margin", "ebitda",
+            "diluted_shares", "shares_outstanding",
         ]:
             val = fin.get(field)
             if isinstance(val, (int, float)):

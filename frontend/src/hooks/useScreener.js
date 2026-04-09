@@ -125,24 +125,35 @@ export function useConfluenceZones() {
   return { data, loading };
 }
 
-export function useExitSignals() {
+export function useExitSignals(showAll = false) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      const { data } = await supabase
-        .from('exit_signals')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      setData(data || []);
-      setLoading(false);
+  async function fetchData() {
+    let query = supabase
+      .from('exit_signals')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!showAll) {
+      query = query.eq('acknowledged', false);
     }
-    fetchData();
-  }, []);
+    const { data } = await query;
+    setData(data || []);
+    setLoading(false);
+  }
 
-  return { data, loading };
+  useEffect(() => { fetchData(); }, [showAll]);
+
+  async function acknowledge(id) {
+    await supabase
+      .from('exit_signals')
+      .update({ acknowledged: true })
+      .eq('id', id);
+    fetchData();
+  }
+
+  return { data, loading, acknowledge, refetch: fetchData };
 }
 
 export function useGenerationalBuys() {

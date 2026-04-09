@@ -140,6 +140,18 @@ ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS ev_sales_price_target DECI
 ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS ev_ebitda_price_target DECIMAL(10,2);
 ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS wacc_risk_tier TEXT;
 
+-- Sprint 7 columns (data pipeline fixes + enrichment)
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS operating_margin DECIMAL(6,2);
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS ttm_ebitda BIGINT;
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS diluted_shares BIGINT;
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS shares_outstanding BIGINT;
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS beta DECIMAL(6,3);
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS ev_sales_5yr_avg DECIMAL(8,2);
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS ev_ebitda_5yr_avg DECIMAL(8,2);
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS gaap_nongaap_divergence DECIMAL(6,2);
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS operating_income BIGINT;
+ALTER TABLE screener_results ADD COLUMN IF NOT EXISTS net_income BIGINT;
+
 
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │  TABLE 4: signal_alerts                                          │
@@ -173,9 +185,11 @@ CREATE TABLE IF NOT EXISTS exit_signals (
   id                UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
   ticker            TEXT        NOT NULL,
   signal_type       TEXT        NOT NULL,
+  severity          TEXT        DEFAULT 'MEDIUM',
   signal_reason     TEXT,
   price_at_signal   NUMERIC,
   target_price      NUMERIC,
+  acknowledged      BOOLEAN     DEFAULT FALSE,
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -666,8 +680,10 @@ CREATE INDEX IF NOT EXISTS idx_alerts_ticker       ON signal_alerts(ticker);
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker_fired ON signal_alerts(ticker, fired_at DESC);
 
 -- exit_signals
-CREATE INDEX IF NOT EXISTS idx_exit_signals_ticker ON exit_signals(ticker);
-CREATE INDEX IF NOT EXISTS idx_exit_signals_time   ON exit_signals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exit_signals_ticker   ON exit_signals(ticker);
+CREATE INDEX IF NOT EXISTS idx_exit_signals_time     ON exit_signals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exit_signals_severity ON exit_signals(severity);
+CREATE INDEX IF NOT EXISTS idx_exit_signals_active   ON exit_signals(acknowledged) WHERE acknowledged = false;
 
 -- wave_counts
 CREATE INDEX IF NOT EXISTS idx_wave_ticker         ON wave_counts(ticker);

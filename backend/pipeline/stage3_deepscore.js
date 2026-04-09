@@ -5,6 +5,7 @@ const { fireAlert } = require('../services/alerts');
 const { getInstitutionalData, getMacroContext } = require('../services/institutional');
 const { computeThreePillarValuation, scoreValuation, saveValuation } = require('../services/valuation');
 const { recordSignal } = require('../services/signalTracker');
+const { getSpyReturns, enrichStock } = require('../services/enrichment');
 
 /**
  * Stage 3 — Deep Score
@@ -49,6 +50,11 @@ async function _runDeepScore() {
   try {
     _cachedMacroContext = await getMacroContext();
   } catch (_) { /* institutional tables may not exist yet */ }
+
+  // Pre-fetch SPY data for beta calculation (cached for 6 hours)
+  try {
+    await getSpyReturns();
+  } catch (_) { console.log('[Stage 3] SPY data fetch failed, beta will be null'); }
 
   // Build sector average P/E from prior run data
   const sectorPEMap = {};
@@ -163,6 +169,9 @@ async function _runDeepScore() {
         }
       }
 
+      // ── Data Enrichment (Sprint 7) ──
+      const enriched = enrichStock(fund, historicals);
+
       // Get previous score/signal for comparison (for alert detection)
       const { data: prev } = await supabase
         .from('screener_results')
@@ -222,6 +231,10 @@ async function _runDeepScore() {
         sector,
         institutionalData,
         macroContext: macroContext || _cachedMacroContext,
+        // Sprint 7 enrichment inputs
+        beta: enriched.beta,
+        forwardPE: enriched.forwardPE,
+        operatingMargin: fund.operatingMargin,
       });
 
       // Build result row (store all scored tickers, including PASS)
@@ -288,6 +301,18 @@ async function _runDeepScore() {
         eps_gaap: fund.epsDiluted ?? null,
         sector_avg_pe: sectorAvgPE,
         score_breakdown: scores.scoreBreakdown ?? null,
+        // Sprint 7 columns
+        operating_margin: fund.operatingMargin ?? null,
+        operating_income: fund.operatingIncome ?? null,
+        net_income: fund.netIncome ?? null,
+        ttm_ebitda: fund.ebitda ?? null,
+        diluted_shares: fund.dilutedShares ?? null,
+        shares_outstanding: fund.sharesOutstanding ?? null,
+        beta: enriched.beta,
+        forward_pe: enriched.forwardPE ?? null,
+        gaap_nongaap_divergence: enriched.gaapDivergence ?? null,
+        ev_sales_5yr_avg: enriched.evSales5YrAvg ?? null,
+        ev_ebitda_5yr_avg: enriched.evEbitda5YrAvg ?? null,
         last_updated: new Date().toISOString(),
       };
 
@@ -297,6 +322,7 @@ async function _runDeepScore() {
           currentPrice,
           sector: sector || fund.sector,
           marketCap: fund.marketCap,
+          beta: enriched.beta,
           debtToEquity: fund.debtToEquity,
           totalDebt: fund.totalDebt,
           cashAndEquivalents: fund.cashAndEquivalents,
@@ -307,6 +333,11 @@ async function _runDeepScore() {
           revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
           fcfGrowth3YrAvg: fund.fcfGrowthYoY,
           dilutedShares: fund.dilutedShares,
+          sharesOutstanding: fund.sharesOutstanding,
+          ttmEBITDA: fund.ebitda,
+          // Use real historical EV multiples if computed, else null (defaults used in valuation engine)
+          historicalEVSales5YrAvg: enriched.evSales5YrAvg,
+          historicalEVEBITDA5YrAvg: enriched.evEbitda5YrAvg,
         };
         const valuation = computeThreePillarValuation(valInput);
         if (valuation) {
@@ -323,6 +354,37 @@ async function _runDeepScore() {
       } catch (_) { /* valuation tables may not exist yet */ }
 
       results.push(row);
+
+      // ── Fundamental Exit Signal Detection (Sprint 7) ──
+      try {
+        const exitSignals = detectFundamentalExitSignals({
+          ticker,
+          currentPrice,
+          signal: scores.signal,
+          previousSignal,
+          totalScore: scores.totalScore,
+          previousScore,
+          revenueGrowthPct: fund.revenueGrowthPct,
+          fcfMargin: fund.fcfMargin,
+          debtToEquity: fund.debtToEquity,
+          gaapDivergence: enriched.gaapDivergence,
+          avgUpside: row.avg_upside_pct,
+        });
+        for (const es of exitSignals) {
+          // Deduplicate within 7 days
+          const { data: recent } = await supabase
+            .from('exit_signals')
+            .select('id')
+            .eq('ticker', ticker)
+            .eq('signal_type', es.signal_type)
+            .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+            .limit(1);
+          if (!recent || recent.length === 0) {
+            await supabase.from('exit_signals').insert(es);
+            console.log(`  ${ticker}: EXIT SIGNAL — ${es.signal_type} (${es.severity})`);
+          }
+        }
+      } catch (_) { /* exit_signals table may not exist yet */ }
 
       // Record signal for outcome tracking (Sprint 6B)
       try {
@@ -489,6 +551,79 @@ function detectAlerts({ ticker, companyName, sector, currentPrice, price200WMA, 
   }
 
   return alerts;
+}
+
+/**
+ * Detect fundamental-based exit signals.
+ * These complement the wave-based exits in Stage 4.
+ */
+function detectFundamentalExitSignals({ ticker, currentPrice, signal, previousSignal, totalScore, previousScore, revenueGrowthPct, fcfMargin, debtToEquity, gaapDivergence, avgUpside }) {
+  const signals = [];
+
+  // VALUE_TRAP: stock scored well but fundamentals deteriorating
+  // Revenue declining + negative FCF margin + debt rising = classic value trap
+  if (revenueGrowthPct != null && revenueGrowthPct < -5 &&
+      fcfMargin != null && fcfMargin < 0 &&
+      debtToEquity != null && debtToEquity > 2) {
+    signals.push({
+      ticker,
+      signal_type: 'VALUE_TRAP',
+      severity: 'HIGH',
+      signal_reason: `Revenue declining (${revenueGrowthPct}%), negative FCF margin (${fcfMargin}%), high leverage (D/E ${debtToEquity}). Classic value trap pattern — fundamentals deteriorating despite apparent cheapness.`,
+      price_at_signal: currentPrice,
+      target_price: null,
+    });
+  }
+
+  // THESIS_BROKEN: signal downgraded from actionable to PASS
+  if (previousSignal && previousSignal !== 'PASS' && previousSignal !== 'WATCH' && signal === 'PASS') {
+    signals.push({
+      ticker,
+      signal_type: 'THESIS_BROKEN',
+      severity: 'HIGH',
+      signal_reason: `Signal downgraded from ${previousSignal} to PASS. The original investment thesis no longer holds — fundamental or technical conditions have deteriorated beyond recovery threshold.`,
+      price_at_signal: currentPrice,
+      target_price: null,
+    });
+  }
+
+  // SCORE_COLLAPSE: score dropped >20 points in one scan
+  if (previousScore != null && totalScore != null && (previousScore - totalScore) >= 20) {
+    signals.push({
+      ticker,
+      signal_type: 'SCORE_COLLAPSE',
+      severity: 'MEDIUM',
+      signal_reason: `Score collapsed from ${previousScore} to ${totalScore} (Δ${previousScore - totalScore}). Rapid deterioration across multiple scoring dimensions — review position immediately.`,
+      price_at_signal: currentPrice,
+      target_price: null,
+    });
+  }
+
+  // EARNINGS_QUALITY_WARNING: GAAP/Non-GAAP divergence > 20%
+  if (gaapDivergence != null && gaapDivergence > 20) {
+    signals.push({
+      ticker,
+      signal_type: 'EARNINGS_QUALITY_WARNING',
+      severity: 'LOW',
+      signal_reason: `GAAP vs operating income divergence is ${gaapDivergence}% of revenue. Large gap suggests aggressive non-GAAP adjustments — earnings quality may be lower than reported.`,
+      price_at_signal: currentPrice,
+      target_price: null,
+    });
+  }
+
+  // OVERVALUATION_EXIT: all valuation methods show >10% downside
+  if (avgUpside != null && avgUpside < -10) {
+    signals.push({
+      ticker,
+      signal_type: 'OVERVALUATION_EXIT',
+      severity: 'MEDIUM',
+      signal_reason: `Three-pillar valuation shows ${avgUpside}% average downside. Stock is trading significantly above intrinsic value — consider reducing position.`,
+      price_at_signal: currentPrice,
+      target_price: null,
+    });
+  }
+
+  return signals;
 }
 
 module.exports = { runDeepScore };
