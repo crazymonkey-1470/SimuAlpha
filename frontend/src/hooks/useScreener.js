@@ -125,6 +125,46 @@ export function useConfluenceZones() {
   return { data, loading };
 }
 
+export function useExitSignals() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data } = await supabase
+        .from('exit_signals')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setData(data || []);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  return { data, loading };
+}
+
+export function useGenerationalBuys() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data } = await supabase
+        .from('screener_results')
+        .select('*')
+        .eq('generational_buy', true)
+        .order('total_score', { ascending: false });
+      setData(data || []);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  return { data, loading };
+}
+
 export function useTickerDetail(symbol) {
   const [result, setResult] = useState(null);
   const [waveCount, setWaveCount] = useState(null);

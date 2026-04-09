@@ -54,6 +54,68 @@ export default function SignalBadge({ signal, size = 'md' }) {
       bg: 'var(--red-dim, rgba(239,68,68,0.1))',
       label: '\u25CF WAVE B \u2014 AVOID',
       pulse: false
+    },
+    'GENERATIONAL_BUY': {
+      color: '#00bfff',
+      bg: 'rgba(0,191,255,0.12)',
+      label: '\uD83D\uDC8E GENERATIONAL BUY',
+      pulse: true,
+      bold: true
+    },
+    'LEADING_DIAGONAL_WAVE1': {
+      color: '#9b59b6',
+      bg: 'rgba(155,89,182,0.1)',
+      label: '\uD83D\uDCD0 LEADING DIAGONAL',
+      pulse: false
+    },
+    'ENDING_DIAGONAL_WARNING': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\u26A0\uFE0F ENDING DIAGONAL',
+      pulse: false
+    },
+    'WAVE_C_ENDING_DIAGONAL': {
+      color: 'var(--signal-green)',
+      bg: 'var(--signal-green-dim)',
+      label: '\uD83C\uDFAF WAVE C COMPLETING',
+      pulse: true
+    },
+    'STILL_IN_CORRECTION': {
+      color: 'var(--signal-amber)',
+      bg: 'var(--signal-amber-dim)',
+      label: '\u23F3 CORRECTION IN PROGRESS',
+      pulse: false
+    },
+    'WAVE_3_TARGET_HIT': {
+      color: 'var(--signal-amber)',
+      bg: 'var(--signal-amber-dim)',
+      label: '\u2702\uFE0F TRIM 50% \u2014 WAVE 3 HIT',
+      pulse: true
+    },
+    'WAVE_4_ADD_ZONE': {
+      color: 'var(--signal-green)',
+      bg: 'var(--signal-green-dim)',
+      label: '\u2795 WAVE 4 ADD ZONE',
+      pulse: true
+    },
+    'WAVE_5_TARGET_HIT': {
+      color: 'var(--signal-amber)',
+      bg: 'var(--signal-amber-dim)',
+      label: '\uD83D\uDCB0 TAKE PROFITS \u2014 WAVE 5',
+      pulse: true
+    },
+    'WAVE_B_REJECTION': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\uD83D\uDEA8 WAVE B \u2014 EXIT LIQUIDITY',
+      pulse: true
+    },
+    'FUNDAMENTAL_DETERIORATION': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\u26D4 THESIS BROKEN',
+      pulse: false,
+      bold: true
     }
   };
 
@@ -68,7 +130,7 @@ export default function SignalBadge({ signal, size = 'md' }) {
         display: 'inline-block',
         fontFamily: 'IBM Plex Mono',
         fontSize,
-        fontWeight: 500,
+        fontWeight: c.bold ? 700 : 500,
         color: c.color,
         background: c.bg,
         border: c.border || `1px solid ${c.color}30`,
