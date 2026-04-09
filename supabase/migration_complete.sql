@@ -761,3 +761,211 @@ INSERT INTO super_investors (name, cik, fund_name, philosophy, style_tags) VALUE
    ARRAY['value','credit','distressed','cycle_aware','margin_of_safety'])
 
 ON CONFLICT (cik) DO NOTHING;
+
+
+-- ══════════════════════════════════════════════════════════════════════
+-- SPRINT 8: AGENTIC INTELLIGENCE SYSTEM TABLES
+-- ══════════════════════════════════════════════════════════════════════
+
+-- Enable pgvector extension for semantic search
+CREATE EXTENSION IF NOT EXISTS vector;
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 19: knowledge_chunks (Sprint 8)                           │
+-- │  RAG knowledge base — chunked documents with vector embeddings   │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+  id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  source_type     TEXT        NOT NULL,
+  source_name     TEXT        NOT NULL,
+  source_date     DATE,
+  chunk_text      TEXT        NOT NULL,
+  chunk_index     INTEGER     NOT NULL DEFAULT 0,
+  tickers_mentioned TEXT[]    DEFAULT '{}',
+  investors_mentioned TEXT[]  DEFAULT '{}',
+  sectors_mentioned TEXT[]    DEFAULT '{}',
+  topics          TEXT[]      DEFAULT '{}',
+  embedding       VECTOR(1536),
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 20: llm_calls (Sprint 8)                                  │
+-- │  Audit trail for every LLM call in the system                    │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS llm_calls (
+  id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  task            TEXT        NOT NULL,
+  model           TEXT        NOT NULL,
+  input_tokens    INTEGER,
+  output_tokens   INTEGER,
+  elapsed_ms      INTEGER,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 21: stock_analysis (Sprint 8)                             │
+-- │  Complete agentic analysis output per ticker                     │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS stock_analysis (
+  id                    UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  ticker                TEXT        NOT NULL UNIQUE,
+  signal                TEXT,
+  composite_score       INTEGER,
+  thesis_text           TEXT,
+  thesis_json           JSONB,
+  moat_analysis         JSONB,
+  earnings_quality      JSONB,
+  value_trap            JSONB,
+  wave_analysis         JSONB,
+  position_sizing       JSONB,
+  valuation_analysis    JSONB,
+  macro_context         JSONB,
+  institutional_analysis JSONB,
+  greats_comparison     JSONB,
+  skills_used           TEXT[],
+  analysis_elapsed_ms   INTEGER,
+  analyzed_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 22: weight_adjustments (Sprint 8)                         │
+-- │  Proposed scoring weight changes (pending human approval)        │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS weight_adjustments (
+  id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  weight_name     TEXT        NOT NULL,
+  current_value   NUMERIC,
+  proposed_value  NUMERIC,
+  delta           NUMERIC,
+  evidence        TEXT,
+  expected_impact TEXT,
+  status          TEXT        DEFAULT 'pending',
+  reviewed_by     TEXT,
+  reviewed_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 23: learned_principles (Sprint 8)                         │
+-- │  Extracted investing principles from signal outcome analysis     │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS learned_principles (
+  id                UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  principle_text    TEXT        NOT NULL,
+  evidence_summary  TEXT,
+  confidence        NUMERIC,
+  applicable_to     TEXT[]      DEFAULT '{}',
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ─── Vector similarity search function (Sprint 8) ───
+
+CREATE OR REPLACE FUNCTION match_knowledge(
+  query_embedding VECTOR(1536),
+  match_threshold FLOAT,
+  match_count INT
+)
+RETURNS TABLE (
+  id              UUID,
+  source_type     TEXT,
+  source_name     TEXT,
+  source_date     DATE,
+  chunk_text      TEXT,
+  chunk_index     INTEGER,
+  tickers_mentioned TEXT[],
+  investors_mentioned TEXT[],
+  sectors_mentioned TEXT[],
+  topics          TEXT[],
+  similarity      FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.source_type,
+    kc.source_name,
+    kc.source_date,
+    kc.chunk_text,
+    kc.chunk_index,
+    kc.tickers_mentioned,
+    kc.investors_mentioned,
+    kc.sectors_mentioned,
+    kc.topics,
+    1 - (kc.embedding <=> query_embedding) AS similarity
+  FROM knowledge_chunks kc
+  WHERE 1 - (kc.embedding <=> query_embedding) > match_threshold
+  ORDER BY kc.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+
+-- ─── Sprint 8 Indexes ───
+
+-- knowledge_chunks: ivfflat for vector similarity search
+CREATE INDEX IF NOT EXISTS idx_knowledge_embedding
+  ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+
+-- knowledge_chunks: GIN indexes for metadata filtering
+CREATE INDEX IF NOT EXISTS idx_knowledge_tickers   ON knowledge_chunks USING gin(tickers_mentioned);
+CREATE INDEX IF NOT EXISTS idx_knowledge_topics    ON knowledge_chunks USING gin(topics);
+CREATE INDEX IF NOT EXISTS idx_knowledge_source    ON knowledge_chunks(source_type);
+CREATE INDEX IF NOT EXISTS idx_knowledge_name      ON knowledge_chunks(source_name);
+
+-- llm_calls
+CREATE INDEX IF NOT EXISTS idx_llm_calls_task      ON llm_calls(task);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_time      ON llm_calls(created_at DESC);
+
+-- stock_analysis
+CREATE INDEX IF NOT EXISTS idx_stock_analysis_ticker ON stock_analysis(ticker);
+CREATE INDEX IF NOT EXISTS idx_stock_analysis_signal ON stock_analysis(signal);
+CREATE INDEX IF NOT EXISTS idx_stock_analysis_score  ON stock_analysis(composite_score DESC);
+
+-- weight_adjustments
+CREATE INDEX IF NOT EXISTS idx_weight_adj_status   ON weight_adjustments(status);
+
+-- learned_principles
+CREATE INDEX IF NOT EXISTS idx_principles_confidence ON learned_principles(confidence DESC);
+
+
+-- ─── Sprint 8 RLS ───
+
+ALTER TABLE knowledge_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE llm_calls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weight_adjustments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learned_principles ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read knowledge_chunks') THEN
+    CREATE POLICY "Public read knowledge_chunks" ON knowledge_chunks FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read llm_calls') THEN
+    CREATE POLICY "Public read llm_calls" ON llm_calls FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read stock_analysis') THEN
+    CREATE POLICY "Public read stock_analysis" ON stock_analysis FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read weight_adjustments') THEN
+    CREATE POLICY "Public read weight_adjustments" ON weight_adjustments FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read learned_principles') THEN
+    CREATE POLICY "Public read learned_principles" ON learned_principles FOR SELECT USING (true);
+  END IF;
+END $$;
