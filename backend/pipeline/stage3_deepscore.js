@@ -335,7 +335,6 @@ async function _runDeepScore() {
           dilutedShares: fund.dilutedShares,
           sharesOutstanding: fund.sharesOutstanding,
           ttmEBITDA: fund.ebitda,
-          // Use real historical EV multiples if computed, else null (defaults used in valuation engine)
           historicalEVSales5YrAvg: enriched.evSales5YrAvg,
           historicalEVEBITDA5YrAvg: enriched.evEbitda5YrAvg,
         };
