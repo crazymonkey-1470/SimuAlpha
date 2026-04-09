@@ -89,6 +89,55 @@ async function runWaveCount() {
           if (wcErr) console.error(`  ${ticker}: wave_counts upsert error -`, wcErr.message);
         }
 
+        // ── Exit Signal Detection (Part 7) ──
+        const topWave = waveResults[0];
+        const exitSignals = detectExitSignals(topWave, current_price);
+        for (const es of exitSignals) {
+          // Check if this signal was already fired recently (24h)
+          const { data: recentExit } = await supabase
+            .from('exit_signals')
+            .select('id')
+            .eq('ticker', ticker)
+            .eq('signal_type', es.signal_type)
+            .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .limit(1);
+
+          if (!recentExit || recentExit.length === 0) {
+            await supabase.from('exit_signals').insert({
+              ticker,
+              signal_type: es.signal_type,
+              signal_reason: es.signal_reason,
+              price_at_signal: current_price,
+              target_price: es.target_price,
+            });
+            // Fire Telegram alert for exit signals
+            await fireAlert({
+              ticker,
+              company_name,
+              alert_type: es.signal_type,
+              score: null,
+              current_price,
+              price_200wma: null,
+              price_200mma: null,
+              entry_note: es.signal_reason,
+              previous_signal: null,
+              new_signal: es.signal_type,
+            });
+            alertsFired++;
+            console.log(`  ${ticker}: EXIT SIGNAL — ${es.signal_type}`);
+          }
+        }
+
+        // Update bull_bear_line from wave data
+        if (topWave.wave_count_json && topWave.wave_count_json.length >= 5) {
+          const w4High = topWave.wave_count_json[3]?.price; // Wave 3 end = Wave 4 start area
+          if (w4High != null) {
+            await supabase.from('screener_results')
+              .update({ bull_bear_line: Math.round(w4High * 100) / 100 })
+              .eq('ticker', ticker);
+          }
+        }
+
         waveCounts += waveResults.length;
 
         // Fetch fundamentals for Claude interpretation
@@ -229,8 +278,8 @@ async function runWaveCount() {
           }
         }
 
-        const topWave = waveResults[0];
-        console.log(`  ${ticker}: ${waveResults.length} counts | best: ${topWave.wave_structure} W${topWave.current_wave} (${topWave.confidence_score}%) ${topWave.tli_signal}`);
+        const bestWave = waveResults[0];
+        console.log(`  ${ticker}: ${waveResults.length} counts | best: ${bestWave.wave_structure} W${bestWave.current_wave} (${bestWave.confidence_score}%) ${bestWave.tli_signal}`);
       } else {
         console.log(`  ${ticker}: no valid wave counts`);
       }
@@ -256,6 +305,62 @@ async function runWaveCount() {
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[Stage 4] Complete: ${candidates.length} analyzed | ${waveCounts} wave counts | ${alertsFired} alerts (${elapsed}s)`);
+}
+
+/**
+ * Detect exit signals based on wave position and price targets.
+ */
+function detectExitSignals(waveCount, currentPrice) {
+  if (!waveCount || currentPrice == null) return [];
+  const signals = [];
+
+  // EXIT 1: Wave 3 target hit
+  if (waveCount.target_1 != null && waveCount.current_wave === '3') {
+    const pctToTarget = Math.abs((currentPrice - waveCount.target_1) / waveCount.target_1) * 100;
+    if (pctToTarget <= 3) {
+      signals.push({
+        signal_type: 'WAVE_3_TARGET_HIT',
+        signal_reason: 'Wave 3 target reached — TRIM 50% of your position here per TLI methodology. Let the remaining 50% run toward Wave 5. Wave 4 pullback coming next — that is your add point.',
+        target_price: waveCount.target_1,
+      });
+    }
+  }
+
+  // EXIT 2: Wave 4 add zone
+  if (waveCount.current_wave === '4' && waveCount.entry_zone_low != null) {
+    const targetZone = waveCount.entry_zone_low;
+    const pctToZone = currentPrice > 0 ? Math.abs((currentPrice - targetZone) / targetZone) * 100 : null;
+    if (pctToZone != null && pctToZone <= 5) {
+      signals.push({
+        signal_type: 'WAVE_4_ADD_ZONE',
+        signal_reason: 'Wave 4 pullback to 0.382 Fib confirmed. This is the TLI add zone — scale in 2/5 of remaining allocation here. Wave 5 toward final target is next.',
+        target_price: targetZone,
+      });
+    }
+  }
+
+  // EXIT 3: Wave 5 target hit
+  if (waveCount.current_wave === '5' && waveCount.target_1 != null) {
+    const pctToTarget = Math.abs((currentPrice - waveCount.target_1) / waveCount.target_1) * 100;
+    if (pctToTarget <= 3) {
+      signals.push({
+        signal_type: 'WAVE_5_TARGET_HIT',
+        signal_reason: 'Wave 5 target approaching — begin taking profits. TLI methodology: exit 50% here. A-B-C correction begins after Wave 5 completes. Do not hold through the full correction.',
+        target_price: waveCount.target_1,
+      });
+    }
+  }
+
+  // EXIT 4: Wave B rejection
+  if (waveCount.current_wave === 'B' || waveCount.tli_signal === 'WAVE_B_BOUNCE') {
+    signals.push({
+      signal_type: 'WAVE_B_REJECTION',
+      signal_reason: 'Wave B rejection detected — exit liquidity. Smart money exits here. Retail mistakes this for recovery. Wave C decline is coming. Trim remaining position.',
+      target_price: null,
+    });
+  }
+
+  return signals;
 }
 
 async function getBacktestSummary(ticker) {

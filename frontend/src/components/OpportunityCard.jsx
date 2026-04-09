@@ -125,6 +125,11 @@ export default function OpportunityCard({ stock, index }) {
           <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '14px', color: 'var(--text-primary)' }}>
             {stock.current_price != null ? `$${stock.current_price.toFixed(2)}` : '\u2014'}
           </div>
+          {stock.return_to_200wma_pct != null && stock.return_to_200wma_pct > 0 && (
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--signal-green)', marginTop: '2px' }}>
+              +{stock.return_to_200wma_pct.toFixed(0)}% to 200WMA
+            </div>
+          )}
         </div>
         <div>
           <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>

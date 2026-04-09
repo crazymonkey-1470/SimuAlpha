@@ -158,6 +158,34 @@ export default function DeepDive() {
         </div>
       </div>
 
+      {/* Bull / Bear Line */}
+      {result.bull_bear_line != null && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12 }}
+          style={{
+            display: 'flex', gap: '24px', marginBottom: '32px', flexWrap: 'wrap'
+          }}
+        >
+          <div style={{
+            flex: 1, background: 'var(--signal-green-dim)', border: '1px solid var(--signal-green)30',
+            borderRadius: '8px', padding: '14px 20px', minWidth: '200px'
+          }}>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--signal-green)', letterSpacing: '0.1em', marginBottom: '4px' }}>BULL CASE</div>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '16px', color: 'var(--signal-green)', fontWeight: 600 }}>
+              Above ${result.bull_bear_line.toFixed(2)}
+            </div>
+          </div>
+          <div style={{
+            flex: 1, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: '8px', padding: '14px 20px', minWidth: '200px'
+          }}>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--red, #ef4444)', letterSpacing: '0.1em', marginBottom: '4px' }}>BEAR CASE</div>
+            <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '16px', color: 'var(--red, #ef4444)', fontWeight: 600 }}>
+              Below ${result.bull_bear_line.toFixed(2)}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Technical Picture */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
         style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '24px', marginBottom: '32px' }}

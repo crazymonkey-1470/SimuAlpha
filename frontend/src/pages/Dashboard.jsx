@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useScreenerResults, useScanHistory, useConfluenceZones } from '../hooks/useScreener';
+import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys } from '../hooks/useScreener';
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -10,6 +10,7 @@ export default function Dashboard() {
   const { data: allStocks, loading } = useScreenerResults();
   const { data: scanHistory } = useScanHistory();
   const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
+  const { data: generationalBuys, loading: genLoading } = useGenerationalBuys();
 
   const topOpportunities = allStocks
     .filter(s => s.signal === 'LOAD THE BOAT')
@@ -95,6 +96,64 @@ export default function Dashboard() {
           </div>
         )}
       </motion.div>
+
+      {/* Generational Buy Zones */}
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '24px'
+        }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: '#00bfff'
+          }}>
+            Generational Buy Zones
+          </h2>
+          <span style={{
+            fontFamily: 'IBM Plex Mono', fontSize: '11px',
+            color: 'var(--text-dim)'
+          }}>
+            0.786 Fib + Wave Origin + 200MMA
+          </span>
+        </div>
+
+        {genLoading ? (
+          <LoadingSpinner />
+        ) : generationalBuys.length === 0 ? (
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid rgba(0,191,255,0.15)',
+            borderRadius: '12px',
+            padding: '32px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontFamily: 'Cormorant Garamond', fontSize: '20px',
+              fontWeight: 400, color: 'var(--text-secondary)', marginBottom: '8px'
+            }}>
+              No generational buy zones detected
+            </div>
+            <div style={{
+              fontFamily: 'IBM Plex Mono', fontSize: '11px',
+              color: 'var(--text-dim)', lineHeight: 1.7
+            }}>
+              Generational buys require 3-level convergence: 0.786 Fibonacci retracement, Wave 1 origin,
+              and 200 Monthly Moving Average all within 15% of each other. These are the rarest and
+              highest-conviction TLI setups.
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '16px'
+          }}>
+            {generationalBuys.map((stock, i) => (
+              <OpportunityCard key={stock.ticker} stock={stock} index={i} />
+            ))}
+          </div>
+        )}
+      </div>
 
       <div style={{ marginBottom: '48px' }}>
         <div style={{

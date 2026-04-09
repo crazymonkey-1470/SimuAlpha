@@ -81,17 +81,58 @@ async function _runDeepScore() {
         }
       }
 
-      // Run TLI scorer
-      const scores = runScorer({
-        currentPrice,
-        week52High: fund.week52High,
-        week52Low,
-        price200WMA,
-        price200MMA,
-        revenueGrowthPct: fund.revenueGrowthPct,
-        psRatio: fund.psRatio,
-        peRatio: fund.peRatio,
-      });
+      // ── 50-day SMA (approximate from ~10 weekly closes) ──
+      const last10Weeks = historicals.weeklyCloses.slice(-10);
+      const ma50d = last10Weeks.length >= 8
+        ? Math.round(last10Weeks.reduce((a, b) => a + b, 0) / last10Weeks.length * 100) / 100
+        : null;
+
+      // ── 200-day SMA (approximate from ~40 weekly closes) ──
+      const last40Weeks = historicals.weeklyCloses.slice(-40);
+      const ma200d = last40Weeks.length >= 30
+        ? Math.round(last40Weeks.reduce((a, b) => a + b, 0) / last40Weeks.length * 100) / 100
+        : null;
+
+      // ── Golden Cross / Death Cross (50d vs 200d within last 8 weeks) ──
+      let goldenCross = false;
+      let deathCross = false;
+      if (historicals.weeklyCloses.length >= 48) {
+        const calcSma = (arr, n) => arr.length >= n ? arr.slice(-n).reduce((a, b) => a + b, 0) / n : null;
+        // Check crossover in recent 8 weekly snapshots
+        for (let w = 8; w >= 1; w--) {
+          const sliceEnd = historicals.weeklyCloses.length - w;
+          if (sliceEnd < 40) continue;
+          const prevSlice = historicals.weeklyCloses.slice(0, sliceEnd);
+          const currSlice = historicals.weeklyCloses.slice(0, sliceEnd + 1);
+          const prev50 = calcSma(prevSlice, 10);
+          const prev200 = calcSma(prevSlice, 40);
+          const curr50 = calcSma(currSlice, 10);
+          const curr200 = calcSma(currSlice, 40);
+          if (prev50 != null && prev200 != null && curr50 != null && curr200 != null) {
+            if (prev50 <= prev200 && curr50 > curr200) goldenCross = true;
+            if (prev50 >= prev200 && curr50 < curr200) deathCross = true;
+          }
+        }
+      }
+
+      // ── Higher Highs / Higher Lows pattern ──
+      let hhHlPattern = false;
+      if (historicals.weeklyCloses.length >= 20) {
+        // Find swing highs and lows from last 20 weekly closes
+        const recent = historicals.weeklyCloses.slice(-20);
+        const swingHighs = [];
+        const swingLows = [];
+        for (let j = 1; j < recent.length - 1; j++) {
+          if (recent[j] > recent[j - 1] && recent[j] > recent[j + 1]) swingHighs.push(recent[j]);
+          if (recent[j] < recent[j - 1] && recent[j] < recent[j + 1]) swingLows.push(recent[j]);
+        }
+        if (swingHighs.length >= 3 && swingLows.length >= 3) {
+          const lastH = swingHighs.slice(-3);
+          const lastL = swingLows.slice(-3);
+          hhHlPattern = (lastH[0] < lastH[1] && lastH[1] < lastH[2]) &&
+                        (lastL[0] < lastL[1] && lastL[1] < lastL[2]);
+        }
+      }
 
       // Get previous score/signal for comparison (for alert detection)
       const { data: prev } = await supabase
@@ -103,6 +144,24 @@ async function _runDeepScore() {
       const previousScore = prev?.total_score ?? null;
       const previousSignal = prev?.signal ?? null;
       const prevPrice = prev?.current_price ?? null;
+
+      // Run TLI scorer with extended options
+      const scores = runScorer({
+        currentPrice,
+        week52High: fund.week52High,
+        week52Low,
+        price200WMA,
+        price200MMA,
+        revenueGrowthPct: fund.revenueGrowthPct,
+        psRatio: fund.psRatio,
+        peRatio: fund.peRatio,
+        // Part 8 additional inputs
+        ma50d,
+        goldenCross,
+        deathCross,
+        hhHlPattern,
+        previousScore,
+      });
 
       // Build result row (store all scored tickers, including PASS)
       const row = {
@@ -137,6 +196,13 @@ async function _runDeepScore() {
         entry_note: scores.entryNote,
         volume_trend: volumeTrend,
         volume_trend_ratio: volumeTrendRatio,
+        // Part 8 new columns
+        ma_50d: ma50d,
+        golden_cross: goldenCross,
+        death_cross: deathCross,
+        hh_hl_pattern: hhHlPattern,
+        generational_buy: scores.generationalBuy || false,
+        return_to_200wma_pct: scores.returnTo200wmaPct,
         last_updated: new Date().toISOString(),
       };
 

@@ -116,7 +116,7 @@ function f(val, dec = 2) {
   return Number(val).toFixed(dec);
 }
 
-function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200MMA, revenueGrowthPct, psRatio, peRatio }) {
+function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200MMA, revenueGrowthPct, psRatio, peRatio, ...opts }) {
   const pctFrom52wHigh = (week52High != null && currentPrice != null && week52High > 0)
     ? ((currentPrice - week52High) / week52High) * 100
     : null;
@@ -156,7 +156,70 @@ function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200M
     }
   }
 
-  const signal = getSignal(totalScore);
+  // ── PART 8: Additional scoring components (additive bonuses) ──
+  let bonusNotes = [];
+
+  // 50-day MA as Wave 2 confirmation (+5pts)
+  if (opts.ma50d != null && opts.waveSignal === 'WAVE_2_BOTTOM') {
+    const pctFromMa50 = currentPrice != null && opts.ma50d > 0
+      ? Math.abs((currentPrice - opts.ma50d) / opts.ma50d) * 100 : null;
+    if (pctFromMa50 != null && pctFromMa50 <= 5) {
+      totalScore += 5;
+      bonusNotes.push('50-day MA acting as Wave 2 support — confirms wave position is intact.');
+    }
+  }
+
+  // Golden Cross (+5pts) / Death Cross (-5pts)
+  if (opts.goldenCross) {
+    totalScore += 5;
+    bonusNotes.push('Golden Cross detected — 50-day MA crossed above 200-day MA.');
+  }
+  if (opts.deathCross) {
+    totalScore -= 5;
+    bonusNotes.push('Death Cross detected — 50-day MA crossed below 200-day MA.');
+  }
+
+  // Higher Highs / Higher Lows pattern (+5pts)
+  if (opts.hhHlPattern) {
+    totalScore += 5;
+    bonusNotes.push('Higher highs and higher lows confirmed — uptrend forming.');
+  }
+
+  // Earnings approaching penalty (-15pts)
+  if (opts.earningsWithin14Days) {
+    totalScore -= 15;
+    bonusNotes.push(`EARNINGS IN ${opts.earningsDaysAway || '?'} DAYS — confluence levels may not hold through earnings. Consider waiting for the report before entering a full position.`);
+  }
+
+  // Fundamental deterioration override
+  let fundamentalDeterioration = false;
+  if (opts.previousScore != null && opts.previousScore > 60 && revenueGrowthPct != null && revenueGrowthPct < 0) {
+    fundamentalDeterioration = true;
+    bonusNotes.push('THESIS BROKEN — revenue growth has turned negative. Exit the position regardless of wave count.');
+  }
+
+  // ── PART 6: Generational Buy detection ──
+  let generationalBuy = false;
+  if (opts.wave1Origin != null && price200MMA != null && currentPrice != null) {
+    // Check if 0.786 Fib, Wave 1 origin, and 200MMA all converge within 15% of price
+    const fib786 = opts.fib786Level; // Passed from wave analysis
+    const levels = [fib786, opts.wave1Origin, price200MMA].filter(v => v != null);
+    if (levels.length >= 3) {
+      const allWithin15 = levels.every(l => Math.abs((l - currentPrice) / currentPrice) <= 0.15);
+      if (allWithin15) {
+        generationalBuy = true;
+        totalScore += 25;
+        bonusNotes.push(`GENERATIONAL BUY — three major support structures converging: 0.786 Fib ($${f(fib786)}), Wave 1 origin ($${f(opts.wave1Origin)}), and 200MMA ($${f(price200MMA)}). This is a once-in-a-decade setup.`);
+      }
+    }
+  }
+
+  // Cap score at 0-100
+  totalScore = Math.max(0, Math.min(100, totalScore));
+
+  const signal = generationalBuy ? 'GENERATIONAL_BUY'
+    : fundamentalDeterioration ? 'FUNDAMENTAL_DETERIORATION'
+    : getSignal(totalScore);
 
   const { entryZone, entryNote } = getEntryZone({
     currentPrice,
@@ -165,6 +228,11 @@ function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200M
     pctFrom200WMA,
     pctFrom200MMA,
   });
+
+  // Return to 200WMA calculation
+  const returnTo200wmaPct = (price200WMA != null && currentPrice != null && currentPrice > 0 && price200WMA > currentPrice)
+    ? safe(((price200WMA - currentPrice) / currentPrice) * 100, 1)
+    : null;
 
   return {
     pctFrom52wHigh: safe(pctFrom52wHigh, 1),
@@ -178,6 +246,10 @@ function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200M
     entryNote,
     confluenceZone,
     confluenceNote,
+    generationalBuy,
+    fundamentalDeterioration,
+    returnTo200wmaPct,
+    bonusNotes,
   };
 }
 
