@@ -787,7 +787,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
   investors_mentioned TEXT[]  DEFAULT '{}',
   sectors_mentioned TEXT[]    DEFAULT '{}',
   topics          TEXT[]      DEFAULT '{}',
-  embedding       VECTOR(1536),
+  embedding       VECTOR(1024),
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -873,7 +873,7 @@ CREATE TABLE IF NOT EXISTS learned_principles (
 -- ─── Vector similarity search function (Sprint 8) ───
 
 CREATE OR REPLACE FUNCTION match_knowledge(
-  query_embedding VECTOR(1536),
+  query_embedding VECTOR(1024),
   match_threshold FLOAT,
   match_count INT
 )

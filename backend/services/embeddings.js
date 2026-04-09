@@ -1,29 +1,45 @@
 /**
  * Embedding Service — Sprint 8
  *
- * Uses OpenAI text-embedding-3-small (1536 dimensions).
- * Cost: ~$0.02 per 1M tokens.
+ * Uses Voyage AI voyage-3-lite (1024 dimensions).
+ * Anthropic's official embedding partner — no OpenAI dependency needed.
+ * Free tier available at https://dash.voyageai.com
  */
 
-const { OpenAI } = require('openai');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
+const VOYAGE_MODEL = 'voyage-3-lite';
 
 /**
  * Generate an embedding vector for a text string.
- * Returns a 1536-dimension float array.
+ * Returns a 1024-dimension float array.
  */
 async function embed(text) {
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot embed empty text');
   }
 
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: text.slice(0, 8000), // limit to ~8K chars to stay within token limits
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) throw new Error('VOYAGE_API_KEY not set');
+
+  const response = await fetch(VOYAGE_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: VOYAGE_MODEL,
+      input: [text.slice(0, 16000)],
+    }),
   });
 
-  return response.data[0].embedding;
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Voyage AI error (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  return data.data[0].embedding;
 }
 
 /**
@@ -32,13 +48,30 @@ async function embed(text) {
 async function embedBatch(texts) {
   if (!texts || texts.length === 0) return [];
 
-  const cleaned = texts.map(t => (t || '').slice(0, 8000));
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: cleaned,
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) throw new Error('VOYAGE_API_KEY not set');
+
+  const cleaned = texts.map(t => (t || '').slice(0, 16000));
+
+  const response = await fetch(VOYAGE_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: VOYAGE_MODEL,
+      input: cleaned,
+    }),
   });
 
-  return response.data.map(d => d.embedding);
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Voyage AI batch error (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  return data.data.map(d => d.embedding);
 }
 
 module.exports = { embed, embedBatch };
