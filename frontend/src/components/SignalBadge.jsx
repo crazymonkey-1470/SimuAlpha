@@ -116,6 +116,13 @@ export default function SignalBadge({ signal, size = 'md' }) {
       label: '\u26D4 THESIS BROKEN',
       pulse: false,
       bold: true
+    },
+    'VALUE_TRAP': {
+      color: 'var(--red)',
+      bg: 'var(--red-dim, rgba(239,68,68,0.1))',
+      label: '\uD83D\uDEAB VALUE TRAP',
+      pulse: false,
+      bold: true
     }
   };
 

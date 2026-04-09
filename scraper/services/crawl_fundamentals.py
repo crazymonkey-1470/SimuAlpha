@@ -20,15 +20,23 @@ async def get_fundamentals(ticker: str) -> dict:
         "revenue_current": None,
         "revenue_prior_year": None,
         "revenue_growth_pct": None,
+        "revenue_growth_3yr": None,
         "revenue_history": [],
         "gross_margin_current": None,
         "gross_margin_history": [],
         "pe_ratio": None,
         "ps_ratio": None,
-        "debt_to_equity": None,
-        "current_ratio": None,
+        "eps_diluted": None,
+        "net_income": None,
         "free_cash_flow": None,
-        "gross_margin": None,
+        "fcf_margin": None,
+        "fcf_growth_yoy": None,
+        "capex": None,
+        "cash_and_equivalents": None,
+        "total_debt": None,
+        "debt_to_equity": None,
+        "shares_outstanding_change": None,
+        "dividend_per_share": None,
         "sector": None,
         "source": None,
     }
@@ -74,7 +82,7 @@ async def get_fundamentals(ticker: str) -> dict:
     if isinstance(week_52, (int, float)) and week_52 > 0:
         result["week_52_high"] = float(week_52)
 
-    # 4) Financials (revenue + EPS) — validate types
+    # 4) Financials — validate types and pass through all fields
     if isinstance(fin, dict):
         rev = fin.get("revenue_current")
         if isinstance(rev, (int, float)):
@@ -91,6 +99,18 @@ async def get_fundamentals(ticker: str) -> dict:
             result["gross_margin_current"] = fin["gross_margin_current"]
         if isinstance(fin.get("gross_margin_history"), list):
             result["gross_margin_history"] = fin["gross_margin_history"]
+
+        # Extended financial fields (Sprint 6A)
+        for field in [
+            "revenue_growth_3yr", "eps_diluted", "net_income",
+            "free_cash_flow", "fcf_margin", "fcf_growth_yoy", "capex",
+            "cash_and_equivalents", "total_debt", "debt_to_equity",
+            "shares_outstanding_change", "dividend_per_share",
+        ]:
+            val = fin.get(field)
+            if isinstance(val, (int, float)):
+                result[field] = val
+
         result["source"] = result["source"] or "polygon"
 
     # P/E ratio: current_price / EPS (both must be valid positive numbers)

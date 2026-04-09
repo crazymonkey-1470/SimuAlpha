@@ -8,7 +8,7 @@ logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 from fastapi import FastAPI
 
-from routes import fundamentals, historical, universe
+from routes import fundamentals, historical, universe, institutional
 
 app = FastAPI(
     title="TLI Scraper Service",
@@ -20,6 +20,7 @@ app = FastAPI(
 app.include_router(universe.router, prefix="/universe", tags=["Universe"])
 app.include_router(historical.router, prefix="/historical", tags=["Historical"])
 app.include_router(fundamentals.router, prefix="/fundamentals", tags=["Fundamentals"])
+app.include_router(institutional.router, prefix="/institutional", tags=["Institutional"])
 
 
 @app.get("/health")
@@ -38,6 +39,8 @@ def root():
             "universe": "/universe/",
             "historical": "/historical/{ticker}",
             "fundamentals": "/fundamentals/{ticker}",
+            "institutional_13f": "/institutional/13f/{cik}",
+            "institutional_manual": "/institutional/holdings/manual",
             "health": "/health",
         },
     }
