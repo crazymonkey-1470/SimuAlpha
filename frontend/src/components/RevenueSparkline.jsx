@@ -3,11 +3,11 @@
  * Green bars for YoY growth, red for YoY decline.
  * Shows CAGR below the chart.
  */
-export default function RevenueSparkline({ revenueHistory }) {
+export default function RevenueSparkline({ revenueHistory, cagr: cagrProp }) {
   if (!revenueHistory || revenueHistory.filter(v => v != null).length < 2) {
     return (
       <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
-        Revenue history unavailable
+        — Insufficient data
       </div>
     );
   }
@@ -20,9 +20,10 @@ export default function RevenueSparkline({ revenueHistory }) {
   const first = values[0];
   const last = values[values.length - 1];
   const years = values.length - 1;
-  const cagr = first > 0 && years > 0
-    ? (Math.pow(last / first, 1 / years) - 1) * 100
-    : null;
+  const cagr = cagrProp != null ? cagrProp
+    : first > 0 && years > 0
+      ? (Math.pow(last / first, 1 / years) - 1) * 100
+      : null;
 
   return (
     <div>
@@ -30,8 +31,9 @@ export default function RevenueSparkline({ revenueHistory }) {
         {revenueHistory.map((val, i) => {
           if (val == null) return null;
           const prevVal = i > 0 ? revenueHistory[i - 1] : null;
-          const grew = prevVal != null ? val >= prevVal : true;
+          const grew = prevVal != null ? val >= prevVal : null;
           const h = max > 0 ? (val / max) * 40 : 0;
+          const barColor = grew === null ? 'rgba(255,255,255,0.5)' : grew ? 'var(--signal-green)' : 'var(--red, #ef4444)';
           return (
             <rect
               key={i}
@@ -40,7 +42,7 @@ export default function RevenueSparkline({ revenueHistory }) {
               width={barWidth * 0.7}
               height={h}
               rx="1"
-              fill={grew ? 'var(--signal-green)' : 'var(--red, #ef4444)'}
+              fill={barColor}
               opacity="0.85"
             />
           );

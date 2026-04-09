@@ -184,6 +184,7 @@ export default function DeepDive() {
                 waveStructure={waveCount.wave_structure}
                 currentWave={waveCount.current_wave}
                 tliSignal={waveCount.tli_signal}
+                waveConfidence={waveCount.confidence_label}
               />
             </div>
           )}
@@ -229,7 +230,11 @@ export default function DeepDive() {
             <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
               Revenue History
             </div>
-            <RevenueSparkline revenueHistory={result.revenue_history} />
+            <RevenueSparkline revenueHistory={result.revenue_history} cagr={(() => {
+              const h = (result.revenue_history || []).filter(v => v != null);
+              if (h.length < 2 || h[0] <= 0) return null;
+              return (Math.pow(h[h.length - 1] / h[0], 1 / (h.length - 1)) - 1) * 100;
+            })()} />
           </div>
           <div>
             <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
@@ -332,42 +337,54 @@ export default function DeepDive() {
         </motion.div>
       )}
 
-      {/* Backtest */}
-      {backtest && (
+      {/* Historical Performance */}
+      {(backtest || (result.sector && result.sector_avg_score != null)) && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
           style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '24px', marginBottom: '24px' }}
         >
           <h3 style={{ fontFamily: 'Cormorant Garamond', fontSize: '24px', fontWeight: 400, marginBottom: '20px', color: 'var(--text-primary)' }}>
-            Historical Backtest
+            Historical Performance
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-            {[
-              { label: 'Total Signals', value: backtest.total_signals ?? '\u2014' },
-              { label: 'Win Rate', value: backtest.win_rate_pct != null ? `${backtest.win_rate_pct.toFixed(1)}%` : '\u2014', good: backtest.win_rate_pct > 60 },
-              { label: 'Avg Return', value: backtest.avg_return_pct != null ? `${backtest.avg_return_pct > 0 ? '+' : ''}${backtest.avg_return_pct.toFixed(1)}%` : '\u2014', good: backtest.avg_return_pct > 0 },
-              { label: 'Avg Hold', value: backtest.avg_hold_days != null ? `${Math.round(backtest.avg_hold_days / 30)}mo` : '\u2014' },
-              { label: 'vs S&P 500', value: backtest.vs_spy_pct != null ? `${backtest.vs_spy_pct > 0 ? '+' : ''}${backtest.vs_spy_pct.toFixed(1)}%` : '\u2014', good: backtest.vs_spy_pct > 0 },
-            ].map(item => (
-              <MetricCard key={item.label} label={item.label} value={item.value} highlight={item.good} />
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
+            {/* Left: Backtest */}
+            <div>
+              {backtest ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                    {[
+                      { label: 'Total Signals', value: backtest.total_signals ?? '\u2014' },
+                      { label: 'Win Rate', value: backtest.win_rate_pct != null ? `${backtest.win_rate_pct.toFixed(1)}%` : '\u2014', good: backtest.win_rate_pct > 60 },
+                      { label: 'Avg Return', value: backtest.avg_return_pct != null ? `${backtest.avg_return_pct > 0 ? '+' : ''}${backtest.avg_return_pct.toFixed(1)}%` : '\u2014', good: backtest.avg_return_pct > 0 },
+                      { label: 'Avg Hold', value: backtest.avg_hold_days != null ? `${Math.round(backtest.avg_hold_days / 30)}mo` : '\u2014' },
+                      { label: 'vs S&P 500', value: backtest.vs_spy_pct != null ? `${backtest.vs_spy_pct > 0 ? '+' : ''}${backtest.vs_spy_pct.toFixed(1)}%` : '\u2014', good: backtest.vs_spy_pct > 0 },
+                    ].map(item => (
+                      <MetricCard key={item.label} label={item.label} value={item.value} highlight={item.good} />
+                    ))}
+                  </div>
+                  <p style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
+                    Past performance does not guarantee future results.
+                  </p>
+                </>
+              ) : (
+                <BacktestBadge backtest={null} />
+              )}
+            </div>
+            {/* Right: Sector Strength */}
+            <div>
+              {result.sector && result.sector_avg_score != null ? (
+                <SectorStrength
+                  sector={result.sector}
+                  totalScore={result.total_score}
+                  sectorAvgScore={result.sector_avg_score}
+                  sectorRank={result.sector_rank}
+                />
+              ) : (
+                <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
+                  Sector data unavailable
+                </div>
+              )}
+            </div>
           </div>
-          <p style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
-            Past performance does not guarantee future results.
-          </p>
-        </motion.div>
-      )}
-
-      {/* Sector Strength */}
-      {result.sector && result.sector_avg_score != null && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-          style={{ marginBottom: '24px' }}
-        >
-          <SectorStrength
-            sector={result.sector}
-            totalScore={result.total_score}
-            sectorAvgScore={result.sector_avg_score}
-            sectorRank={result.sector_rank}
-          />
         </motion.div>
       )}
 

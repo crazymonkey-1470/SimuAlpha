@@ -24,12 +24,16 @@ export default function SectorStrength({ sector, totalScore, sectorAvgScore, sec
 
   // Contextual insight
   let insight = '';
-  if (sectorAvgScore < 40 && totalScore > sectorAvgScore) {
+  let insightColor = 'var(--signal-amber)';
+  if (sectorAvgScore < 50 && totalScore <= 50) {
     insight = 'Sector also beaten down \u2014 broader opportunity';
-  } else if (sectorAvgScore > 50 && totalScore < sectorAvgScore - 15) {
+    insightColor = 'var(--signal-green)';
+  } else if (sectorAvgScore > 60 && totalScore < 50) {
     insight = 'Stock uniquely weak vs sector \u2014 investigate why';
+    insightColor = 'var(--signal-amber)';
   } else if (totalScore > sectorAvgScore + 15) {
     insight = 'Stock outperforming sector \u2014 relative strength';
+    insightColor = 'var(--signal-green)';
   }
 
   return (
@@ -85,7 +89,7 @@ export default function SectorStrength({ sector, totalScore, sectorAvgScore, sec
       {insight && (
         <div style={{
           marginTop: '8px', fontFamily: 'IBM Plex Mono', fontSize: '10px',
-          color: 'var(--signal-amber)', fontStyle: 'italic'
+          color: insightColor, fontStyle: 'italic'
         }}>
           {insight}
         </div>

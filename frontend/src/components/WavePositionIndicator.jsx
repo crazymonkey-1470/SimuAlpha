@@ -5,17 +5,19 @@
 import SignalBadge from './SignalBadge';
 
 const WAVE_COLORS = {
-  '1': 'var(--signal-green)',
-  '2': '#22c55e',
+  '1': 'rgba(255,255,255,0.6)',
+  '2': 'var(--signal-green)',
   '3': 'var(--red, #ef4444)',
   '4': 'var(--signal-amber)',
   '5': 'var(--red, #ef4444)',
   'A': 'var(--signal-amber)',
   'B': 'var(--red, #ef4444)',
-  'C': '#22c55e',
+  'C': 'var(--signal-green)',
 };
 
-export default function WavePositionIndicator({ waveStructure, currentWave, tliSignal, compact = false }) {
+const PULSE_WAVES = new Set(['2', 'C']);
+
+export default function WavePositionIndicator({ waveStructure, currentWave, tliSignal, waveConfidence, compact = false }) {
   if (!waveStructure || !currentWave) {
     return null;
   }
@@ -35,8 +37,9 @@ export default function WavePositionIndicator({ waveStructure, currentWave, tliS
         {waves.map((w) => {
           const isCurrent = w === currentWave;
           const color = WAVE_COLORS[w];
+          const shouldPulse = isCurrent && PULSE_WAVES.has(w);
           return (
-            <div key={w} style={{
+            <div key={w} className={shouldPulse ? 'pulse-green' : ''} style={{
               width: '18px', height: '18px', borderRadius: '3px',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: isCurrent ? color : 'var(--bg-secondary)',
@@ -99,6 +102,15 @@ export default function WavePositionIndicator({ waveStructure, currentWave, tliS
       {tliSignal && (
         <div style={{ marginTop: '8px' }}>
           <SignalBadge signal={tliSignal} size="sm" />
+        </div>
+      )}
+      {waveConfidence && (
+        <div style={{
+          fontFamily: 'IBM Plex Mono', fontSize: '9px', marginTop: '4px',
+          color: waveConfidence === 'HIGH CONFIDENCE' ? 'var(--signal-green)' : waveConfidence === 'PROBABLE' ? 'var(--signal-amber)' : 'var(--text-dim)',
+          letterSpacing: '0.05em'
+        }}>
+          {waveConfidence}
         </div>
       )}
     </div>
