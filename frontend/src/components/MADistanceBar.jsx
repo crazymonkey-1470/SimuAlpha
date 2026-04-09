@@ -32,6 +32,16 @@ export default function MADistanceBar({ currentPrice, price200wma, price200mma, 
 
   return (
     <div>
+      {/* Zone labels */}
+      <div style={{
+        display: 'flex', marginBottom: '4px',
+        fontFamily: 'IBM Plex Mono', fontSize: '9px', letterSpacing: '0.05em'
+      }}>
+        <span style={{ width: '40%', color: 'var(--signal-green)', opacity: 0.7 }}>BUY ZONE</span>
+        <span style={{ width: '30%', color: 'var(--signal-amber)', opacity: 0.7 }}>APPROACHING</span>
+        <span style={{ width: '30%', textAlign: 'right', color: 'var(--text-dim)' }}>EXTENDED</span>
+      </div>
+
       {/* Bar background with zones */}
       <div style={{
         position: 'relative', height: '24px', borderRadius: '4px', overflow: 'hidden',
@@ -41,17 +51,40 @@ export default function MADistanceBar({ currentPrice, price200wma, price200mma, 
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%', background: 'rgba(34,197,94,0.08)' }} />
         {/* Amber zone: 40-70% */}
         <div style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: '30%', background: 'rgba(245,158,11,0.05)' }} />
+        {/* White zone: 70-100% */}
+        <div style={{ position: 'absolute', left: '70%', top: 0, bottom: 0, width: '30%', background: 'rgba(255,255,255,0.02)' }} />
 
         {/* MA reference line */}
         <div style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: '1px', background: 'var(--border-light)' }} />
 
-        {/* Price dot */}
+        {/* 200WMA marker dot */}
+        {price200wma != null && (
+          <div style={{
+            position: 'absolute', left: `${wmaPos}%`, top: '50%', transform: 'translate(-50%, -50%)',
+            width: '8px', height: '8px', borderRadius: '50%',
+            background: 'var(--signal-amber)', opacity: 0.6,
+            border: '1.5px solid var(--bg-card)'
+          }} />
+        )}
+
+        {/* 200MMA marker dot */}
+        {price200mma != null && (
+          <div style={{
+            position: 'absolute', left: `${mmaPos}%`, top: '50%', transform: 'translate(-50%, -50%)',
+            width: '8px', height: '8px', borderRadius: '50%',
+            background: 'var(--blue, #4a9eff)', opacity: 0.6,
+            border: '1.5px solid var(--bg-card)'
+          }} />
+        )}
+
+        {/* Current price dot (white, on top) */}
         {pricePos != null && (
           <div style={{
             position: 'absolute', left: `${pricePos}%`, top: '50%', transform: 'translate(-50%, -50%)',
             width: '10px', height: '10px', borderRadius: '50%',
-            background: colorForPct(pctFrom200wma ?? pctFrom200mma),
-            border: '2px solid var(--bg-card)', boxShadow: '0 0 4px rgba(0,0,0,0.3)'
+            background: '#fff',
+            border: '2px solid var(--bg-card)', boxShadow: '0 0 6px rgba(255,255,255,0.3)',
+            zIndex: 2
           }} />
         )}
       </div>
@@ -61,21 +94,25 @@ export default function MADistanceBar({ currentPrice, price200wma, price200mma, 
         display: 'flex', justifyContent: 'space-between', marginTop: '6px',
         fontFamily: 'IBM Plex Mono', fontSize: '10px'
       }}>
-        {price200wma != null && (
+        {price200wma != null ? (
           <div>
-            <span style={{ color: 'var(--text-dim)' }}>200WMA </span>
+            <span style={{ color: 'var(--text-dim)' }}>200WMA: </span>
             <span style={{ color: colorForPct(pctFrom200wma) }}>
-              ${price200wma.toFixed(2)} ({pctFrom200wma > 0 ? '+' : ''}{pctFrom200wma?.toFixed(1)}%)
+              ${price200wma.toFixed(2)} ({pctFrom200wma != null ? `${Math.abs(pctFrom200wma).toFixed(1)}% ${pctFrom200wma <= 0 ? 'below' : 'above'}` : ''})
             </span>
           </div>
+        ) : (
+          <div style={{ color: 'var(--text-dim)' }}>200WMA: N/A</div>
         )}
-        {price200mma != null && (
+        {price200mma != null ? (
           <div>
-            <span style={{ color: 'var(--text-dim)' }}>200MMA </span>
+            <span style={{ color: 'var(--text-dim)' }}>200MMA: </span>
             <span style={{ color: colorForPct(pctFrom200mma) }}>
-              ${price200mma.toFixed(2)} ({pctFrom200mma > 0 ? '+' : ''}{pctFrom200mma?.toFixed(1)}%)
+              ${price200mma.toFixed(2)} ({pctFrom200mma != null ? `${Math.abs(pctFrom200mma).toFixed(1)}% ${pctFrom200mma <= 0 ? 'below' : 'above'}` : ''})
             </span>
           </div>
+        ) : (
+          <div style={{ color: 'var(--text-dim)' }}>200MMA: N/A</div>
         )}
       </div>
     </div>

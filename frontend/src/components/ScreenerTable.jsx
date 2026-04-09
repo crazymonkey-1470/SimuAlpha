@@ -16,13 +16,13 @@ const ALL_COLUMNS = [
   { key: 'pe_ratio', label: 'P/E', sortable: true, default: true },
   { key: 'ps_ratio', label: 'P/S', sortable: true, default: true },
   { key: 'sector', label: 'Sector', sortable: false, default: true },
-  { key: 'wave', label: 'Wave', sortable: false, default: false },
+  { key: 'wave', label: 'Wave', sortable: false, default: true },
   { key: 'volume_trend', label: 'Volume', sortable: false, default: false },
   { key: 'gross_margin_current', label: 'Gross Margin', sortable: true, default: false },
   { key: 'backtest_win', label: 'Backtest Win %', sortable: false, default: false },
 ];
 
-const STORAGE_KEY = 'screener_visible_columns';
+const STORAGE_KEY = 'simualpha_screener_columns';
 
 function loadVisibleColumns() {
   try {
@@ -32,7 +32,7 @@ function loadVisibleColumns() {
   return ALL_COLUMNS.filter(c => c.default).map(c => c.key);
 }
 
-export default function ScreenerTable({ data, waveData = {} }) {
+export default function ScreenerTable({ data, waveData = {}, backtestData = {} }) {
   const navigate = useNavigate();
   const [sortKey, setSortKey] = useState('total_score');
   const [sortDir, setSortDir] = useState('desc');
@@ -131,10 +131,22 @@ export default function ScreenerTable({ data, waveData = {} }) {
       case 'gross_margin_current': {
         const gm = stock.gross_margin_current;
         const gmColor = gm == null ? 'var(--text-dim)' : gm > 40 ? 'var(--signal-green)' : gm >= 20 ? 'var(--signal-amber)' : 'var(--red, #ef4444)';
-        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: gmColor }}>{gm != null ? `${gm.toFixed(1)}%` : '\u2014'}</td>;
+        let trendArrow = '';
+        if (stock.gross_margin_history?.length >= 2) {
+          const curr = stock.gross_margin_history[stock.gross_margin_history.length - 1];
+          const prev = stock.gross_margin_history[stock.gross_margin_history.length - 2];
+          if (curr != null && prev != null) trendArrow = curr > prev ? ' \u2191' : curr < prev ? ' \u2193' : '';
+        }
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: gmColor }}>{gm != null ? `${gm.toFixed(1)}%${trendArrow}` : '\u2014'}</td>;
       }
-      case 'backtest_win':
-        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-dim)' }}>{'\u2014'}</td>;
+      case 'backtest_win': {
+        const bt = backtestData[stock.ticker];
+        if (!bt || bt.total_signals < 3 || bt.win_rate_pct == null) {
+          return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-dim)' }}>{'\u2014'}</td>;
+        }
+        const winColor = bt.win_rate_pct > 65 ? 'var(--signal-green)' : bt.win_rate_pct >= 50 ? 'var(--signal-amber)' : 'var(--red, #ef4444)';
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', fontWeight: 500, color: winColor }}>{bt.win_rate_pct.toFixed(0)}%</td>;
+      }
       default:
         return <td key={colKey} style={{ padding: '12px' }}>{'\u2014'}</td>;
     }
