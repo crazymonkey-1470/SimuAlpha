@@ -4,6 +4,8 @@ const links = [
   { to: '/', label: 'Dashboard' },
   { to: '/screener', label: 'Screener' },
   { to: '/signals', label: 'Signals' },
+  { to: '/investors', label: 'Investors' },
+  { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
 ];
 

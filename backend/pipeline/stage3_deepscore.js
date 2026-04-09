@@ -3,6 +3,8 @@ const { fetchHistoricalPrices, fetchFundamentals, calculate200WMA, calculate200M
 const { runScorer } = require('../services/scorer');
 const { fireAlert } = require('../services/alerts');
 const { getInstitutionalData, getMacroContext } = require('../services/institutional');
+const { computeThreePillarValuation, scoreValuation, saveValuation } = require('../services/valuation');
+const { recordSignal } = require('../services/signalTracker');
 
 /**
  * Stage 3 — Deep Score
@@ -289,7 +291,46 @@ async function _runDeepScore() {
         last_updated: new Date().toISOString(),
       };
 
+      // Valuation computation (Sprint 6B)
+      try {
+        const valInput = {
+          currentPrice,
+          sector: sector || fund.sector,
+          marketCap: fund.marketCap,
+          debtToEquity: fund.debtToEquity,
+          totalDebt: fund.totalDebt,
+          cashAndEquivalents: fund.cashAndEquivalents,
+          freeCashFlow: fund.freeCashFlow,
+          ttmFCF: fund.freeCashFlow,
+          revenueCurrent: fund.revenueCurrent,
+          ttmRevenue: fund.revenueCurrent,
+          revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
+          fcfGrowth3YrAvg: fund.fcfGrowthYoY,
+          dilutedShares: fund.dilutedShares,
+        };
+        const valuation = computeThreePillarValuation(valInput);
+        if (valuation) {
+          const valScore = scoreValuation(valuation);
+          row.valuation_rating = valuation.rating;
+          row.avg_price_target = valuation.avgTarget;
+          row.avg_upside_pct = valuation.avgUpside;
+          row.dcf_price_target = valuation.dcf?.target ?? null;
+          row.ev_sales_price_target = valuation.evSales?.target ?? null;
+          row.ev_ebitda_price_target = valuation.evEbitda?.target ?? null;
+          row.wacc_risk_tier = valuation.waccTier;
+          await saveValuation(ticker, valuation);
+        }
+      } catch (_) { /* valuation tables may not exist yet */ }
+
       results.push(row);
+
+      // Record signal for outcome tracking (Sprint 6B)
+      try {
+        await recordSignal(
+          { ticker, currentPrice: currentPrice, current_price: currentPrice },
+          scores
+        );
+      } catch (_) { /* signal_outcomes table may not exist yet */ }
 
       // Detect alerts (only for non-PASS signals)
       const alerts = scores.signal === 'PASS' ? [] : detectAlerts({

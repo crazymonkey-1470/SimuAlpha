@@ -13,6 +13,7 @@ import MarginTrend from '../components/MarginTrend';
 import VolumeTrendBadge from '../components/VolumeTrendBadge';
 import BacktestBadge from '../components/BacktestBadge';
 import SectorStrength from '../components/SectorStrength';
+import ValuationDisplay from '../components/ValuationDisplay';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -233,6 +234,13 @@ export default function DeepDive() {
             </div>
           )}
         </div>
+      </motion.div>
+
+      {/* Three-Pillar Valuation */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.18 }}
+        style={{ marginBottom: '32px' }}
+      >
+        <ValuationDisplay ticker={symbol} currentPrice={result.current_price} />
       </motion.div>
 
       {/* Key metrics */}

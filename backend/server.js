@@ -3,6 +3,9 @@ const express = require('express');
 const { runFullPipeline, startCron } = require('./cron');
 const supabase = require('./services/supabase');
 const { getInvestors, refreshAllInvestors } = require('./services/institutional');
+const { getLatestMacroContext, getMacroContextHistory, upsertMacroContext } = require('./services/macro');
+const { getValuation, computeAndSaveValuation, batchComputeValuations } = require('./services/valuation');
+const { getSignalHistory, getAccuracyStats } = require('./services/signalTracker');
 
 const app = express();
 app.use(express.json());
@@ -133,6 +136,163 @@ app.post('/api/admin/refresh-institutional', async (_req, res) => {
   refreshAllInvestors().catch(err =>
     console.error('[API] Institutional refresh error:', err.message)
   );
+});
+
+// ═══════════════════════════════════════════
+// MACRO CONTEXT ENDPOINTS (Sprint 6B)
+// ═══════════════════════════════════════════
+
+// Latest macro context
+app.get('/api/macro-context', async (_req, res) => {
+  try {
+    const ctx = await getLatestMacroContext();
+    if (!ctx) return res.json({ context: null, message: 'No macro context data yet' });
+    res.json({ context: ctx });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Macro context history
+app.get('/api/macro-context/history', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 30;
+  try {
+    const history = await getMacroContextHistory(limit);
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: update macro context
+app.post('/api/admin/macro-context', async (req, res) => {
+  try {
+    const ctx = await upsertMacroContext(req.body);
+    res.json({ success: true, context: ctx });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dashboard aggregates
+app.get('/api/dashboard/market-risk', async (_req, res) => {
+  try {
+    const ctx = await getLatestMacroContext();
+    if (!ctx) return res.json({ risk: null });
+    res.json({
+      risk: {
+        level: ctx.market_risk_level,
+        lateCycleScore: ctx.late_cycle_score,
+        carryTradeRisk: ctx.carry_trade_risk,
+        sp500PE: ctx.sp500_pe,
+        vix: ctx.vix,
+        dxy: ctx.dxy_index,
+        jpyUsd: ctx.jpy_usd,
+        jpyNearIntervention: ctx.jpy_near_intervention,
+        investorsDefensive: ctx.investors_defensive_count,
+        berkshireCashRatio: ctx.berkshire_cash_equity_ratio,
+        fedRate: ctx.fed_rate,
+        bojRate: ctx.boj_rate,
+        carrySpread: ctx.carry_spread,
+        iranWarActive: ctx.iran_war_active,
+        date: ctx.date,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dashboard/consensus-summary', async (_req, res) => {
+  try {
+    const { data: topBuys } = await supabase
+      .from('consensus_signals')
+      .select('*')
+      .gt('consensus_score', 0)
+      .order('consensus_score', { ascending: false })
+      .limit(10);
+
+    const { data: topSells } = await supabase
+      .from('consensus_signals')
+      .select('*')
+      .lt('consensus_score', 0)
+      .order('consensus_score', { ascending: true })
+      .limit(10);
+
+    res.json({ topBuys: topBuys || [], topSells: topSells || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dashboard/top-signals', async (_req, res) => {
+  try {
+    const { data } = await supabase
+      .from('screener_results')
+      .select('ticker, company_name, total_score, signal, current_price, valuation_rating, avg_price_target, avg_upside_pct')
+      .in('signal', ['LOAD THE BOAT', 'ACCUMULATE', 'GENERATIONAL_BUY'])
+      .order('total_score', { ascending: false })
+      .limit(20);
+    res.json({ signals: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// VALUATION ENDPOINTS (Sprint 6B)
+// ═══════════════════════════════════════════
+
+app.get('/api/valuation/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const valuation = await getValuation(ticker);
+    if (!valuation) return res.json({ ticker, valuation: null, message: 'No valuation computed yet' });
+    res.json({ ticker, valuation });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/valuation/compute/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const valuation = await computeAndSaveValuation(ticker);
+    if (!valuation) return res.status(404).json({ error: 'Insufficient data for valuation' });
+    res.json({ ticker, valuation });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/valuation/batch', async (_req, res) => {
+  res.json({ status: 'started' });
+  batchComputeValuations().catch(err =>
+    console.error('[API] Batch valuation error:', err.message)
+  );
+});
+
+// ═══════════════════════════════════════════
+// SIGNAL TRACKING ENDPOINTS (Sprint 6B)
+// ═══════════════════════════════════════════
+
+app.get('/api/signals/history', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  try {
+    const history = await getSignalHistory(limit);
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/signals/accuracy', async (_req, res) => {
+  try {
+    const stats = await getAccuracyStats();
+    res.json({ accuracy: stats || { message: 'No outcome data yet' } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
