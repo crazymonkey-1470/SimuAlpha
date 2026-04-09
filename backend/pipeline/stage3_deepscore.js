@@ -185,11 +185,6 @@ async function _runDeepScore() {
         ? Math.round(fund.dividendPerShare / currentPrice * 10000) / 100
         : null;
 
-      // Compute FCF per share (for earnings quality)
-      const fcfPerShare = (fund.freeCashFlow != null && fund.sharesOutstandingChange != null)
-        ? null // need shares count, not change; fallback
-        : null;
-
       // Sector average P/E (from results we've already scored)
       const sectorAvgPE = sectorPEMap[sector] ?? null;
 
