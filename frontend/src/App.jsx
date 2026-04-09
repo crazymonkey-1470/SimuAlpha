@@ -5,6 +5,9 @@ import Screener from './pages/Screener';
 import DeepDive from './pages/DeepDive';
 import Signals from './pages/Signals';
 import Watchlist from './pages/Watchlist';
+import SuperInvestors from './pages/SuperInvestors';
+import InvestorDetail from './pages/InvestorDetail';
+import MarketContext from './pages/MarketContext';
 
 export default function App() {
   return (
@@ -15,6 +18,9 @@ export default function App() {
           <Route path="screener" element={<Screener />} />
           <Route path="ticker/:symbol" element={<DeepDive />} />
           <Route path="signals" element={<Signals />} />
+          <Route path="investors" element={<SuperInvestors />} />
+          <Route path="investor/:id" element={<InvestorDetail />} />
+          <Route path="market" element={<MarketContext />} />
           <Route path="watchlist" element={<Watchlist />} />
         </Route>
       </Routes>

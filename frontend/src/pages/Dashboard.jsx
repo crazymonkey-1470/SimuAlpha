@@ -4,6 +4,7 @@ import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerational
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
+import MarketRiskBanner from '../components/MarketRiskBanner';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -23,6 +24,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ paddingTop: '48px' }}>
+      <MarketRiskBanner />
+
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
