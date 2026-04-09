@@ -2,6 +2,7 @@ const supabase = require('../services/supabase');
 const { fetchHistoricalPrices, fetchFundamentals, calculate200WMA, calculate200MMA, sleep } = require('../services/fetcher');
 const { runScorer } = require('../services/scorer');
 const { fireAlert } = require('../services/alerts');
+const { getInstitutionalData, getMacroContext } = require('../services/institutional');
 
 /**
  * Stage 3 — Deep Score
@@ -40,6 +41,32 @@ async function _runDeepScore() {
 
   const results = [];
   let alertsFired = 0;
+
+  // Cache macro context (only fetch once per run)
+  let _cachedMacroContext = null;
+  try {
+    _cachedMacroContext = await getMacroContext();
+  } catch (_) { /* institutional tables may not exist yet */ }
+
+  // Build sector average P/E from prior run data
+  const sectorPEMap = {};
+  {
+    const { data: priorResults } = await supabase
+      .from('screener_results')
+      .select('sector, pe_ratio')
+      .not('pe_ratio', 'is', null);
+    if (priorResults) {
+      const sectorPEs = {};
+      for (const r of priorResults) {
+        if (!r.sector || r.pe_ratio == null || r.pe_ratio <= 0 || r.pe_ratio > 500) continue;
+        if (!sectorPEs[r.sector]) sectorPEs[r.sector] = [];
+        sectorPEs[r.sector].push(r.pe_ratio);
+      }
+      for (const [sec, pes] of Object.entries(sectorPEs)) {
+        sectorPEMap[sec] = Math.round(pes.reduce((a, b) => a + b, 0) / pes.length * 10) / 10;
+      }
+    }
+  }
 
   for (let i = 0; i < candidates.length; i++) {
     const { ticker, company_name, sector } = candidates[i];
@@ -145,6 +172,22 @@ async function _runDeepScore() {
       const previousSignal = prev?.signal ?? null;
       const prevPrice = prev?.current_price ?? null;
 
+      // Fetch institutional data for this ticker (returns defaults if none)
+      let institutionalData = null;
+      let macroContext = null;
+      try {
+        institutionalData = await getInstitutionalData(ticker);
+        if (i === 0) macroContext = await getMacroContext(); // once per run
+      } catch (_) { /* graceful fallback if tables don't exist yet */ }
+
+      // Compute dividend yield
+      const dividendYield = (fund.dividendPerShare != null && currentPrice > 0)
+        ? Math.round(fund.dividendPerShare / currentPrice * 10000) / 100
+        : null;
+
+      // Sector average P/E (from results we've already scored)
+      const sectorAvgPE = sectorPEMap[sector] ?? null;
+
       // Run TLI scorer with extended options
       const scores = runScorer({
         currentPrice,
@@ -161,6 +204,22 @@ async function _runDeepScore() {
         deathCross,
         hhHlPattern,
         previousScore,
+        // Sprint 6A inputs
+        revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
+        fcfMargin: fund.fcfMargin,
+        fcfGrowthYoY: fund.fcfGrowthYoY,
+        cashAndEquivalents: fund.cashAndEquivalents,
+        totalDebt: fund.totalDebt,
+        debtToEquity: fund.debtToEquity,
+        sharesOutstandingChange: fund.sharesOutstandingChange,
+        dividendYield,
+        grossMarginCurrent: fund.grossMarginCurrent,
+        capex: fund.capex,
+        epsGaap: fund.epsDiluted,
+        sectorAvgPE,
+        sector,
+        institutionalData,
+        macroContext: macroContext || _cachedMacroContext,
       });
 
       // Build result row (store all scored tickers, including PASS)
@@ -196,13 +255,37 @@ async function _runDeepScore() {
         entry_note: scores.entryNote,
         volume_trend: volumeTrend,
         volume_trend_ratio: volumeTrendRatio,
-        // Part 8 new columns
+        // Part 8 columns
         ma_50d: ma50d,
         golden_cross: goldenCross,
         death_cross: deathCross,
         hh_hl_pattern: hhHlPattern,
         generational_buy: scores.generationalBuy || false,
         return_to_200wma_pct: scores.returnTo200wmaPct,
+        // Sprint 6A columns
+        score_v1: scores.scoreV1,
+        fundamental_base: scores.fundamentalBase,
+        technical_base: scores.technicalBase,
+        bonus_points: scores.bonusPoints,
+        penalty_points: scores.penaltyPoints,
+        earnings_quality_adj: scores.earningsQualityAdj,
+        wave_bonus: scores.waveBonus,
+        flags: scores.flags?.length > 0 ? scores.flags : null,
+        institutional_holders: institutionalData?.superInvestorCount ?? null,
+        institutional_consensus: institutionalData?.consensusSentiment ?? null,
+        fcf_margin: fund.fcfMargin ?? null,
+        fcf_growth_yoy: fund.fcfGrowthYoY ?? null,
+        revenue_growth_3yr: fund.revenueGrowth3YrAvg ?? null,
+        free_cash_flow: fund.freeCashFlow ?? null,
+        capex: fund.capex ?? null,
+        cash_and_equivalents: fund.cashAndEquivalents ?? null,
+        total_debt: fund.totalDebt ?? null,
+        debt_to_equity: fund.debtToEquity ?? null,
+        shares_outstanding_change: fund.sharesOutstandingChange ?? null,
+        dividend_yield: dividendYield,
+        eps_gaap: fund.epsDiluted ?? null,
+        sector_avg_pe: sectorAvgPE,
+        score_breakdown: scores.scoreBreakdown ?? null,
         last_updated: new Date().toISOString(),
       };
 

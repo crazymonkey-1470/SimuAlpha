@@ -77,11 +77,24 @@ async function fetchFundamentals(ticker) {
       revenueCurrent: data.revenue_current ?? null,
       revenuePrior: data.revenue_prior_year ?? null,
       revenueGrowthPct: data.revenue_growth_pct ?? null,
+      revenueGrowth3YrAvg: data.revenue_growth_3yr ?? null,
       revenueHistory: data.revenue_history ?? [],
       grossMarginCurrent: data.gross_margin_current ?? null,
       grossMarginHistory: data.gross_margin_history ?? [],
       peRatio: data.pe_ratio ?? null,
       psRatio: data.ps_ratio ?? null,
+      // Sprint 6A extended fields
+      epsDiluted: data.eps_diluted ?? null,
+      netIncome: data.net_income ?? null,
+      freeCashFlow: data.free_cash_flow ?? null,
+      fcfMargin: data.fcf_margin ?? null,
+      fcfGrowthYoY: data.fcf_growth_yoy ?? null,
+      capex: data.capex ?? null,
+      cashAndEquivalents: data.cash_and_equivalents ?? null,
+      totalDebt: data.total_debt ?? null,
+      debtToEquity: data.debt_to_equity ?? null,
+      sharesOutstandingChange: data.shares_outstanding_change ?? null,
+      dividendPerShare: data.dividend_per_share ?? null,
     };
   } catch (err) {
     console.error(`[fetcher] fundamentals failed ${ticker}:`, err.message);
