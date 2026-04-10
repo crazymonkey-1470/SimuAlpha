@@ -767,13 +767,12 @@ ON CONFLICT (cik) DO NOTHING;
 -- SPRINT 8: AGENTIC INTELLIGENCE SYSTEM TABLES
 -- ══════════════════════════════════════════════════════════════════════
 
--- Enable pgvector extension for semantic search
-CREATE EXTENSION IF NOT EXISTS vector;
+-- No external embedding dependencies. Uses metadata + PostgreSQL full-text search.
 
 
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │  TABLE 19: knowledge_chunks (Sprint 8)                           │
--- │  RAG knowledge base — chunked documents with vector embeddings   │
+-- │  Knowledge base — chunked documents with metadata + full-text    │
 -- └──────────────────────────────────────────────────────────────────┘
 
 CREATE TABLE IF NOT EXISTS knowledge_chunks (
@@ -787,7 +786,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
   investors_mentioned TEXT[]  DEFAULT '{}',
   sectors_mentioned TEXT[]    DEFAULT '{}',
   topics          TEXT[]      DEFAULT '{}',
-  embedding       VECTOR(1536),
+  chunk_tsv       TSVECTOR,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -870,12 +869,32 @@ CREATE TABLE IF NOT EXISTS learned_principles (
 );
 
 
--- ─── Vector similarity search function (Sprint 8) ───
+-- ─── Auto-populate tsvector on insert/update (Sprint 8) ───
 
-CREATE OR REPLACE FUNCTION match_knowledge(
-  query_embedding VECTOR(1536),
-  match_threshold FLOAT,
-  match_count INT
+CREATE OR REPLACE FUNCTION knowledge_chunks_tsv_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.chunk_tsv := to_tsvector('english', NEW.chunk_text);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_knowledge_tsv ON knowledge_chunks;
+CREATE TRIGGER trg_knowledge_tsv
+  BEFORE INSERT OR UPDATE OF chunk_text ON knowledge_chunks
+  FOR EACH ROW EXECUTE FUNCTION knowledge_chunks_tsv_trigger();
+
+
+-- ─── Full-text search + metadata retrieval function (Sprint 8) ───
+
+CREATE OR REPLACE FUNCTION search_knowledge(
+  search_query TEXT,
+  filter_ticker TEXT DEFAULT '',
+  filter_topics TEXT[] DEFAULT '{}',
+  filter_source_types TEXT[] DEFAULT '{}',
+  match_count INT DEFAULT 10
 )
 RETURNS TABLE (
   id              UUID,
@@ -888,11 +907,20 @@ RETURNS TABLE (
   investors_mentioned TEXT[],
   sectors_mentioned TEXT[],
   topics          TEXT[],
-  similarity      FLOAT
+  rank            FLOAT
 )
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  tsq TSQUERY;
 BEGIN
+  -- Build tsquery from search terms (OR-based for broad matching)
+  BEGIN
+    tsq := to_tsquery('english', search_query);
+  EXCEPTION WHEN OTHERS THEN
+    tsq := plainto_tsquery('english', search_query);
+  END;
+
   RETURN QUERY
   SELECT
     kc.id,
@@ -905,10 +933,22 @@ BEGIN
     kc.investors_mentioned,
     kc.sectors_mentioned,
     kc.topics,
-    1 - (kc.embedding <=> query_embedding) AS similarity
+    ts_rank(kc.chunk_tsv, tsq)::FLOAT AS rank
   FROM knowledge_chunks kc
-  WHERE 1 - (kc.embedding <=> query_embedding) > match_threshold
-  ORDER BY kc.embedding <=> query_embedding
+  WHERE
+    -- Full-text match OR metadata match (broad retrieval)
+    (
+      kc.chunk_tsv @@ tsq
+      OR (filter_ticker <> '' AND kc.tickers_mentioned && ARRAY[filter_ticker])
+      OR (array_length(filter_topics, 1) > 0 AND kc.topics && filter_topics)
+    )
+    -- Additional filters (narrow when provided)
+    AND (filter_ticker = '' OR kc.tickers_mentioned && ARRAY[filter_ticker])
+    AND (array_length(filter_source_types, 1) IS NULL OR kc.source_type = ANY(filter_source_types))
+  ORDER BY
+    -- Boost: ticker match + text match together ranks highest
+    CASE WHEN filter_ticker <> '' AND kc.tickers_mentioned && ARRAY[filter_ticker] THEN 1.0 ELSE 0.0 END
+    + ts_rank(kc.chunk_tsv, tsq)::FLOAT DESC
   LIMIT match_count;
 END;
 $$;
@@ -916,10 +956,8 @@ $$;
 
 -- ─── Sprint 8 Indexes ───
 
--- knowledge_chunks: ivfflat for vector similarity search
-CREATE INDEX IF NOT EXISTS idx_knowledge_embedding
-  ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 100);
+-- knowledge_chunks: GIN index for full-text search
+CREATE INDEX IF NOT EXISTS idx_knowledge_tsv ON knowledge_chunks USING gin(chunk_tsv);
 
 -- knowledge_chunks: GIN indexes for metadata filtering
 CREATE INDEX IF NOT EXISTS idx_knowledge_tickers   ON knowledge_chunks USING gin(tickers_mentioned);
