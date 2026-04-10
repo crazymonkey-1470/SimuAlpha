@@ -1,12 +1,15 @@
 const supabase = require('../services/supabase');
 const { fetchHistoricalPrices, fetchFundamentals, calculate200WMA, calculate200MMA, sleep } = require('../services/fetcher');
 const { runScorer } = require('../services/scorer');
+const { computeTLIScoreV3 } = require('../services/scorer_v3');
 const { fireAlert } = require('../services/alerts');
 const { getInstitutionalData, getMacroContext } = require('../services/institutional');
 const { computeThreePillarValuation, scoreValuation, saveValuation } = require('../services/valuation');
 const { recordSignal } = require('../services/signalTracker');
 const { getSpyReturns, enrichStock } = require('../services/enrichment');
 const { computeConsensus: computeSAINConsensus } = require('../services/sain_consensus');
+
+const SCORING_VERSION = process.env.SCORING_VERSION || 'v2';
 
 /**
  * Stage 3 — Deep Score
@@ -41,7 +44,7 @@ async function _runDeepScore() {
     return;
   }
 
-  console.log(`[Stage 3] Scoring ${candidates.length} candidates...`);
+  console.log(`[Stage 3] Scoring ${candidates.length} candidates (scorer: ${SCORING_VERSION})...`);
 
   const results = [];
   let alertsFired = 0;
@@ -206,45 +209,111 @@ async function _runDeepScore() {
       // Sector average P/E (from results we've already scored)
       const sectorAvgPE = sectorPEMap[sector] ?? null;
 
-      // Run TLI scorer with extended options
-      const scores = runScorer({
-        currentPrice,
-        week52High: fund.week52High,
-        week52Low,
-        price200WMA,
-        price200MMA,
-        revenueGrowthPct: fund.revenueGrowthPct,
-        psRatio: fund.psRatio,
-        peRatio: fund.peRatio,
-        // Part 8 additional inputs
-        ma50d,
-        goldenCross,
-        deathCross,
-        hhHlPattern,
-        previousScore,
-        // Sprint 6A inputs
-        revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
-        fcfMargin: fund.fcfMargin,
-        fcfGrowthYoY: fund.fcfGrowthYoY,
-        cashAndEquivalents: fund.cashAndEquivalents,
-        totalDebt: fund.totalDebt,
-        debtToEquity: fund.debtToEquity,
-        sharesOutstandingChange: fund.sharesOutstandingChange,
-        dividendYield,
-        grossMarginCurrent: fund.grossMarginCurrent,
-        capex: fund.capex,
-        epsGaap: fund.epsDiluted,
-        sectorAvgPE,
-        sector,
-        institutionalData,
-        macroContext: macroContext || _cachedMacroContext,
-        // Sprint 7 enrichment inputs
-        beta: enriched.beta,
-        forwardPE: enriched.forwardPE,
-        operatingMargin: fund.operatingMargin,
-        // Sprint 9A SAIN consensus
-        sainConsensus,
-      });
+      // Run TLI scorer — v2 or v3 depending on config
+      let scores;
+      if (SCORING_VERSION === 'v3') {
+        // V3 scorer: Fundamental (0-30) + Wave (0-30) + Confluence (0-40)
+        // Get wave analysis data from wave_counts table if available
+        let waveAnalysis = null;
+        try {
+          const { data: waveData } = await supabase
+            .from('wave_counts')
+            .select('*')
+            .eq('ticker', ticker)
+            .order('analyzed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          waveAnalysis = waveData;
+        } catch (_) { /* wave_counts table may not exist yet */ }
+
+        const v3Stock = {
+          currentPrice,
+          price200WMA, price200MMA,
+          wma200: price200WMA, mma200: price200MMA,
+          ma50d, sma50: ma50d, sma200: ma200d,
+          revenueGrowthYoY: fund.revenueGrowthPct,
+          revenueGrowthPriorYoY: fund.revenueGrowthPriorYoY ?? null,
+          revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
+          grossMarginCurrent: fund.grossMarginCurrent,
+          grossMarginPriorYear: fund.grossMarginPriorYear ?? null,
+          ttmEBITDA: fund.ebitda,
+          totalDebt: fund.totalDebt,
+          debtToEquity: fund.debtToEquity,
+          epsGrowthQoQ: fund.epsGrowthQoQ ?? null,
+          epsGrowthPriorQoQ: fund.epsGrowthPriorQoQ ?? null,
+          epsGrowthYoY: fund.epsGrowthYoY ?? null,
+          sharesOutstandingChange: fund.sharesOutstandingChange,
+          insiderNetBuying: fund.insiderNetBuying ?? null,
+          peRatio: fund.peRatio,
+          forwardPE: enriched.forwardPE || fund.forwardPE,
+          freeCashFlow: fund.freeCashFlow,
+          fcfMargin: fund.fcfMargin,
+          fcfGrowthYoY: fund.fcfGrowthYoY,
+          marketCap: fund.marketCap,
+          operatingMargin: fund.operatingMargin,
+          netIncome: fund.netIncome,
+          dividendYield,
+          cashAndEquivalents: fund.cashAndEquivalents,
+          sector,
+          moatTier: fund.moatTier ?? null,
+          previousLow: week52Low,
+          week52High: fund.week52High,
+          week52Low,
+          // Technical flags for downtrend filter
+          deathCrossActive: deathCross,
+          sma50SlopeNegative: ma50d != null && price200WMA != null && ma50d < price200WMA,
+          sma200SlopeNegative: false, // approximation
+          // Pct calculations
+          pctFrom52wHigh: fund.week52High != null ? ((currentPrice - fund.week52High) / fund.week52High) * 100 : null,
+          pctFrom200WMA: price200WMA != null ? ((currentPrice - price200WMA) / price200WMA) * 100 : null,
+          pctFrom200MMA: price200MMA != null ? ((currentPrice - price200MMA) / price200MMA) * 100 : null,
+          returnTo200wmaPct: (price200WMA != null && currentPrice > 0 && price200WMA > currentPrice)
+            ? ((price200WMA - currentPrice) / currentPrice) * 100 : null,
+          epsDiluted: fund.epsDiluted,
+        };
+
+        scores = computeTLIScoreV3(v3Stock, waveAnalysis, macroContext || _cachedMacroContext, institutionalData, sainConsensus);
+      } else {
+        // V2 scorer (existing)
+        scores = runScorer({
+          currentPrice,
+          week52High: fund.week52High,
+          week52Low,
+          price200WMA,
+          price200MMA,
+          revenueGrowthPct: fund.revenueGrowthPct,
+          psRatio: fund.psRatio,
+          peRatio: fund.peRatio,
+          // Part 8 additional inputs
+          ma50d,
+          goldenCross,
+          deathCross,
+          hhHlPattern,
+          previousScore,
+          // Sprint 6A inputs
+          revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
+          fcfMargin: fund.fcfMargin,
+          fcfGrowthYoY: fund.fcfGrowthYoY,
+          cashAndEquivalents: fund.cashAndEquivalents,
+          totalDebt: fund.totalDebt,
+          debtToEquity: fund.debtToEquity,
+          sharesOutstandingChange: fund.sharesOutstandingChange,
+          dividendYield,
+          grossMarginCurrent: fund.grossMarginCurrent,
+          capex: fund.capex,
+          epsGaap: fund.epsDiluted,
+          sectorAvgPE,
+          sector,
+          institutionalData,
+          macroContext: macroContext || _cachedMacroContext,
+          // Sprint 7 enrichment inputs
+          beta: enriched.beta,
+          forwardPE: enriched.forwardPE,
+          operatingMargin: fund.operatingMargin,
+          // Sprint 9A SAIN consensus
+          sainConsensus,
+        });
+      }
 
       // Build result row (store all scored tickers, including PASS)
       const row = {
@@ -323,6 +392,29 @@ async function _runDeepScore() {
         ev_sales_5yr_avg: enriched.evSales5YrAvg ?? null,
         ev_ebitda_5yr_avg: enriched.evEbitda5YrAvg ?? null,
         last_updated: new Date().toISOString(),
+        // V3 scoring columns (Sprint 10A)
+        ...(SCORING_VERSION === 'v3' ? {
+          scoring_version: 'v3',
+          fundamental_score_v3: scores.fundamentalScore ?? null,
+          wave_position_score: scores.waveScore ?? null,
+          confluence_score: scores.confluenceScore ?? null,
+          sain_bonus: scores.sainBonus ?? null,
+          sentiment_adj: scores.sentimentAdjustment ?? null,
+          lynch_score: scores.lynchScore ?? null,
+          buffett_score: scores.buffettScore ?? null,
+          dual_screen_pass: scores.dualScreenPass ?? null,
+          health_red_flags: scores.healthRedFlags ?? null,
+          downtrend_score: scores.downtrendScore ?? null,
+          downtrend_suppressed: scores.downtrendSuppressed ?? false,
+          wave_position: scores.wavePosition ?? null,
+          position_action: scores.positionActionLabel ?? null,
+          badges: scores.badges?.length > 0 ? scores.badges : null,
+          risk_filters_pass: scores.riskFilterPass ?? null,
+          risk_filter_reason: scores.riskFilterReason ?? null,
+          support_confirmed: scores.supportConfirmed ?? null,
+          disqualified: scores.disqualified ?? false,
+          disqualified_reasons: scores.disqualifiedReasons?.length > 0 ? scores.disqualifiedReasons : null,
+        } : {}),
       };
 
       // Valuation computation (Sprint 6B)

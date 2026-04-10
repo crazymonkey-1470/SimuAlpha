@@ -199,10 +199,12 @@ function ScoreRow({ label, value, color }) {
 function ValuationBadge({ rating }) {
   const colors = {
     BUY: { color: '#00e87a', bg: 'rgba(0,232,122,0.1)' },
+    UNDERVALUED: { color: '#00e87a', bg: 'rgba(0,232,122,0.1)' },
     OVERWEIGHT: { color: '#f0a500', bg: 'rgba(240,165,0,0.1)' },
     HOLD: { color: 'var(--text-secondary)', bg: 'transparent' },
     NEUTRAL: { color: 'var(--text-dim)', bg: 'transparent' },
   };
+  const displayMap = { BUY: 'Undervalued', OVERWEIGHT: 'Favorable', HOLD: 'Fair Value', NEUTRAL: 'Neutral' };
   const c = colors[rating] || colors.NEUTRAL;
 
   return (
@@ -216,7 +218,7 @@ function ValuationBadge({ rating }) {
       border: `1px solid ${c.color}30`,
       letterSpacing: '0.05em',
     }}>
-      {rating}
+      {displayMap[rating] || rating}
     </span>
   );
 }

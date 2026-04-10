@@ -16,9 +16,17 @@ function getScoreColor(score) {
 
 function getDirBadge(direction) {
   if (!direction) return { label: 'N/A', color: 'var(--text-dim)' };
-  if (direction.includes('BUY')) return { label: direction, color: 'var(--signal-green)' };
-  if (direction.includes('SELL')) return { label: direction, color: 'var(--red)' };
-  return { label: direction, color: 'var(--signal-amber)' };
+  const displayMap = {
+    'STRONG_BUY': 'Maximum Conviction Entry',
+    'BUY': 'Approaching Support',
+    'MIXED': 'Mixed Signals',
+    'SELL': 'Consider Reducing',
+    'STRONG_SELL': 'Consider Exiting',
+  };
+  const label = displayMap[direction] || direction;
+  if (direction.includes('BUY')) return { label, color: 'var(--signal-green)' };
+  if (direction.includes('SELL')) return { label, color: 'var(--red)' };
+  return { label, color: 'var(--signal-amber)' };
 }
 
 export default function SAINConsensusPanel({ ticker }) {
@@ -213,7 +221,7 @@ export default function SAINConsensusPanel({ ticker }) {
                 <span style={{
                   color: sig.direction === 'BUY' ? 'var(--signal-green)' : 'var(--red)'
                 }}>
-                  {sig.direction}
+                  {sig.direction === 'BUY' ? 'bullish' : sig.direction === 'SELL' ? 'bearish' : sig.direction}
                 </span>
                 {sig.thesis_summary && (
                   <span> &mdash; &ldquo;{sig.thesis_summary.slice(0, 60)}{sig.thesis_summary.length > 60 ? '...' : ''}&rdquo;</span>

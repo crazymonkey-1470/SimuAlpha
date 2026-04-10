@@ -11,7 +11,7 @@ const alertTypeLabel = {
   'SIGNAL_UPGRADE': 'Signal Upgrade',
   'CROSSED_200WMA': 'Crossed 200WMA',
   'CROSSED_200MMA': 'Crossed 200MMA',
-  'WAVE_BUY_ZONE': 'Wave Buy Zone',
+  'WAVE_BUY_ZONE': 'Wave Entry Zone',
 };
 
 function timeSince(dateStr) {

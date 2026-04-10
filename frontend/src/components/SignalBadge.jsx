@@ -22,13 +22,13 @@ export default function SignalBadge({ signal, size = 'md' }) {
     'WAVE_C_BOTTOM': {
       color: 'var(--signal-green)',
       bg: 'var(--signal-green-dim)',
-      label: '\u25CF WAVE C \u2014 BUY',
+      label: '\u25CF WAVE C \u2014 ENTRY ZONE',
       pulse: true
     },
     'WAVE_2_BOTTOM': {
       color: 'var(--signal-green)',
       bg: 'var(--signal-green-dim)',
-      label: '\u25CF WAVE 2 \u2014 BUY',
+      label: '\u25CF WAVE 2 \u2014 ENTRY ZONE',
       pulse: true
     },
     'WAVE_4_BOTTOM': {
@@ -46,7 +46,7 @@ export default function SignalBadge({ signal, size = 'md' }) {
     'WAVE_5_IN_PROGRESS': {
       color: 'var(--red)',
       bg: 'var(--red-dim, rgba(239,68,68,0.1))',
-      label: '\u25CF WAVE 5 \u2014 SELL',
+      label: '\u25CF WAVE 5 \u2014 TRIM ZONE',
       pulse: false
     },
     'WAVE_B_BOUNCE': {
@@ -58,7 +58,7 @@ export default function SignalBadge({ signal, size = 'md' }) {
     'GENERATIONAL_BUY': {
       color: '#00bfff',
       bg: 'rgba(0,191,255,0.12)',
-      label: '\uD83D\uDC8E GENERATIONAL BUY',
+      label: '\uD83D\uDC8E GENERATIONAL SUPPORT ZONE',
       pulse: true,
       bold: true
     },
