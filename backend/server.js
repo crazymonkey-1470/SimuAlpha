@@ -355,6 +355,8 @@ const { analyzeStock, runLearningCycle } = require('./services/orchestrator');
 const { invoke: invokeSkill, listSkills } = require('./skills');
 const { retrieve: knowledgeRetrieve, getStats: knowledgeStats } = require('./services/knowledge');
 const { ingestDocument } = require('./services/ingest');
+const { computeConsensus: computeSAINConsensus, computeAllConsensus } = require('./services/sain_consensus');
+require('./cron/sain_cron');
 
 // --- Analysis ---
 
@@ -563,6 +565,99 @@ app.post('/api/compare-greats/:ticker', async (req, res) => {
       moat: null,
     });
     res.json({ ticker, comparison: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// SAIN ENDPOINTS (Sprint 9A)
+// ═══════════════════════════════════════════
+
+// --- SAIN Sources ---
+
+app.get('/api/sain/sources', async (_req, res) => {
+  const { data } = await supabase.from('sain_sources').select('*').eq('active', true);
+  res.json(data);
+});
+
+app.post('/api/sain/sources', async (req, res) => {
+  const { data, error } = await supabase.from('sain_sources').insert(req.body).select();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data[0]);
+});
+
+// --- SAIN Signals ---
+
+app.get('/api/sain/signals', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const { data } = await supabase.from('sain_signals').select('*')
+    .order('signal_date', { ascending: false }).limit(limit);
+  res.json(data);
+});
+
+app.get('/api/sain/signals/politicians', async (_req, res) => {
+  const { data } = await supabase.from('sain_signals').select('*')
+    .not('politician_name', 'is', null)
+    .order('signal_date', { ascending: false }).limit(50);
+  res.json(data);
+});
+
+app.get('/api/sain/signals/ai-models', async (_req, res) => {
+  const { data } = await supabase.from('sain_signals').select('*')
+    .not('ai_model_name', 'is', null)
+    .is('politician_name', null)
+    .order('signal_date', { ascending: false }).limit(50);
+  res.json(data);
+});
+
+app.get('/api/sain/signals/:ticker', async (req, res) => {
+  const { data } = await supabase.from('sain_signals').select('*')
+    .eq('ticker', req.params.ticker.toUpperCase())
+    .order('signal_date', { ascending: false }).limit(20);
+  res.json(data);
+});
+
+// --- SAIN Consensus ---
+
+app.get('/api/sain/consensus/full-stack', async (_req, res) => {
+  const { data } = await supabase.from('sain_consensus').select('*')
+    .eq('is_full_stack_consensus', true)
+    .order('total_sain_score', { ascending: false });
+  res.json(data);
+});
+
+app.get('/api/sain/consensus/top', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 20;
+  const { data } = await supabase.from('sain_consensus').select('*')
+    .order('total_sain_score', { ascending: false }).limit(limit);
+  res.json(data);
+});
+
+app.get('/api/sain/consensus/:ticker', async (req, res) => {
+  const { data } = await supabase.from('sain_consensus').select('*')
+    .eq('ticker', req.params.ticker.toUpperCase())
+    .order('computed_date', { ascending: false }).limit(1);
+  res.json(data?.[0] || null);
+});
+
+// --- Manual SAIN Triggers ---
+
+app.post('/api/sain/scan', async (_req, res) => {
+  try {
+    const social = await invokeSkill('scan_social', { category: 'ALL' });
+    const pol = await invokeSkill('scan_politicians', {});
+    const consensus = await computeAllConsensus();
+    res.json({ social, politicians: pol, consensus_computed: consensus.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sain/scan/:category', async (req, res) => {
+  try {
+    const result = await invokeSkill('scan_social', { category: req.params.category.toUpperCase() });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

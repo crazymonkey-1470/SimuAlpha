@@ -6,6 +6,7 @@ const { getInstitutionalData, getMacroContext } = require('../services/instituti
 const { computeThreePillarValuation, scoreValuation, saveValuation } = require('../services/valuation');
 const { recordSignal } = require('../services/signalTracker');
 const { getSpyReturns, enrichStock } = require('../services/enrichment');
+const { computeConsensus: computeSAINConsensus } = require('../services/sain_consensus');
 
 /**
  * Stage 3 — Deep Score
@@ -191,6 +192,12 @@ async function _runDeepScore() {
         if (i === 0) macroContext = await getMacroContext(); // once per run
       } catch (_) { /* graceful fallback if tables don't exist yet */ }
 
+      // SAIN consensus (Sprint 9A)
+      let sainConsensus = null;
+      try {
+        sainConsensus = await computeSAINConsensus(ticker);
+      } catch (_) { /* graceful fallback if SAIN tables don't exist yet */ }
+
       // Compute dividend yield
       const dividendYield = (fund.dividendPerShare != null && currentPrice > 0)
         ? Math.round(fund.dividendPerShare / currentPrice * 10000) / 100
@@ -235,6 +242,8 @@ async function _runDeepScore() {
         beta: enriched.beta,
         forwardPE: enriched.forwardPE,
         operatingMargin: fund.operatingMargin,
+        // Sprint 9A SAIN consensus
+        sainConsensus,
       });
 
       // Build result row (store all scored tickers, including PASS)

@@ -142,6 +142,26 @@ function scoreFundamentalBonuses(stock, inst) {
     bonus += 3; flags.push('CYCLICAL_RECOVERY');
   }
 
+  // SAIN consensus bonuses (Sprint 9A)
+  if (stock.sainConsensus) {
+    const sc = stock.sainConsensus;
+    if (sc.is_full_stack_consensus) {
+      bonus += 15; flags.push('FULL_STACK_CONSENSUS');
+    } else if (sc.layers_aligned >= 3) {
+      bonus += 8; flags.push('THREE_LAYER_CONSENSUS');
+    }
+    if (sc.politician_score >= 5) {
+      bonus += 5; flags.push('POLITICIAN_CONVICTION');
+    } else if (sc.politician_score >= 2) {
+      bonus += 2; flags.push('POLITICIAN_SIGNAL');
+    }
+    if (sc.ai_model_score >= 4) {
+      bonus += 4; flags.push('AI_MODEL_CONSENSUS');
+    } else if (sc.ai_model_score >= 2) {
+      bonus += 2; flags.push('AI_MODEL_SIGNAL');
+    }
+  }
+
   return { bonus, flags };
 }
 
@@ -423,6 +443,7 @@ function runScorer({ currentPrice, week52High, week52Low, price200WMA, price200M
     gaapNonGaapDivergence: opts.gaapNonGaapDivergence ?? null,
     sector: opts.sector ?? null,
     revenueGrowthPct: revenueGrowthPct,
+    sainConsensus: opts.sainConsensus ?? null,
   };
 
   const revenue = scoreRevenueGrowth(stockData);
