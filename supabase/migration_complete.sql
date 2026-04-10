@@ -1010,3 +1010,117 @@ BEGIN
     CREATE POLICY "Public read learned_principles" ON learned_principles FOR SELECT USING (true);
   END IF;
 END $$;
+
+
+-- ══════════════════════════════════════════════════════════════════════
+-- SPRINT 9A: SAIN — SOCIAL + POLITICAL INTELLIGENCE LAYER
+-- ══════════════════════════════════════════════════════════════════════
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 24: sain_sources (Sprint 9A)                              │
+-- │  Registry of all tracked data sources                            │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS sain_sources (
+  id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                  TEXT        NOT NULL,
+  platform              TEXT        NOT NULL,
+  handle                TEXT,
+  url                   TEXT,
+  api_url               TEXT,
+  source_type           TEXT        NOT NULL,
+  category              TEXT        NOT NULL,
+  scrape_method         TEXT        NOT NULL,
+  priority              TEXT        DEFAULT 'MEDIUM',
+  active                BOOLEAN     DEFAULT TRUE,
+  last_scraped_at       TIMESTAMPTZ,
+  last_tweet_id         TEXT,
+  scrape_frequency_hours INT       DEFAULT 12,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 25: sain_signals (Sprint 9A)                              │
+-- │  Raw signals extracted from all sources                          │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS sain_signals (
+  id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_id             UUID        REFERENCES sain_sources(id),
+  ticker                TEXT        NOT NULL,
+  direction             TEXT        NOT NULL,
+  conviction            TEXT,
+  signal_date           TIMESTAMPTZ NOT NULL,
+  politician_name       TEXT,
+  politician_party      TEXT,
+  politician_chamber    TEXT,
+  politician_committees TEXT[],
+  trade_amount_range    TEXT,
+  committee_sector_match BOOLEAN    DEFAULT FALSE,
+  filing_delay_days     INT,
+  ai_model_name         TEXT,
+  thesis_summary        TEXT,
+  insider_name          TEXT,
+  insider_title         TEXT,
+  raw_text              TEXT,
+  source_url            TEXT,
+  quality_score         DECIMAL(3,2) DEFAULT 0.5,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │  TABLE 26: sain_consensus (Sprint 9A)                            │
+-- │  4-layer consensus per ticker                                    │
+-- └──────────────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS sain_consensus (
+  id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker                  TEXT        NOT NULL,
+  computed_date           DATE        NOT NULL,
+  super_investor_score    INT         DEFAULT 0,
+  politician_score        INT         DEFAULT 0,
+  ai_model_score          INT         DEFAULT 0,
+  insider_score           INT         DEFAULT 0,
+  tli_score               INT         DEFAULT 0,
+  total_sain_score        INT         DEFAULT 0,
+  layers_aligned          INT         DEFAULT 0,
+  is_full_stack_consensus BOOLEAN     DEFAULT FALSE,
+  consensus_direction     TEXT,
+  politician_trades       JSONB       DEFAULT '[]',
+  ai_model_signals        JSONB       DEFAULT '[]',
+  insider_trades          JSONB       DEFAULT '[]',
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(ticker, computed_date)
+);
+
+
+-- ─── Sprint 9A Indexes ───
+
+CREATE INDEX IF NOT EXISTS idx_sain_signals_ticker    ON sain_signals(ticker);
+CREATE INDEX IF NOT EXISTS idx_sain_signals_date      ON sain_signals(signal_date DESC);
+CREATE INDEX IF NOT EXISTS idx_sain_signals_direction ON sain_signals(direction);
+CREATE INDEX IF NOT EXISTS idx_sain_consensus_ticker  ON sain_consensus(ticker);
+CREATE INDEX IF NOT EXISTS idx_sain_consensus_fsc     ON sain_consensus(is_full_stack_consensus) WHERE is_full_stack_consensus = TRUE;
+CREATE INDEX IF NOT EXISTS idx_sain_sources_active    ON sain_sources(active) WHERE active = TRUE;
+
+
+-- ─── Sprint 9A RLS ───
+
+ALTER TABLE sain_sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sain_signals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sain_consensus ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read sain_sources') THEN
+    CREATE POLICY "Public read sain_sources" ON sain_sources FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read sain_signals') THEN
+    CREATE POLICY "Public read sain_signals" ON sain_signals FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public read sain_consensus') THEN
+    CREATE POLICY "Public read sain_consensus" ON sain_consensus FOR SELECT USING (true);
+  END IF;
+END $$;
