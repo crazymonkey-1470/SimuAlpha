@@ -8,6 +8,8 @@ import Watchlist from './pages/Watchlist';
 import SuperInvestors from './pages/SuperInvestors';
 import InvestorDetail from './pages/InvestorDetail';
 import MarketContext from './pages/MarketContext';
+import IntelligenceFeed from './pages/IntelligenceFeed';
+import ConsensusLeaderboard from './pages/ConsensusLeaderboard';
 
 export default function App() {
   return (
@@ -22,6 +24,8 @@ export default function App() {
           <Route path="investor/:id" element={<InvestorDetail />} />
           <Route path="market" element={<MarketContext />} />
           <Route path="watchlist" element={<Watchlist />} />
+          <Route path="intelligence" element={<IntelligenceFeed />} />
+          <Route path="consensus" element={<ConsensusLeaderboard />} />
         </Route>
       </Routes>
     </BrowserRouter>

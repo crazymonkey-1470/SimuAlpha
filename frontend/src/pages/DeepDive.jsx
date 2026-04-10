@@ -15,6 +15,7 @@ import BacktestBadge from '../components/BacktestBadge';
 import SectorStrength from '../components/SectorStrength';
 import ValuationDisplay from '../components/ValuationDisplay';
 import ThesisDisplay from '../components/ThesisDisplay';
+import SAINConsensusPanel from '../components/sain/SAINConsensusPanel';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -242,6 +243,13 @@ export default function DeepDive() {
         style={{ marginBottom: '32px' }}
       >
         <ThesisDisplay ticker={symbol} />
+      </motion.div>
+
+      {/* SAIN 4-Layer Consensus */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.175 }}
+        style={{ marginBottom: '32px' }}
+      >
+        <SAINConsensusPanel ticker={symbol} />
       </motion.div>
 
       {/* Three-Pillar Valuation */}
