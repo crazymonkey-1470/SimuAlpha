@@ -18,8 +18,8 @@ const COLUMNS = [
 
 const DIR_FILTERS = [
   { key: 'ALL', label: 'All' },
-  { key: 'BUY', label: 'BUY Only' },
-  { key: 'SELL', label: 'SELL Only' },
+  { key: 'BUY', label: 'Bullish Only' },
+  { key: 'SELL', label: 'Bearish Only' },
 ];
 
 export default function ConsensusLeaderboard() {
@@ -236,7 +236,9 @@ export default function ConsensusLeaderboard() {
                         ...cellBase, textAlign: 'center', fontWeight: 500,
                         color: dirColor
                       }}>
-                        {row.is_full_stack_consensus ? '\u{1F3C6}' : dirLabel.replace('STRONG_', '')}
+                        {row.is_full_stack_consensus ? '\u{1F3C6}'
+                          : dirLabel.includes('BUY') ? 'Entry'
+                          : dirLabel.includes('SELL') ? 'Reduce' : 'Mixed'}
                       </td>
                     </tr>
                   );

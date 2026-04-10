@@ -96,10 +96,11 @@ export default function FullStackConsensusBanner() {
                 fontFamily: 'IBM Plex Mono', fontSize: '11px',
                 color: 'var(--text-secondary)', marginTop: '6px'
               }}>
-                Direction: <span style={{
+                Consensus: <span style={{
                   color: stock.consensus_direction?.includes('BUY') ? 'var(--signal-green)' : 'var(--red)',
                   fontWeight: 500
-                }}>{stock.consensus_direction}</span>
+                }}>{stock.consensus_direction?.includes('BUY') ? 'Highest Conviction Zone'
+                  : stock.consensus_direction?.includes('SELL') ? 'Consider Reducing' : stock.consensus_direction}</span>
               </div>
             </motion.div>
           ))}

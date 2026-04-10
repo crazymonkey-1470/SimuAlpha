@@ -335,7 +335,9 @@ function ConsensusTable({ data }) {
                   color: row.consensus_direction?.includes('BUY') ? 'var(--signal-green)'
                     : row.consensus_direction?.includes('SELL') ? 'var(--red)' : 'var(--signal-amber)'
                 }}>
-                  {row.is_full_stack_consensus ? '\u{1F3C6}' : row.consensus_direction?.replace('STRONG_', '') || '\u2014'}
+                  {row.is_full_stack_consensus ? '\u{1F3C6}'
+                    : row.consensus_direction?.includes('BUY') ? 'Entry'
+                    : row.consensus_direction?.includes('SELL') ? 'Reduce' : '\u2014'}
                 </td>
               </tr>
             ))}

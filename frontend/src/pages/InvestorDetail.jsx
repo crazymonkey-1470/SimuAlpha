@@ -203,7 +203,7 @@ export default function InvestorDetail() {
               gap: '12px',
             }}>
               {newBuys.length > 0 && (
-                <SignalGroup title="NEW BUY" signals={newBuys} color="#00e87a" />
+                <SignalGroup title="NEW POSITION" signals={newBuys} color="#00e87a" />
               )}
               {adds.length > 0 && (
                 <SignalGroup title="ADD" signals={adds} color="#00e87a" />

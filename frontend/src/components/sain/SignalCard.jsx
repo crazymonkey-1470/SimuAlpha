@@ -31,6 +31,18 @@ function getSignalType(signal) {
   return 'market';
 }
 
+/** Translate raw direction values to TLI-compliant language */
+function displayDirection(dir) {
+  if (!dir) return dir;
+  const map = {
+    'BUY': 'Entering',
+    'SELL': 'Reducing',
+    'STRONG_BUY': 'High Conviction Entry',
+    'STRONG_SELL': 'Consider Exiting',
+  };
+  return map[dir] || dir;
+}
+
 export default function SignalCard({ signal, index = 0, onSelect }) {
   const navigate = useNavigate();
   const type = getSignalType(signal);
@@ -112,7 +124,7 @@ export default function SignalCard({ signal, index = 0, onSelect }) {
           color: dirColor, background: `${dirColor}12`,
           padding: '2px 8px', borderRadius: '4px'
         }}>
-          {signal.direction}
+          {displayDirection(signal.direction)}
         </span>
       </div>
 
