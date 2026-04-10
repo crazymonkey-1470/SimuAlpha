@@ -679,7 +679,10 @@ CREATE INDEX IF NOT EXISTS idx_alerts_fired        ON signal_alerts(fired_at DES
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker       ON signal_alerts(ticker);
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker_fired ON signal_alerts(ticker, fired_at DESC);
 
--- exit_signals
+-- exit_signals (ensure columns exist for pre-existing tables)
+ALTER TABLE exit_signals ADD COLUMN IF NOT EXISTS severity TEXT DEFAULT 'MEDIUM';
+ALTER TABLE exit_signals ADD COLUMN IF NOT EXISTS acknowledged BOOLEAN DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_exit_signals_ticker   ON exit_signals(ticker);
 CREATE INDEX IF NOT EXISTS idx_exit_signals_time     ON exit_signals(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exit_signals_severity ON exit_signals(severity);
