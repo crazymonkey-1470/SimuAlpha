@@ -6,6 +6,8 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MarketRiskBanner from '../components/MarketRiskBanner';
 import ExitSignalPanel from '../components/ExitSignalPanel';
+import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
+import SAINStatsWidget from '../components/SAINStatsWidget';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -25,6 +27,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ paddingTop: '48px' }}>
+      <FullStackConsensusBanner />
       <MarketRiskBanner />
       <ExitSignalPanel />
 
@@ -258,6 +261,22 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* SAIN Network Stats */}
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '24px'
+        }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--blue)'
+          }}>
+            Intelligence Network
+          </h2>
+        </div>
+        <SAINStatsWidget />
       </div>
 
       <motion.div

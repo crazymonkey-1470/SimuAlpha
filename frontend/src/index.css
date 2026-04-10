@@ -75,3 +75,15 @@ body::before {
 .pulse-green {
   animation: pulse-green 2s infinite;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* SAIN consensus cards: 2x2 grid on mobile */
+@media (max-width: 768px) {
+  .sain-consensus-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}

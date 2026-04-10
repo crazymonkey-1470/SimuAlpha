@@ -1,16 +1,20 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useSAINSignalCount } from '../hooks/useSAIN';
 
 const links = [
   { to: '/', label: 'Dashboard' },
   { to: '/screener', label: 'Screener' },
   { to: '/signals', label: 'Signals' },
   { to: '/investors', label: 'Investors' },
+  { to: '/intelligence', label: 'Intelligence', badge: true },
+  { to: '/consensus', label: 'SAIN Consensus' },
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
 ];
 
 export default function NavBar() {
   const location = useLocation();
+  const signalCount = useSAINSignalCount();
 
   return (
     <nav style={{
@@ -38,7 +42,7 @@ export default function NavBar() {
         </span>
       </Link>
 
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         {links.map(link => {
           const active = location.pathname === link.to;
           return (
@@ -54,10 +58,26 @@ export default function NavBar() {
                 color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                 background: active ? 'var(--bg-card)' : 'transparent',
                 border: active ? '1px solid var(--border-light)' : '1px solid transparent',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                display: 'flex', alignItems: 'center', gap: '6px'
               }}
             >
               {link.label}
+              {link.badge && signalCount > 0 && (
+                <span style={{
+                  background: 'var(--signal-green)',
+                  color: '#0c0c0e',
+                  fontSize: '9px',
+                  fontWeight: 600,
+                  padding: '1px 5px',
+                  borderRadius: '8px',
+                  minWidth: '16px',
+                  textAlign: 'center',
+                  lineHeight: '14px'
+                }}>
+                  {signalCount > 99 ? '99+' : signalCount}
+                </span>
+              )}
             </Link>
           );
         })}
