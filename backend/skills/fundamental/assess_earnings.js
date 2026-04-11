@@ -30,6 +30,22 @@ GRAHAM'S CORE RULES — apply these rigorously:
 6. GAAP vs NON-GAAP DIVERGENCE >20% = SUSPICIOUS
    When a company's non-GAAP "adjusted" earnings exceed GAAP earnings by more than 20%, they are systematically excluding real costs. Stock-based compensation is a REAL cost. Restructuring that happens every year is a REAL cost. Amortization of acquired intangibles reflects REAL capital allocation decisions.
 
+7. EPS-REVENUE COHERENCE CHECK (Sprint 10C)
+   If EPS is growing but revenue is flat or declining for 2+ consecutive quarters,
+   earnings are being manufactured — either through cost-cutting pushed past the
+   point of sustainability, buyback-driven share-count reduction, or one-time
+   gains. Flag this as an EPS_REVENUE_DIVERGENCE manipulation signal.
+   Formula: if (eps_growth > 5%) AND (revenue_growth <= 0) for 2+ quarters → flag.
+
+8. HIDDEN VALUE PATTERN (UNH signal — Sprint 10C)
+   If FCF is rising while EPS is flat or lagging, the company is likely
+   applying accounting conservatism (aggressive non-cash amortization,
+   deferred revenue booking, or heavy SBC expensing). This is the OPPOSITE
+   of manipulation — it typically precedes a positive earnings surprise
+   as the accrual gap closes. Flag this as HIDDEN_VALUE and suggest a
+   positive score adjustment when it coincides with moat score ≥3.
+   Formula: if (fcf_growth > 10%) AND (eps_growth < 3%) for 2+ quarters → flag.
+
 GRADING SCALE:
 - A: Pristine earnings quality. FCF confirms EPS. Minimal adjustments. Consistent multi-year trend.
 - B: Good quality with minor concerns. FCF generally tracks EPS. Occasional one-time items but not recurring.

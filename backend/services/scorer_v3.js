@@ -26,8 +26,15 @@ const { downtrendFilter } = require('../pipeline/downtrend_filter');
 const { scoreWavePosition } = require('../pipeline/wave_position_scorer');
 const { scoreConfluence } = require('../pipeline/confluence_scorer');
 const { applyRiskFilters } = require('../pipeline/risk_filters');
+const { getCachedConfig, getAllConfig } = require('./scoring_config');
+
+// Warm the scoring_config cache at module load so the sync hot path below
+// gets real DB values on first call. Silently falls back to defaults on error.
+getAllConfig().catch(() => { /* fallback to DEFAULTS is already handled */ });
 
 function computeTLIScoreV3(stock, waveAnalysis, macroContext, institutionalData, sainConsensus) {
+  // Runtime scoring weights (from scoring_config table, with DEFAULTS fallback)
+  const cfg = getCachedConfig();
 
   // ==========================================
   // STAGE 1: HARD GATE (pass/fail)
@@ -82,51 +89,62 @@ function computeTLIScoreV3(stock, waveAnalysis, macroContext, institutionalData,
   let fundamentalScore = 0;
 
   // Revenue growth accelerating (+5)
+  const pRevGrowth = cfg.fundamental_revenue_growth ?? 5;
   if (stock.revenueGrowthYoY != null && stock.revenueGrowthPriorYoY != null
       && stock.revenueGrowthYoY > stock.revenueGrowthPriorYoY) {
-    fundamentalScore += 5;
+    fundamentalScore += pRevGrowth;
   } else if (stock.revenueGrowthYoY != null && stock.revenueGrowthYoY > 10) {
     // Fallback: strong absolute growth even without acceleration data
-    fundamentalScore += 3;
+    fundamentalScore += Math.round(pRevGrowth * 0.6);
   }
 
   // Gross margin expanding (+5)
+  const pGrossMargin = cfg.fundamental_gross_margin ?? 5;
   if (stock.grossMarginCurrent != null && stock.grossMarginPriorYear != null
       && stock.grossMarginCurrent > stock.grossMarginPriorYear) {
-    fundamentalScore += 5;
+    fundamentalScore += pGrossMargin;
   } else if (stock.grossMarginCurrent != null && stock.grossMarginCurrent > 40) {
     // Fallback: strong absolute margin
-    fundamentalScore += 2;
+    fundamentalScore += Math.round(pGrossMargin * 0.4);
   }
 
   // Positive free cash flow (+5)
+  const pFcf = cfg.fundamental_fcf ?? 5;
   if (stock.freeCashFlow != null && stock.freeCashFlow > 0) {
-    fundamentalScore += 5;
+    fundamentalScore += pFcf;
   }
 
   // Low debt / strong balance sheet (+5)
+  const pBalanceSheet = cfg.fundamental_balance_sheet ?? 5;
   if (stock.debtToEquity != null && stock.debtToEquity < 0.5) {
-    fundamentalScore += 5;
+    fundamentalScore += pBalanceSheet;
   } else if (stock.cashAndEquivalents != null && stock.totalDebt != null
              && stock.cashAndEquivalents > stock.totalDebt) {
-    fundamentalScore += 5;
+    fundamentalScore += pBalanceSheet;
   }
 
   // Large TAM remaining (+5)
+  const pTam = cfg.fundamental_tam ?? 5;
   if (stock.tamScore != null && stock.tamScore > 0) {
-    fundamentalScore += Math.min(stock.tamScore, 5);
+    fundamentalScore += Math.min(stock.tamScore, pTam);
   } else if (stock.revenueGrowthYoY != null && stock.revenueGrowthYoY > 20) {
     // Proxy: fast-growing companies likely have TAM remaining
-    fundamentalScore += 3;
+    fundamentalScore += Math.round(pTam * 0.6);
   }
 
   // Competitive moat (+5)
+  const pMoat = cfg.fundamental_moat ?? 5;
   if (stock.moatScore != null) {
-    if (stock.moatScore >= 4) fundamentalScore += 5;
-    else if (stock.moatScore >= 2) fundamentalScore += 3;
+    if (stock.moatScore >= 4) fundamentalScore += pMoat;
+    else if (stock.moatScore >= 2) fundamentalScore += Math.round(pMoat * 0.6);
   } else if (stock.moatTier != null) {
     // Use string moat tier as fallback
-    const moatPts = { 'MONOPOLY': 5, 'STRONG_PLATFORM': 4, 'MODERATE': 2, 'NONE': 0 };
+    const moatPts = {
+      'MONOPOLY': pMoat,
+      'STRONG_PLATFORM': Math.round(pMoat * 0.8),
+      'MODERATE': Math.round(pMoat * 0.4),
+      'NONE': 0,
+    };
     fundamentalScore += moatPts[stock.moatTier] || 0;
   }
 
@@ -153,13 +171,13 @@ function computeTLIScoreV3(stock, waveAnalysis, macroContext, institutionalData,
   const riskFilters = applyRiskFilters(stock, waveAnalysis, riskSignal);
   totalScore += riskFilters.sentimentAdjustment;
 
-  // SAIN bonus (from Sprint 9)
+  // SAIN bonus (from Sprint 9) — weights now runtime-configurable
   let sainBonus = 0;
   if (sainConsensus) {
     if (sainConsensus.is_full_stack_consensus) {
-      sainBonus = 15;
+      sainBonus = cfg.sain_full_stack ?? 15;
     } else if (sainConsensus.layers_aligned >= 3) {
-      sainBonus = 8;
+      sainBonus = cfg.sain_three_layer ?? 8;
     }
   }
   totalScore += sainBonus;

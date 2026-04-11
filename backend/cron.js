@@ -92,6 +92,19 @@ function startCron() {
     runFullPipeline().catch((err) => console.error('[Cron] Wednesday pipeline error:', err.message));
   });
 
+  // Sprint 10C — Daily outcome tracking at 4am ET
+  // Checks every signal for 3/6/12/24-month milestones and records realized returns
+  // into signal_outcomes so the agentic learning loop has fresh performance data.
+  cron.schedule('0 4 * * *', async () => {
+    console.log('[Cron] Daily signal outcome tracking — 4am');
+    try {
+      await updateOutcomes();
+      console.log('[Cron] Signal outcomes refreshed');
+    } catch (err) {
+      console.error('[Cron] Outcome tracking failed:', err.message);
+    }
+  });
+
   // Weekly brief — Sunday 8am ET (after Sunday pipeline completes)
   cron.schedule('0 8 * * 0', async () => {
     console.log('[Cron] Generating weekly brief...');
@@ -134,6 +147,7 @@ function startCron() {
 
   console.log('[Cron] Schedules active:');
   console.log('  Full Pipeline:   Sunday 6am ET + Wednesday 6am ET');
+  console.log('  Outcome Track:   Daily 4am ET');
   console.log('  Weekly Brief:    Sunday 8am ET');
 }
 

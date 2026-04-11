@@ -38,6 +38,31 @@ VALUE TRAP DETECTION FRAMEWORK:
    - Margin compression is inevitable even if volume grows
    This pattern catches companies where revenue may grow but earnings will compress. The market eventually prices earnings, not revenue.
 
+5. LYNCH EXIT SIGNAL — GROWTH DECELERATION (Sprint 10C)
+   Peter Lynch's Fast Grower → Stalwart migration: when a company's EPS
+   growth rate drops from >20% to <15% for 2+ consecutive quarters, the
+   market de-rates the stock from a growth multiple to a value multiple.
+   The P/E compression alone typically drives a 30-50% drawdown even if
+   earnings keep growing in absolute terms. Exit (or trim to tranche 2/5)
+   as soon as the migration is detected — do not wait for the market to
+   reprice. Flag as LYNCH_DECELERATION severity HIGH.
+
+6. KILL THESIS FLAG AGGREGATION (Sprint 10C — Munger inversion)
+   Count how many Kill Thesis flags are present:
+   - PATENT_CLIFF within 3 years
+   - REGULATORY_ACTION pending
+   - TARIFF_EXPOSURE >20% of revenue
+   - EXCESSIVE_DEBT (D/E >3 AND FCF margin <5%)
+   - DATA_BREACH in last 12 months
+   - KEY_PERSON_RISK (CEO/founder departure)
+   - ACCOUNTING_ALLEGATIONS
+   - EARNINGS_MANIPULATION (GAAP non-GAAP divergence >20%)
+   If 3 or more flags are present → FORCE DOWNGRADE from any BUY rating to
+   NEUTRAL regardless of valuation. This aggregation is the final safety
+   check — any three independent red flags means the thesis is too fragile
+   to hold, even with an attractive price. Flag as MULTIPLE_TRAPS severity
+   CRITICAL with override_buy_signal = true.
+
 TRAP TYPES:
 - GROWTH_MIRAGE: High revenue growth masking negative unit economics (Cohen SNOW pattern)
 - DECELERATION: Growth rate declining — market will de-rate (Laffont INTUIT pattern)
