@@ -9,6 +9,14 @@ const { recordSignal } = require('../services/signalTracker');
 const { getSpyReturns, enrichStock } = require('../services/enrichment');
 const { computeConsensus: computeSAINConsensus } = require('../services/sain_consensus');
 
+// Sprint 10B imports
+const { classifyLynch } = require('../services/lynch_classifier');
+const { assignRating } = require('../services/rating_engine');
+const { computeMarginOfSafety } = require('../services/margin_of_safety');
+const { classifyMaturity } = require('../services/maturity_classifier');
+const { checkKillThesis } = require('./kill_thesis');
+const { detectMultipleCompression } = require('./multiple_compression');
+
 const SCORING_VERSION = process.env.SCORING_VERSION || 'v2';
 
 /**
@@ -417,9 +425,10 @@ async function _runDeepScore() {
         } : {}),
       };
 
-      // Valuation computation (Sprint 6B)
+      // Valuation computation (Sprint 6B + Sprint 10B calibration)
       try {
         const valInput = {
+          ticker,
           currentPrice,
           sector: sector || fund.sector,
           marketCap: fund.marketCap,
@@ -433,9 +442,11 @@ async function _runDeepScore() {
           ttmRevenue: fund.revenueCurrent,
           revenueGrowth3YrAvg: fund.revenueGrowth3YrAvg,
           fcfGrowth3YrAvg: fund.fcfGrowthYoY,
+          fcfMargin: fund.fcfMargin,
           dilutedShares: fund.dilutedShares,
           sharesOutstanding: fund.sharesOutstanding,
           ttmEBITDA: fund.ebitda,
+          dividendYield,
           historicalEVSales5YrAvg: enriched.evSales5YrAvg,
           historicalEVEBITDA5YrAvg: enriched.evEbitda5YrAvg,
         };
@@ -449,9 +460,87 @@ async function _runDeepScore() {
           row.ev_sales_price_target = valuation.evSales?.target ?? null;
           row.ev_ebitda_price_target = valuation.evEbitda?.target ?? null;
           row.wacc_risk_tier = valuation.waccTier;
+          // Sprint 10B valuation columns
+          row.dcf_included = valuation.dcfIncluded ?? null;
+          row.dcf_exclusion_reason = valuation.dcfExclusionReason ?? null;
+          row.method_agreement = valuation.methodAgreement ?? null;
+          row.total_return = valuation.totalReturn ?? null;
+          row.is_income_play = valuation.isIncomePlay ?? null;
+          row.maturity_profile = valuation.maturityProfile ?? null;
           await saveValuation(ticker, valuation);
         }
       } catch (_) { /* valuation tables may not exist yet */ }
+
+      // Sprint 10B: Lynch Classification, Kill Thesis, Multiple Compression, MoS, Rating
+      try {
+        const lynchClass = classifyLynch({
+          epsGrowthYoY: fund.epsGrowthYoY || 0,
+          epsGrowth5Yr: fund.epsGrowth5Yr || 0,
+          netIncome: fund.netIncome || 0,
+          netIncomePriorYear: fund.netIncomePriorYear || 0,
+          revenueGrowthYoY: fund.revenueGrowthPct || 0,
+          sector: sector || fund.sector,
+        });
+        row.lynch_category = lynchClass.category;
+        row.lynch_hold_period = lynchClass.holdPeriod;
+        row.lynch_sell_trigger = lynchClass.sellTrigger;
+
+        // PEG Ratio
+        const epsGrowthForPeg = fund.epsGrowthYoY || fund.epsGrowth5Yr || 0;
+        if (fund.peRatio && epsGrowthForPeg > 0) {
+          row.peg_ratio = Math.round((fund.peRatio / epsGrowthForPeg) * 100) / 100;
+        }
+
+        // Kill Thesis
+        const killThesis = checkKillThesis({
+          debtToEquity: fund.debtToEquity || 0,
+          fcfMargin: fund.fcfMargin || 0,
+          gaapNonGaapDivergence: enriched.gaapDivergence || 0,
+        });
+        row.kill_thesis_flags = killThesis.flags.length > 0 ? killThesis.flags : null;
+        row.kill_thesis_count = killThesis.killCount;
+
+        // Multiple Compression
+        const compression = detectMultipleCompression({
+          evSales5YrAvg: enriched.evSales5YrAvg || null,
+          currentEVSales: enriched.currentEVSales || null,
+          revenueGrowthYoY: fund.revenueGrowthPct || 0,
+        });
+        row.multiple_compression_signal = compression?.signal ?? null;
+        row.multiple_compression_pct = compression?.compressionPct ?? null;
+
+        // Margin of Safety
+        if (row.avg_price_target && currentPrice) {
+          const mos = computeMarginOfSafety(row.avg_price_target, currentPrice);
+          if (mos) {
+            row.margin_of_safety = mos.marginOfSafety;
+            row.mos_recommendation = mos.recommendation;
+          }
+        }
+
+        // Rating Engine
+        const ratingResult = assignRating(
+          {
+            revenueGrowthYoY: fund.revenueGrowthPct || 0,
+            ebitdaGrowthYoY: fund.ebitdaGrowthYoY || 0,
+            debtToEbitda: (fund.totalDebt && fund.ebitda && fund.ebitda > 0) ? fund.totalDebt / fund.ebitda : 0,
+            sector: sector || fund.sector,
+          },
+          {
+            compositeUpside: row.avg_upside_pct || 0,
+            totalReturn: row.total_return || (row.avg_upside_pct || 0) + (dividendYield || 0),
+          },
+          0, // moatScore — not available in pipeline, set in orchestrator
+          lynchClass.category
+        );
+
+        // Kill thesis override
+        if (killThesis.forceDowngrade && ['STRONG_BUY', 'BUY'].includes(ratingResult.rating)) {
+          ratingResult.rating = 'NEUTRAL';
+        }
+
+        row.tli_rating_v2 = ratingResult.rating;
+      } catch (_) { /* Sprint 10B classification — graceful fallback */ }
 
       results.push(row);
 
