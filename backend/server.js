@@ -6,6 +6,7 @@ const { getInvestors, refreshAllInvestors } = require('./services/institutional'
 const { getLatestMacroContext, getMacroContextHistory, upsertMacroContext } = require('./services/macro');
 const { getValuation, computeAndSaveValuation, batchComputeValuations } = require('./services/valuation');
 const { getSignalHistory, getAccuracyStats } = require('./services/signalTracker');
+const { applyWeightAdjustment, getAllConfig } = require('./services/scoring_config');
 
 const app = express();
 app.use(express.json());
@@ -498,18 +499,135 @@ app.get('/api/learning/adjustments', async (_req, res) => {
 });
 
 // Approve or reject a weight adjustment
+// Sprint 10C — on approval:
+//   1. Write the new weight into scoring_config (hot-reloads v3 scorer)
+//   2. Ingest an "approved memo" into the knowledge base so future
+//      agentic runs see the adjustment as precedent.
 app.put('/api/learning/adjustments/:id', async (req, res) => {
-  const { status } = req.body;
+  const { status, review_notes, reviewer } = req.body;
   if (!['approved', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
   }
   try {
-    const { error } = await supabase
+    // Fetch the full adjustment row so we know what to apply
+    const { data: adjustment, error: fetchErr } = await supabase
       .from('weight_adjustments')
-      .update({ status, reviewed_at: new Date().toISOString() })
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (fetchErr || !adjustment) {
+      return res.status(404).json({ error: 'Adjustment not found' });
+    }
+
+    const modifiedBy = reviewer || 'admin';
+    const now = new Date().toISOString();
+
+    // Mark the adjustment row first so we always have an audit trail,
+    // even if downstream steps fail.
+    const updateRow = {
+      status,
+      reviewed_at: now,
+      review_notes: review_notes || null,
+    };
+    if (status === 'approved') updateRow.applied_at = now;
+
+    const { error: updateErr } = await supabase
+      .from('weight_adjustments')
+      .update(updateRow)
       .eq('id', req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true });
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    if (status === 'rejected') {
+      return res.json({ success: true, status: 'rejected' });
+    }
+
+    // === APPROVED PATH ===
+    // 1. Apply the new weight via scoring_config (hot-reloads CACHE).
+    let applied = null;
+    try {
+      applied = await applyWeightAdjustment({
+        config_key: adjustment.config_key,
+        new_value: adjustment.proposed_value ?? adjustment.new_value,
+        modified_by: modifiedBy,
+      });
+    } catch (applyErr) {
+      console.error('[learning] applyWeightAdjustment failed:', applyErr.message);
+      return res.status(500).json({
+        error: `Adjustment approved but apply failed: ${applyErr.message}`,
+      });
+    }
+
+    // 2. Ingest approval memo into the knowledge base so the
+    //    agentic loop treats this weight change as precedent.
+    try {
+      const memoText = [
+        `APPROVED WEIGHT ADJUSTMENT — ${now.split('T')[0]}`,
+        ``,
+        `Config key: ${adjustment.config_key}`,
+        `Layer: ${adjustment.layer || 'unknown'}`,
+        `Previous value: ${adjustment.current_value ?? 'unknown'}`,
+        `New value: ${applied.new_value}`,
+        `Sample size: ${adjustment.sample_size ?? 'n/a'}`,
+        `Win rate: ${adjustment.win_rate ?? 'n/a'}%`,
+        ``,
+        `Reasoning: ${adjustment.reasoning || adjustment.rationale || 'see adjustment row'}`,
+        ``,
+        `Reviewer notes: ${review_notes || 'none'}`,
+        `Approved by: ${modifiedBy}`,
+        ``,
+        `This change was produced by the agentic learning loop and reviewed`,
+        `by a human before being written to scoring_config. Future adjustments`,
+        `that target ${adjustment.config_key} should treat this value as the`,
+        `current baseline.`,
+      ].join('\n');
+
+      const ingestResult = await ingestDocument({
+        text: memoText,
+        sourceName: `weight_approval_${adjustment.config_key}_${now.split('T')[0]}`,
+        sourceType: 'APPROVED_WEIGHT_MEMO',
+        sourceDate: now.split('T')[0],
+      });
+
+      // Link the knowledge memo back onto the adjustment row if possible.
+      const memoSourceName = `weight_approval_${adjustment.config_key}_${now.split('T')[0]}`;
+      const { data: memoChunks } = await supabase
+        .from('knowledge_chunks')
+        .select('id')
+        .eq('source_name', memoSourceName)
+        .limit(1);
+      if (memoChunks?.length) {
+        await supabase
+          .from('weight_adjustments')
+          .update({ knowledge_memo_id: memoChunks[0].id })
+          .eq('id', req.params.id);
+      }
+
+      return res.json({
+        success: true,
+        status: 'approved',
+        applied,
+        memo: { ingested: ingestResult.chunks_stored },
+      });
+    } catch (ingestErr) {
+      console.error('[learning] Memo ingest failed:', ingestErr.message);
+      // Approval still counts — the scoring_config has been updated.
+      return res.json({
+        success: true,
+        status: 'approved',
+        applied,
+        memo: { ingested: 0, error: ingestErr.message },
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sprint 10C — Expose current scoring weights (live runtime view)
+app.get('/api/learning/scoring-config', async (_req, res) => {
+  try {
+    const cfg = await getAllConfig();
+    res.json({ config: cfg });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -5,9 +5,14 @@ const supabase = require('./supabase');
  * Records actionable signals and tracks their outcomes over time.
  */
 
-const ACTIONABLE_SIGNALS = ['LOAD THE BOAT', 'ACCUMULATE', 'GENERATIONAL_BUY'];
+// Sprint 10C — expanded set of actionable signals for recording
+const ACTIONABLE_SIGNALS = [
+  'LOAD THE BOAT', 'ACCUMULATE', 'WATCHLIST', 'WATCH',
+  'GENERATIONAL_BUY', 'CONFLUENCE_ZONE', 'FULL_STACK_CONSENSUS',
+];
 
 function getCurrentScoringWeights() {
+  // Legacy fallback when v3 breakdown is not available
   return {
     version: 'v2',
     fundamental: {
@@ -27,26 +32,77 @@ function getCurrentScoringWeights() {
   };
 }
 
-async function recordSignal(stock, scoreResult) {
-  const signalType = scoreResult.signal?.replace(/ /g, '_');
-  if (!ACTIONABLE_SIGNALS.includes(scoreResult.signal) && signalType !== 'GENERATIONAL_BUY') {
-    return;
+function isActionableSignal(signal) {
+  if (!signal) return false;
+  const upper = String(signal).toUpperCase();
+  if (ACTIONABLE_SIGNALS.includes(signal)) return true;
+  if (ACTIONABLE_SIGNALS.includes(upper)) return true;
+  // Match variants like LOAD_THE_BOAT vs LOAD THE BOAT
+  return ACTIONABLE_SIGNALS.some(s => s.replace(/[_ ]/g, '') === upper.replace(/[_ ]/g, ''));
+}
+
+/**
+ * Record an actionable signal with full v3 scoring breakdown.
+ *
+ * Sprint 10C: accepts an optional positionCard (full Position Action Card JSONB)
+ * and stores the detailed v3 score components for future replay and learning.
+ */
+async function recordSignal(stock, scoreResult, positionCard = null) {
+  if (!isActionableSignal(scoreResult?.signal)) return;
+
+  const signalType = String(scoreResult.signal).replace(/ /g, '_');
+  const today = new Date().toISOString().split('T')[0];
+
+  // Build the v3 scoring_weights snapshot for replay
+  const scoringVersion = scoreResult.version || (scoreResult.fundamentalScore != null ? 'v3' : 'v2');
+  const scoringWeights = scoringVersion === 'v3'
+    ? {
+        version: 'v3',
+        fundamental_score: scoreResult.fundamentalScore,
+        wave_score: scoreResult.waveScore,
+        confluence_score: scoreResult.confluenceScore,
+        sain_bonus: scoreResult.sainBonus,
+        lynch_score: scoreResult.lynchScreen?.score,
+        buffett_score: scoreResult.buffettScreen?.score,
+        dual_screen_pass: scoreResult.dualScreenPass || false,
+        health_red_flags: scoreResult.healthCheck?.redFlagCount,
+        downtrend_score: scoreResult.downtrendFilter?.score,
+        badges: scoreResult.badges || [],
+        flags: scoreResult.flags || [],
+      }
+    : getCurrentScoringWeights();
+
+  const row = {
+    ticker: stock.ticker,
+    signal_date: today,
+    signal_type: signalType,
+    score_at_signal: scoreResult.totalScore ?? null,
+    price_at_signal: stock.currentPrice || stock.current_price,
+    predicted_wave: stock.elliottWavePosition || null,
+    scoring_version: scoringVersion,
+    scoring_weights: scoringWeights,
+  };
+
+  // Sprint 10C: extended columns for v3 breakdown + position_card
+  if (scoringVersion === 'v3') {
+    row.v3_fundamental_score = scoreResult.fundamentalScore ?? null;
+    row.v3_wave_score = scoreResult.waveScore ?? null;
+    row.v3_confluence_score = scoreResult.confluenceScore ?? null;
+    row.v3_sain_bonus = scoreResult.sainBonus ?? null;
+    row.v3_lynch_score = scoreResult.lynchScreen?.score ?? null;
+    row.v3_buffett_score = scoreResult.buffettScreen?.score ?? null;
+    row.v3_health_red_flags = scoreResult.healthCheck?.redFlagCount ?? null;
+    row.v3_downtrend_score = scoreResult.downtrendFilter?.score ?? null;
+    row.v3_badges = scoreResult.badges || [];
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  if (positionCard) {
+    row.position_card = positionCard;
+  }
 
   const { error } = await supabase
     .from('signal_outcomes')
-    .upsert({
-      ticker: stock.ticker,
-      signal_date: today,
-      signal_type: signalType,
-      score_at_signal: scoreResult.totalScore,
-      price_at_signal: stock.currentPrice || stock.current_price,
-      predicted_wave: stock.elliottWavePosition || null,
-      scoring_version: 'v2',
-      scoring_weights: getCurrentScoringWeights(),
-    }, { onConflict: 'ticker,signal_date' });
+    .upsert(row, { onConflict: 'ticker,signal_date' });
 
   if (error) {
     console.error(`[SignalTracker] Record failed for ${stock.ticker}:`, error.message);

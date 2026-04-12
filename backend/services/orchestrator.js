@@ -23,6 +23,10 @@ const { checkKillThesis } = require('../pipeline/kill_thesis');
 const { detectMultipleCompression } = require('../pipeline/multiple_compression');
 const { fundamentalGate } = require('../pipeline/fundamental_gate');
 
+// Sprint 10C imports
+const { computeTLIScoreV3 } = require('./scorer_v3');
+const { recordSignal } = require('./signalTracker');
+
 /**
  * Run a full agentic analysis for a single ticker.
  * Executes skills in dependency order, stores the result.
@@ -292,8 +296,48 @@ async function analyzeStock(ticker) {
   // Tranche recommendation
   const tranche = recommendTranche(stockData, wave);
 
-  // Score result from screener (for signal/action)
-  const scoreResult = {
+  // ═══════════════════════════════════════════
+  // Sprint 10C — Run the v3 scorer live
+  // ═══════════════════════════════════════════
+  // Normalize the SAIN consensus shape that computeTLIScoreV3 expects
+  const sainForScorer = results.consensus ? {
+    is_full_stack_consensus: results.consensus?.is_full_stack || results.consensus?.is_full_stack_consensus || false,
+    layers_aligned: results.consensus?.layers_aligned || 0,
+  } : null;
+
+  let v3Result = null;
+  try {
+    v3Result = computeTLIScoreV3(
+      stockData,
+      results.wave || wave?.wave_count_json || null,
+      results.macro || null,
+      results.consensus || institutional || null,
+      sainForScorer,
+    );
+  } catch (err) {
+    console.error(`[Orchestrator] v3 scorer failed for ${ticker}:`, err.message);
+  }
+
+  // Score result — prefer v3 when available, fall back to screener data
+  const scoreResult = v3Result ? {
+    signal: v3Result.signal,
+    label: v3Result.label,
+    totalScore: v3Result.totalScore,
+    positionAction: v3Result.positionAction || tranche.type,
+    badges: v3Result.badges || [],
+    fundamentalScore: v3Result.fundamentalScore,
+    waveScore: v3Result.waveScore,
+    confluenceScore: v3Result.confluenceScore,
+    sainBonus: v3Result.sainBonus,
+    lynchScreen: v3Result.lynchScreen,
+    buffettScreen: v3Result.buffettScreen,
+    dualScreenPass: v3Result.dualScreenPass,
+    healthCheck: v3Result.healthCheck,
+    downtrendFilter: v3Result.downtrendFilter,
+    riskFilters: v3Result.riskFilters,
+    flags: v3Result.flags,
+    scoreBreakdown: v3Result.scoreBreakdown,
+  } : {
     signal: results.thesis?.signal || stockData.signal,
     positionAction: stockData.position_action || tranche.type,
     badges: stockData.badges || [],
@@ -380,12 +424,29 @@ async function analyzeStock(ticker) {
     thesis: results.thesis || null,
   };
 
+  // ═══════════════════════════════════════════
+  // Sprint 10C — Record actionable signal with full v3 breakdown
+  // ═══════════════════════════════════════════
+  try {
+    await recordSignal(
+      {
+        ticker,
+        currentPrice,
+        elliottWavePosition: waveAnalysis?.current_wave || null,
+      },
+      scoreResult,
+      positionCard,
+    );
+  } catch (err) {
+    console.error(`[Orchestrator] recordSignal failed for ${ticker}:`, err.message);
+  }
+
   // Step 4: Store the complete analysis
   const elapsed = Date.now() - startTime;
   const analysis = {
     ticker,
     signal: scoreResult.signal,
-    composite_score: results.thesis?.composite_score || stockData.total_score,
+    composite_score: scoreResult.totalScore ?? results.thesis?.composite_score ?? stockData.total_score,
     thesis_text: results.thesis?.one_liner || null,
     thesis_json: results.thesis || null,
     moat_analysis: results.moat || null,

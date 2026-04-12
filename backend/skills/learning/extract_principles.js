@@ -11,11 +11,53 @@
 const { completeJSON } = require('../../services/llm');
 const { retrieve } = require('../../services/knowledge');
 
-const SYSTEM_PROMPT = `You are an investment research analyst who extracts actionable investing principles from documents. Given a document (research note, investor letter, earnings analysis, 13F commentary, etc.), extract structured data in five categories:
+const SYSTEM_PROMPT = `You are an investment research analyst who extracts actionable investing principles from documents and maps them to the correct layer of SimuAlpha's v3 scoring architecture.
 
-1. SCORING RULES: Quantitative rules that could be encoded in a scoring algorithm.
-   Format: { "factor": "...", "condition": "...", "points": number, "direction": "bonus|penalty", "source": "..." }
-   Example: { "factor": "fcf_margin", "condition": ">20% with YoY growth", "points": 10, "direction": "bonus", "source": "Buffett FCF principle" }
+═══════════════════════════════════════════════════════
+CURRENT SCORING ARCHITECTURE (v3) — map every rule to a layer
+═══════════════════════════════════════════════════════
+- FUNDAMENTAL layer (0-30): 6 components × 5pts — revenue growth, gross margin, FCF, balance sheet, TAM, moat
+- WAVE layer (-15 to +30): 9 wave states (W2 entry, W3 hold, W4 re-add, W5 trim, ending diagonal, etc.)
+- CONFLUENCE layer (0-40): 10-item support stack (200WMA, 0.618 Fib, W1 origin, etc.) + bonuses
+- SCREEN layer: Lynch (0-7), Buffett (0-9), Health Check (0-12 red flags)
+- SAIN layer: 4-layer consensus (super investors, politicians, AI models, TLI)
+- RISK layer: chase filter, earnings blackout, sentiment, kill thesis flags
+- MACRO layer: market risk level, late cycle score, carry trade risk
+
+When extracting rules, map them to the correct layer:
+- Company quality → FUNDAMENTAL or SCREEN
+- Price levels / chart patterns → WAVE or CONFLUENCE
+- Investor behavior / positioning → SAIN or INSTITUTIONAL
+- Risk factors / red flags → RISK or Kill Thesis
+- Macroeconomic conditions → MACRO
+
+═══════════════════════════════════════════════════════
+EXTRACTION CATEGORIES
+═══════════════════════════════════════════════════════
+
+1. SCORING RULES: Quantitative rules with explicit v3 layer mapping.
+   Format: {
+     "rule": "description",
+     "factor": "...",
+     "layer": "FUNDAMENTAL | WAVE | CONFLUENCE | SCREEN | SAIN | RISK | MACRO",
+     "proposed_points": number,
+     "condition": "when this triggers",
+     "direction": "bonus|penalty",
+     "source": "document name",
+     "confidence": 0.0-1.0,
+     "conflicts_with": "any existing rule it might conflict with, or NONE"
+   }
+   Example: {
+     "rule": "FCF margin above 20% with YoY growth earns a score bonus",
+     "factor": "fcf_margin_growing",
+     "layer": "FUNDAMENTAL",
+     "proposed_points": 5,
+     "condition": "fcf_margin > 20 AND fcf_growth > 0",
+     "direction": "bonus",
+     "source": "Buffett 2023 Letter",
+     "confidence": 0.9,
+     "conflicts_with": "NONE"
+   }
 
 2. INVESTOR SIGNALS: Specific investor actions or patterns that indicate conviction.
    Format: { "investor": "...", "signal": "...", "interpretation": "...", "conviction": "LOW|MODERATE|HIGH|EXTREME" }
@@ -26,12 +68,12 @@ const SYSTEM_PROMPT = `You are an investment research analyst who extracts actio
    Example: { "principle": "Never average down on a broken thesis", "context": "When revenue growth turns negative after being >20%", "attribution": "Laffont exit rule" }
 
 4. RED FLAGS: Warning signals that indicate danger.
-   Format: { "flag": "...", "severity": "LOW|MODERATE|HIGH|CRITICAL", "action": "..." }
-   Example: { "flag": "GAAP vs Non-GAAP earnings divergence >20%", "severity": "HIGH", "action": "Reduce position or add penalty to score" }
+   Format: { "flag": "...", "severity": "LOW|MODERATE|HIGH|CRITICAL", "action": "...", "layer": "RISK" }
+   Example: { "flag": "GAAP vs Non-GAAP earnings divergence >20%", "severity": "HIGH", "action": "Reduce position or add penalty to score", "layer": "RISK" }
 
 5. SECTOR SIGNALS: Sector-specific insights or rotation signals.
-   Format: { "sector": "...", "signal": "...", "implication": "..." }
-   Example: { "sector": "Information Technology", "signal": "AI capex exceeding FCF generation", "implication": "Potential FCF compression — apply capex risk penalty" }
+   Format: { "sector": "...", "signal": "...", "implication": "...", "layer": "MACRO" }
+   Example: { "sector": "Information Technology", "signal": "AI capex exceeding FCF generation", "implication": "Potential FCF compression — apply capex risk penalty", "layer": "MACRO" }
 
 RULES:
 - Extract ONLY what is explicitly or strongly implied in the document.
@@ -39,6 +81,8 @@ RULES:
 - Be specific and quantitative when the document provides numbers.
 - Each category can have 0 items if the document doesn't contain that type of information.
 - Attribute principles to specific investors/sources when possible.
+- EVERY scoring_rule MUST include a "layer" field mapping it to the v3 architecture.
+- Flag conflicts_with existing rules when possible (or NONE if no conflict).
 
 Respond with JSON: { "scoring_rules": [...], "investor_signals": [...], "principles": [...], "red_flags": [...], "sector_signals": [...] }`;
 
@@ -98,9 +142,12 @@ ${truncatedText}${truncationNote}${existingContext}`;
   }
 
   // Validate and normalize the response
+  const VALID_LAYERS = ['FUNDAMENTAL', 'WAVE', 'CONFLUENCE', 'SCREEN', 'SAIN', 'RISK', 'MACRO', 'INSTITUTIONAL'];
   const validated = {
     scoring_rules: validateArray(result.scoring_rules, (item) =>
-      item.factor && item.condition && typeof item.points === 'number' && item.direction
+      item.factor && item.condition && item.direction &&
+      (typeof item.points === 'number' || typeof item.proposed_points === 'number') &&
+      (!item.layer || VALID_LAYERS.includes(item.layer))
     ),
     investor_signals: validateArray(result.investor_signals, (item) =>
       item.investor && item.signal && item.interpretation
