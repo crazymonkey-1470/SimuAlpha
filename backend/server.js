@@ -166,9 +166,22 @@ app.get('/api/admin/seed-status', async (_req, res) => {
 app.get('/api/admin/rescore/:ticker', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
   try {
-    const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
-    const result = await deepScoreSingle(ticker);
-    res.json({ success: true, ticker, result });
+    const fetcher = require('./services/fetcher');
+    const stock = await fetcher.fetchFullStock(ticker);
+
+    // Log what the fetcher returns so we can see the data
+    const debugFields = {
+      eps_diluted: stock.eps_diluted || stock.epsDiluted || 'MISSING',
+      net_income: stock.net_income || stock.netIncome || 'MISSING',
+      operating_margin: stock.operating_margin || stock.operatingMargin || 'MISSING',
+      fcf: stock.free_cash_flow || stock.freeCashFlow || 'MISSING',
+      weekly_closes_count: stock.weeklyCloses?.length || 0,
+      monthly_closes_count: stock.monthlyCloses?.length || 0,
+      sma_50: stock.ma_50d || stock.sma50 || 'MISSING',
+      current_price: stock.current_price || stock.currentPrice || 'MISSING',
+    };
+
+    res.json({ ticker, fetcher_data: debugFields, raw_keys: Object.keys(stock).sort() });
   } catch (err) {
     res.json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) });
   }
