@@ -139,13 +139,16 @@ async function execute({ ticker, weeklyPrices, monthlyPrices, sma50, sma200, wma
   const recentWeekly = (weeklyPrices || []).slice(-52); // last 52 weeks
   const recentMonthly = (monthlyPrices || []).slice(-36); // last 36 months
 
-  const weeklyStr = recentWeekly
-    .map(p => `${p.date}: O=${p.open} H=${p.high} L=${p.low} C=${p.close}`)
-    .join('\n');
+  const formatPrice = (p) => {
+    if (p.open != null && p.high != null && p.low != null) {
+      return `${p.date}: O=${p.open} H=${p.high} L=${p.low} C=${p.close}`;
+    }
+    // Close-only data (from scraper)
+    return `${p.date}: C=${p.close}${p.volume ? ` V=${p.volume}` : ''}`;
+  };
 
-  const monthlyStr = recentMonthly
-    .map(p => `${p.date}: O=${p.open} H=${p.high} L=${p.low} C=${p.close}`)
-    .join('\n');
+  const weeklyStr = recentWeekly.map(formatPrice).join('\n');
+  const monthlyStr = recentMonthly.map(formatPrice).join('\n');
 
   // 3. Build the user prompt
   const userPrompt = `Analyze the Elliott Wave position for ${ticker}.

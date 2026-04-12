@@ -76,9 +76,9 @@ async function analyzeStock(ticker) {
       ticker,
       epsHistory: stockData.eps_gaap ? [stockData.eps_gaap] : (stockData.eps_diluted ? [stockData.eps_diluted] : [0]),
       fcfHistory: stockData.free_cash_flow ? [stockData.free_cash_flow / 1e6] : [0],
-      revenueHistory: stockData.revenue_current ? [stockData.revenue_prior_year || 0, stockData.revenue_current].filter(Boolean) : [0],
-      operatingIncome: stockData.operating_income || 0,
-      netIncome: stockData.net_income || 0,
+      revenueHistory: stockData.revenue_current ? [stockData.revenue_prior_year || 0, stockData.revenue_current].filter(Boolean).map(v => v / 1e6) : [0],
+      operatingIncome: (stockData.operating_income || 0) / 1e6,
+      netIncome: (stockData.net_income || 0) / 1e6,
     }),
     invoke('detect_value_trap', {
       ticker,
@@ -109,8 +109,8 @@ async function analyzeStock(ticker) {
   try {
     results.wave = await invoke('interpret_wave', {
       ticker,
-      weeklyPrices: historicals.weeklyCloses || [],
-      monthlyPrices: historicals.monthlyCloses || [],
+      weeklyPrices: historicals.weeklyRaw || [],
+      monthlyPrices: historicals.monthlyRaw || [],
       sma50: stockData.ma_50d || 0,
       sma200: stockData.price_200mma || 0,
       wma200: stockData.price_200wma || 0,

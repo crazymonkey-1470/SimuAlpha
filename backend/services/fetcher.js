@@ -31,10 +31,12 @@ async function fetchHistoricalPrices(ticker) {
     const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const weeklyCloses = (data.weekly || []).map((d) => d.close).filter((c) => c != null);
-    const weeklyVolumes = (data.weekly || []).map((d) => d.volume).filter((v) => v != null);
-    const monthlyCloses = (data.monthly || []).map((d) => d.close).filter((c) => c != null);
-    return { weeklyCloses, weeklyVolumes, monthlyCloses };
+    const weeklyRaw = (data.weekly || []).filter((d) => d.close != null);
+    const monthlyRaw = (data.monthly || []).filter((d) => d.close != null);
+    const weeklyCloses = weeklyRaw.map((d) => d.close);
+    const weeklyVolumes = weeklyRaw.map((d) => d.volume).filter((v) => v != null);
+    const monthlyCloses = monthlyRaw.map((d) => d.close);
+    return { weeklyCloses, weeklyVolumes, monthlyCloses, weeklyRaw, monthlyRaw };
   } catch (err) {
     console.error(`[fetcher] historical failed ${ticker}:`, err.message);
     return { weeklyCloses: [], monthlyCloses: [] };
