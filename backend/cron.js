@@ -6,6 +6,7 @@ const { runWaveCount } = require('./pipeline/stage4_wavecount');
 const { generateWeeklyBrief } = require('./services/claude_interpreter');
 const { batchComputeValuations } = require('./services/valuation');
 const { updateOutcomes } = require('./services/signalTracker');
+const { invoke: invokeSkill } = require('./skills');
 const supabase = require('./services/supabase');
 
 /**
@@ -105,6 +106,18 @@ function startCron() {
     }
   });
 
+  // Agent self-improvement analysis — Sunday 10am ET
+  // Analyzes knowledge base, scoring outcomes, and errors to suggest improvements.
+  cron.schedule('0 10 * * 0', async () => {
+    console.log('[Cron] Running agent self-improvement analysis...');
+    try {
+      const result = await invokeSkill('self_improve', {});
+      console.log(`[Cron] Self-improvement: generated ${result.suggestions_generated} suggestions`);
+    } catch (err) {
+      console.error('[Cron] Self-improvement analysis failed:', err.message);
+    }
+  });
+
   // Weekly brief — Sunday 8am ET (after Sunday pipeline completes)
   cron.schedule('0 8 * * 0', async () => {
     console.log('[Cron] Generating weekly brief...');
@@ -148,6 +161,7 @@ function startCron() {
   console.log('[Cron] Schedules active:');
   console.log('  Full Pipeline:   Sunday 6am ET + Wednesday 6am ET');
   console.log('  Outcome Track:   Daily 4am ET');
+  console.log('  Self-Improve:    Sunday 10am ET');
   console.log('  Weekly Brief:    Sunday 8am ET');
 }
 

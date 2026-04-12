@@ -648,6 +648,43 @@ app.get('/api/learning/principles', async (_req, res) => {
   }
 });
 
+// --- Agent Self-Improvement Suggestions ---
+
+// Get agent suggestions (filterable by status)
+app.get('/api/agent/suggestions', async (req, res) => {
+  try {
+    const status = req.query.status;
+    let query = supabase.from('agent_suggestions').select('*')
+      .order('created_at', { ascending: false });
+    if (status) {
+      query = query.eq('status', status);
+    }
+    const { data, error } = await query.limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ suggestions: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update a suggestion's status (APPROVED, IMPLEMENTED, REJECTED)
+app.put('/api/agent/suggestions/:id', async (req, res) => {
+  const { status } = req.body;
+  if (!['APPROVED', 'IMPLEMENTED', 'REJECTED', 'PENDING'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be PENDING, APPROVED, IMPLEMENTED, or REJECTED' });
+  }
+  try {
+    const { error } = await supabase
+      .from('agent_suggestions')
+      .update({ status })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Compare to Greats ---
 
 app.post('/api/compare-greats/:ticker', async (req, res) => {

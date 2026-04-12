@@ -31,6 +31,7 @@ const skills = {
   // === LEARNING ===
   'extract_principles':   require('./learning/extract_principles'),
   'adjust_weights':       require('./learning/adjust_weights'),
+  'self_improve':         require('./learning/self_improve'),
 
   // === SOCIAL INTELLIGENCE (Sprint 9A) ===
   'scan_social':          require('./social/scan_social'),
