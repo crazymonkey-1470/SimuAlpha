@@ -166,6 +166,7 @@ app.get('/api/admin/seed-status', async (_req, res) => {
 app.get('/api/admin/seed-all', async (req, res) => {
   const results = {};
   const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_3_nvda'];
+  results._version = 'v2-cache-clear';
 
   for (const script of scripts) {
     try {
