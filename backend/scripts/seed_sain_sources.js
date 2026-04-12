@@ -85,7 +85,7 @@ const SOURCES = [
 async function seed() {
   console.log('[seed_sain_sources] SEED START — upserting', SOURCES.length, 'sources');
   let successCount = 0;
-  let errorCount = 0;
+  const errors = [];
   for (const source of SOURCES) {
     console.log(`[seed_sain_sources] Upserting: ${source.name}`);
     const { data, error } = await supabase.from('sain_sources').upsert(source, {
@@ -93,14 +93,14 @@ async function seed() {
     }).select();
     if (error) {
       console.error(`[seed_sain_sources] FAILED ${source.name}:`, error.message, error);
-      errorCount++;
+      errors.push({ name: source.name, message: error.message, code: error.code, details: error.details, hint: error.hint });
     } else {
       console.log(`[seed_sain_sources] OK ${source.name}:`, data?.length, 'rows');
       successCount++;
     }
   }
-  console.log(`[seed_sain_sources] SEED DONE — ${successCount} ok, ${errorCount} errors`);
-  return { success: successCount, errors: errorCount, total: SOURCES.length };
+  console.log(`[seed_sain_sources] SEED DONE — ${successCount} ok, ${errors.length} errors`);
+  return { success: successCount, errorCount: errors.length, total: SOURCES.length, errors: errors.slice(0, 3) };
 }
 
 if (require.main === module) {
