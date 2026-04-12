@@ -17,18 +17,19 @@ const QUARTER = '2025Q4';
 // ═══════════════════════════════════════════
 
 const BERKSHIRE_HOLDINGS = [
-  { ticker: 'AAPL', company_name: 'Apple Inc', shares: 300000000, market_value: 75900000000, pct_of_portfolio: 28.1 },
-  { ticker: 'AXP', company_name: 'American Express', shares: 151610700, market_value: 47000000000, pct_of_portfolio: 17.4 },
-  { ticker: 'BAC', company_name: 'Bank of America', shares: 680233587, market_value: 31700000000, pct_of_portfolio: 11.7 },
-  { ticker: 'KO', company_name: 'Coca-Cola', shares: 400000000, market_value: 28200000000, pct_of_portfolio: 10.4 },
-  { ticker: 'CVX', company_name: 'Chevron', shares: 118610534, market_value: 19200000000, pct_of_portfolio: 7.1 },
-  { ticker: 'OXY', company_name: 'Occidental Petroleum', shares: 264148432, market_value: 12300000000, pct_of_portfolio: 4.6 },
-  { ticker: 'MCO', company_name: "Moody's Corp", shares: 24669778, market_value: 12100000000, pct_of_portfolio: 4.5 },
-  { ticker: 'CB', company_name: 'Chubb Limited', shares: 27033784, market_value: 7800000000, pct_of_portfolio: 2.9 },
-  { ticker: 'KHC', company_name: 'Kraft Heinz', shares: 325634818, market_value: 9900000000, pct_of_portfolio: 3.7 },
-  { ticker: 'NYT', company_name: 'New York Times', shares: 1000000, market_value: 56000000, pct_of_portfolio: 0.02 },
-  { ticker: 'DPZ', company_name: "Domino's Pizza", shares: 1277256, market_value: 590000000, pct_of_portfolio: 0.2 },
-  { ticker: 'AMZN', company_name: 'Amazon.com', shares: 500000, market_value: 115000000, pct_of_portfolio: 0.04 },
+  { ticker: 'AAPL', shares: null, market_value: 61961735283, signal_type: 'REDUCE', pct_of_portfolio: 22.57, has_call_options: false, notes: '3rd consecutive Q reduction from 40% to 22.6%' },
+  { ticker: 'AXP', shares: null, market_value: null, signal_type: 'HOLD', pct_of_portfolio: 18.76, has_call_options: false, notes: 'Unchanged' },
+  { ticker: 'BAC', shares: null, market_value: 28451276370, signal_type: 'REDUCE', pct_of_portfolio: 10.38, has_call_options: false, notes: '-8.94% shares, ~50% total reduction since Q3-24' },
+  { ticker: 'KO', shares: null, market_value: null, signal_type: 'HOLD', pct_of_portfolio: 9.88, has_call_options: false, notes: 'Legacy hold, dividend income' },
+  { ticker: 'CVX', shares: 130156362, market_value: 19837131131, signal_type: 'ADD', pct_of_portfolio: 7.24, has_call_options: false, notes: 'DCA 3rd consecutive quarter, $1.23B add, owns 6.46% of CVX' },
+  { ticker: 'OXY', shares: null, market_value: null, signal_type: 'HOLD', pct_of_portfolio: 4.69, has_call_options: false, notes: 'Energy exposure via OxyChem' },
+  { ticker: 'MCO', shares: null, market_value: null, signal_type: 'HOLD', pct_of_portfolio: 4.39, has_call_options: false, notes: '' },
+  { ticker: 'CB', shares: 34249183, market_value: 10689854998, signal_type: 'ADD', pct_of_portfolio: 3.90, has_call_options: false, notes: '$910M add, 2916288 shares added, owns 8.59% of CB' },
+  { ticker: 'KHC', shares: null, market_value: null, signal_type: 'HOLD', pct_of_portfolio: 3.19, has_call_options: false, notes: '' },
+  { ticker: 'NYT', shares: 5065744, market_value: 351663948, signal_type: 'NEW_BUY', pct_of_portfolio: 0.13, has_call_options: false, notes: 'New position Q4, owns 3.11% of NYT' },
+  { ticker: 'DPZ', shares: 3350000, market_value: 1396347000, signal_type: 'ADD', pct_of_portfolio: 0.51, has_call_options: false, notes: 'DCA all 6 quarters, owns 9.87% of DPZ' },
+  { ticker: 'AMZN', shares: null, market_value: 525346320, signal_type: 'REDUCE', pct_of_portfolio: 0.19, has_call_options: false, notes: '-77.24% trim' },
+  { ticker: 'LAMR', shares: 1202410, market_value: 152201058, signal_type: 'ADD', pct_of_portfolio: 0.06, has_call_options: false, notes: 'Dividend reinvestment only' },
 ];
 
 const TEPPER_HOLDINGS = [
