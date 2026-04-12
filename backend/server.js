@@ -169,14 +169,21 @@ app.get('/api/admin/seed-all', async (req, res) => {
 
   for (const script of scripts) {
     try {
+      // Clear require cache to force fresh execution
+      const scriptPath = require.resolve('./scripts/' + script);
+      delete require.cache[scriptPath];
+
       const fn = require('./scripts/' + script);
+      if (typeof fn !== 'function') {
+        results[script] = { error: 'Module does not export a function, got: ' + typeof fn };
+        continue;
+      }
       results[script] = await fn();
     } catch (err) {
-      results[script] = { error: err.message };
+      results[script] = { error: err.message, stack: err.stack?.split('\n').slice(0, 3) };
     }
   }
 
-  // Get counts
   const counts = {};
   for (const table of ['knowledge_chunks', 'sain_sources', 'investor_holdings', 'scoring_config']) {
     const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
