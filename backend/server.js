@@ -162,6 +162,41 @@ app.get('/api/admin/seed-status', async (_req, res) => {
   res.json(counts);
 });
 
+// Debug endpoint: test direct inserts into sain_sources and knowledge_chunks
+app.get('/api/admin/test-insert', async (req, res) => {
+  // Try inserting one row directly
+  const { data, error } = await supabase.from('sain_sources').insert({
+    name: 'Test Source',
+    platform: 'X',
+    handle: '@test',
+    source_type: 'AI_PORTFOLIO',
+    category: 'AI_MODEL',
+    scrape_method: 'X_API',
+    priority: 'LOW',
+    active: true,
+    scrape_frequency_hours: 24
+  }).select();
+
+  // Also try knowledge_chunks
+  const { data: data2, error: error2 } = await supabase.from('knowledge_chunks').insert({
+    source_type: 'TEST',
+    source_name: 'Test Doc',
+    chunk_text: 'This is a test chunk',
+    chunk_index: 0,
+    tickers_mentioned: [],
+    topics: []
+  }).select();
+
+  // Clean up test data
+  if (data?.[0]) await supabase.from('sain_sources').delete().eq('name', 'Test Source');
+  if (data2?.[0]) await supabase.from('knowledge_chunks').delete().eq('source_type', 'TEST');
+
+  res.json({
+    sain_sources: { success: !!data, error: error?.message, details: error },
+    knowledge_chunks: { success: !!data2, error: error2?.message, details: error2 }
+  });
+});
+
 // Seed all scripts in one call
 app.get('/api/admin/seed-all', async (req, res) => {
   const results = {};
@@ -179,7 +214,8 @@ app.get('/api/admin/seed-all', async (req, res) => {
         results[script] = { error: 'Module does not export a function, got: ' + typeof fn };
         continue;
       }
-      results[script] = await fn();
+      const fnResult = await fn();
+      results[script] = fnResult || { success: true, note: 'completed but returned no data' };
     } catch (err) {
       results[script] = { error: err.message, stack: err.stack?.split('\n').slice(0, 3) };
     }
