@@ -1023,7 +1023,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS sain_sources (
   id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name                  TEXT        NOT NULL,
+  name                  TEXT        NOT NULL UNIQUE,
   platform              TEXT        NOT NULL,
   handle                TEXT,
   url                   TEXT,

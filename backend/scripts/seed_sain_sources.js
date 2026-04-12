@@ -83,7 +83,21 @@ const SOURCES = [
 ];
 
 async function seed() {
-  console.log('[seed_sain_sources] SEED START — upserting', SOURCES.length, 'sources');
+  console.log('[seed_sain_sources] SEED START — inserting', SOURCES.length, 'sources');
+
+  // Step 1: Ensure UNIQUE constraint exists on name (required for upsert)
+  const { error: constraintErr } = await supabase.rpc('exec_sql', {
+    sql: 'ALTER TABLE sain_sources ADD CONSTRAINT sain_sources_name_key UNIQUE (name)'
+  }).maybeSingle();
+
+  // Ignore "already exists" errors
+  if (constraintErr && !constraintErr.message.includes('already exists')) {
+    console.warn('[seed_sain_sources] Could not add unique constraint:', constraintErr.message);
+    // Fallback: delete all and re-insert
+    console.log('[seed_sain_sources] Falling back to delete-all + insert');
+    await supabase.from('sain_sources').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  }
+
   let successCount = 0;
   const errors = [];
   for (const source of SOURCES) {
@@ -92,8 +106,16 @@ async function seed() {
       onConflict: 'name',
     }).select();
     if (error) {
-      console.error(`[seed_sain_sources] FAILED ${source.name}:`, error.message, error);
-      errors.push({ name: source.name, message: error.message, code: error.code, details: error.details, hint: error.hint });
+      // If upsert still fails, try plain insert
+      console.warn(`[seed_sain_sources] Upsert failed for ${source.name}, trying insert:`, error.message);
+      const { data: d2, error: e2 } = await supabase.from('sain_sources').insert(source).select();
+      if (e2) {
+        console.error(`[seed_sain_sources] Insert also failed ${source.name}:`, e2.message);
+        errors.push({ name: source.name, message: e2.message, code: e2.code });
+      } else {
+        console.log(`[seed_sain_sources] Inserted ${source.name}:`, d2?.length, 'rows');
+        successCount++;
+      }
     } else {
       console.log(`[seed_sain_sources] OK ${source.name}:`, data?.length, 'rows');
       successCount++;
