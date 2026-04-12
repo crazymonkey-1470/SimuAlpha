@@ -156,65 +156,121 @@ If downtrend_score is decreasing: flag = POTENTIAL_WAVE_1_FORMING (early trend r
 
 ---
 
-## 4. LAYER 3 — FIBONACCI TARGETING (Wave Position Score: -15 to +30)
+## 4. LAYER 3 — FIBONACCI PRICE TARGET ENGINE
 
-### 4.1 Wave Position Scores
+### 4.1 Core Formulas
 
-Wave 2 at 0.50-0.618 Fib: +25 (primary entry zone)
-Wave 4 at 0.382 Fib: +20 (re-add zone)
-Wave 1 origin break: +15
-Wave 3 running: +10 (hold)
-Wave 5 running: 0 (distribution — trim zone)
-Wave A decline: -5
-Wave B rejection: -10 (trap)
-Ending Diagonal / Wave 5 top: -15
+wave1_height = wave1_top - wave1_start
 
-### 4.2 Key Fibonacci Levels
+Entry levels:
+wave2_target = wave1_top - (wave1_height * 0.618) — Buy zone
+wave2_range = (wave1_top - wave1_height * 0.5, wave1_top - wave1_height * 0.618) — 0.5-0.618 range
 
-Standard retracement levels: 0.236, 0.382, 0.500, 0.618, 0.786
-Extension levels: 1.000, 1.272, 1.618, 2.000, 2.618
+Wave 3 target:
+wave3_target = wave2_low + (wave1_height * 1.618)
 
-Wave 2 expected retracement: 0.500-0.618 of Wave 1
-Wave 3 expected extension: 1.618-2.618 of Wave 1
-Wave 4 expected retracement: 0.382 of Wave 3
-Wave 5 expected extension: 0.618-1.000 of Wave 1 (measured from Wave 4)
+Wave 4 pullback:
+wave3_height = wave3_top - wave2_low
+wave4_target = wave3_top - (wave3_height * 0.382)
+
+Wave 5 target:
+wave5_target_base = wave4_low + wave1_height — 1.0 extension
+wave5_target_extended = wave4_low + (wave1_height * 2.618) — Max extension
+
+Corrective targets:
+wave_C_target = wave5_top - ((wave5_top - wave1_start) * 0.618)
+
+### 4.2 Wave-Specific Fib Levels
+
+Wave 2: 0.5-0.618 of Wave 1 = BUY ZONE
+Wave 3: 1.618 x Wave 1 from Wave 2 low = TRIM target
+Wave 4: 0.382 of Wave 3 = ADD zone
+Wave 5: 1.0-2.618 x Wave 1 from Wave 4 low = TAKE PROFIT
+Wave C: 0.5-0.618 of entire impulse = RE-ENTRY zone
+
+### 4.3 50-Day MA as Wave 2 Confirmation Trigger
+
+Price at 0.618 Fib alone is NOT sufficient. Must break AND hold above 50-day MA to confirm Wave 2 complete.
+If price >= fib_0618_support AND price > ma_50_day: wave2_confirmed = True, signal = WAVE_2_ENTRY
+If price >= fib_0618_support AND price < ma_50_day: wave2_pending = True, signal = WAVE_2_WATCH (at Fib but not yet confirmed)
+
+### 4.4 Bull/Bear Bifurcation Level
+
+For each stock, identify the price level that separates bull case from bear case. Above it = impulse continuation. Below it = corrective structure.
 
 ---
 
-## 5. LAYER 4 — CONFLUENCE SCORING (0-40)
+## 5. LAYER 4 — CONFLUENCE SCORING (0-40 pts)
 
-### 5.1 Support Stack (10 items)
+### 5.1 Support Identification Stack
 
-Previous low: +3
+Each support type present at current price level = conviction points:
+
+Previous price low: +3
 Round number: +2
 50-day MA: +3
 200-day MA: +4
 200-week MA: +5
 Fib 0.382: +3
-Fib 0.500: +4
+Fib 0.5: +4
 Fib 0.618: +5
 Fib 0.786: +4
 Wave 1 origin: +5
 
-### 5.2 Special Bonuses
+### 5.2 Special Confluence Bonuses
 
-Confluence Zone (200WMA + 0.618 within 3%): +15
-Generational Buy (0.786 + W1 origin + 200MMA within 15%): +20
-Full Stack SAIN Consensus (4 layers aligned): +15
-3-layer SAIN: +8
+CONFLUENCE ZONE: 200WMA + 0.618 Fib within 3%. If current price near that level: bonus += 15, badge = CONFLUENCE_ZONE (highest conviction).
+
+GENERATIONAL SUPPORT ZONE: 0.786 Fib + Wave 1 origin + 200MMA within 15%. If current price near that zone: bonus += 20, badge = GENERATIONAL_BUY (electric blue badge).
+
+### 5.3 Support Confirmation Types
+
+Type 1 V-Shape Bounce: sharp drop to support AND full recovery within 3 candles AND volume spike. confidence_boost = +5
+Type 2 Base-Building Consolidation: support touches >= 3 AND ascending lows AND impulse wave forming. confidence_boost = +5
+
+### 5.4 Secondary Confirmation Signals
+
+Volume increasing on bounce: +2
+Bullish candlestick at support (hammer, engulfing): +2
+RSI bullish divergence: +2
+MACD bullish divergence: +2
 
 ---
 
-## 6. SIGNAL BANDS (7 Action Labels)
+## 6. TOTAL SCORE — ACTION LABEL MAPPING
 
-Total TLI Score maps to action label:
-85-100: LOAD THE BOAT
-70-84:  ACCUMULATE
-55-69:  WATCHLIST
-40-54:  HOLD
-25-39:  CAUTION
-10-24:  TRIM
-0-9:    AVOID
+TOTAL SCORE = Fundamental (0-30) + Wave Position (0-30) + Confluence (0-40)
+
+### 6.1 Wave Position Score (0-30 pts)
+
+Wave C bottom (cycle reset): +30 — Maximum conviction re-entry
+Wave 2 bottom (initial entry): +25 — Primary buy zone
+Wave 4 holding support: +20 — Add to winner
+Wave A bottom (re-entry): +15 — Only if fundamentals pass
+Wave 1 forming: +10 — Early, unconfirmed
+Wave 3 in progress: +5 — Hold only, don't chase
+Wave 5 in progress: +0 — Take profit zone
+Wave B bounce: -10 — Exit liquidity, DO NOT BUY
+Ending diagonal in Wave 5: -15 — TOP WARNING
+
+### 6.2 Action Labels
+
+85-100: LOAD THE BOAT — Maximum conviction buy (deep green)
+70-84: ACCUMULATE — Strong buy, scale in (green)
+55-69: WATCHLIST — Bullish setup, not yet entry (yellow)
+40-54: HOLD — Already positioned, maintain (blue)
+25-39: CAUTION — Elevated risk, reduce exposure (orange)
+10-24: TRIM — Take profits, de-risk (light red)
+0-9: AVOID — No setup, wrong position in cycle (red)
+
+### 6.3 Special Badges (override display)
+
+CONFLUENCE ZONE: 200WMA + 0.618 Fib within 3% at price = Gold border
+GENERATIONAL BUY: 0.786 + W1 origin + 200MMA within 15% = Electric blue
+ENDING DIAGONAL TOP: Ending diagonal in W5 or W(C) = Red flash
+FLAT CORRECTION WARNING: 3-wave bounce after 3-wave decline = Orange alert
+EXTENDED WAVE 3: W3 >> 1.618x, fundamental catalyst = Green pulse
+EARNINGS PROXIMITY: Earnings within 14 days of buy zone = Yellow caution
 
 ---
 
