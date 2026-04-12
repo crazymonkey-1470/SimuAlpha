@@ -167,21 +167,29 @@ app.get('/api/admin/rescore/:ticker', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
   try {
     const fetcher = require('./services/fetcher');
-    const stock = await fetcher.fetchFullStock(ticker);
+    const fundamentals = await fetcher.fetchFundamentals(ticker);
+    const historical = await fetcher.fetchHistoricalPrices(ticker);
 
-    // Log what the fetcher returns so we can see the data
-    const debugFields = {
-      eps_diluted: stock.eps_diluted || stock.epsDiluted || 'MISSING',
-      net_income: stock.net_income || stock.netIncome || 'MISSING',
-      operating_margin: stock.operating_margin || stock.operatingMargin || 'MISSING',
-      fcf: stock.free_cash_flow || stock.freeCashFlow || 'MISSING',
-      weekly_closes_count: stock.weeklyCloses?.length || 0,
-      monthly_closes_count: stock.monthlyCloses?.length || 0,
-      sma_50: stock.ma_50d || stock.sma50 || 'MISSING',
-      current_price: stock.current_price || stock.currentPrice || 'MISSING',
-    };
-
-    res.json({ ticker, fetcher_data: debugFields, raw_keys: Object.keys(stock).sort() });
+    res.json({
+      ticker,
+      fundamentals: {
+        eps_diluted: fundamentals?.eps_diluted ?? 'MISSING',
+        net_income: fundamentals?.net_income ?? 'MISSING',
+        operating_income: fundamentals?.operating_income ?? 'MISSING',
+        operating_margin: fundamentals?.operating_margin ?? 'MISSING',
+        free_cash_flow: fundamentals?.free_cash_flow ?? 'MISSING',
+        fcf_margin: fundamentals?.fcf_margin ?? 'MISSING',
+        revenue: fundamentals?.revenue ?? 'MISSING',
+        pe_ratio: fundamentals?.pe_ratio ?? 'MISSING',
+        current_price: fundamentals?.current_price ?? 'MISSING',
+      },
+      historical: {
+        weekly_count: historical?.weekly?.length || 0,
+        monthly_count: historical?.monthly?.length || 0,
+        latest_weekly: historical?.weekly?.[0] || null,
+      },
+      all_fundamental_keys: Object.keys(fundamentals || {}).sort(),
+    });
   } catch (err) {
     res.json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) });
   }
