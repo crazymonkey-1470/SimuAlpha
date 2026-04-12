@@ -138,6 +138,29 @@ app.post('/api/admin/refresh-institutional', async (_req, res) => {
   );
 });
 
+// Run a seed script by name
+app.post('/api/admin/seed/:script', async (req, res) => {
+  const allowed = ['seed_13f', 'seed_sain_sources', 'seed_spec_documents', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda'];
+  if (!allowed.includes(req.params.script)) return res.status(400).json({ error: 'Unknown script' });
+  try {
+    const fn = require('./scripts/' + req.params.script);
+    const result = await fn();
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check seed status across key tables
+app.get('/api/admin/seed-status', async (_req, res) => {
+  const counts = {};
+  for (const table of ['knowledge_chunks', 'sain_sources', 'investor_holdings', 'scoring_config']) {
+    const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
+    counts[table] = count || 0;
+  }
+  res.json(counts);
+});
+
 // ═══════════════════════════════════════════
 // MACRO CONTEXT ENDPOINTS (Sprint 6B)
 // ═══════════════════════════════════════════
