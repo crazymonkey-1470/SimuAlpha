@@ -162,6 +162,30 @@ app.get('/api/admin/seed-status', async (_req, res) => {
   res.json(counts);
 });
 
+// Seed all scripts in one call
+app.get('/api/admin/seed-all', async (req, res) => {
+  const results = {};
+  const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_3_nvda'];
+
+  for (const script of scripts) {
+    try {
+      const fn = require('./scripts/' + script);
+      results[script] = await fn();
+    } catch (err) {
+      results[script] = { error: err.message };
+    }
+  }
+
+  // Get counts
+  const counts = {};
+  for (const table of ['knowledge_chunks', 'sain_sources', 'investor_holdings', 'scoring_config']) {
+    const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
+    counts[table] = count || 0;
+  }
+
+  res.json({ results, counts });
+});
+
 // ═══════════════════════════════════════════
 // MACRO CONTEXT ENDPOINTS (Sprint 6B)
 // ═══════════════════════════════════════════
