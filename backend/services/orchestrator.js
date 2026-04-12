@@ -75,7 +75,9 @@ async function analyzeStock(ticker) {
     invoke('assess_earnings', {
       ticker,
       epsHistory: stockData.eps_gaap ? [stockData.eps_gaap] : (stockData.eps_diluted ? [stockData.eps_diluted] : [0]),
-      fcfHistory: stockData.free_cash_flow ? [stockData.free_cash_flow / 1e6] : [0],
+      fcfHistory: stockData.free_cash_flow
+        ? [stockData.diluted_shares ? Math.round(stockData.free_cash_flow / stockData.diluted_shares * 100) / 100 : stockData.free_cash_flow / 1e6]
+        : [0],
       revenueHistory: stockData.revenue_current ? [stockData.revenue_prior_year || 0, stockData.revenue_current].filter(Boolean).map(v => v / 1e6) : [0],
       operatingIncome: (stockData.operating_income || 0) / 1e6,
       netIncome: (stockData.net_income || 0) / 1e6,
@@ -116,8 +118,8 @@ async function analyzeStock(ticker) {
       wma200: stockData.price_200wma || 0,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Wave interpretation failed:`, err.message);
-    results.wave = wave?.wave_count_json || null;
+    console.error(`[Orchestrator] Wave interpretation failed:`, err.message, err.stack?.split('\n').slice(0, 3));
+    results.wave = wave?.wave_count_json || { error: err.message };
   }
 
   // Phase 3: Position sizing (depends on wave)
