@@ -47,10 +47,12 @@ async function analyzeStock(ticker) {
   }
 
   // Step 2: Gather supplementary data
-  const [{ data: valData }, { data: instData }, { data: waveData }] = await Promise.all([
+  const { fetchHistoricalPrices } = require('./fetcher');
+  const [{ data: valData }, { data: instData }, { data: waveData }, historicals] = await Promise.all([
     supabase.from('stock_valuations').select('*').eq('ticker', ticker).order('computed_date', { ascending: false }).limit(1),
     supabase.from('consensus_signals').select('*').eq('ticker', ticker).order('quarter', { ascending: false }).limit(1),
     supabase.from('wave_counts').select('*').eq('ticker', ticker).order('last_updated', { ascending: false }).limit(1),
+    fetchHistoricalPrices(ticker).catch(() => ({ weeklyCloses: [], monthlyCloses: [], weeklyVolumes: [] })),
   ]);
 
   const valuation = valData?.[0] || null;
@@ -72,7 +74,7 @@ async function analyzeStock(ticker) {
     }),
     invoke('assess_earnings', {
       ticker,
-      epsHistory: stockData.eps_diluted ? [stockData.eps_diluted] : [0],
+      epsHistory: stockData.eps_gaap ? [stockData.eps_gaap] : (stockData.eps_diluted ? [stockData.eps_diluted] : [0]),
       fcfHistory: stockData.free_cash_flow ? [stockData.free_cash_flow / 1e6] : [0],
       revenueHistory: stockData.revenue_current ? [stockData.revenue_prior_year || 0, stockData.revenue_current].filter(Boolean) : [0],
       operatingIncome: stockData.operating_income || 0,
@@ -107,8 +109,8 @@ async function analyzeStock(ticker) {
   try {
     results.wave = await invoke('interpret_wave', {
       ticker,
-      weeklyPrices: [],
-      monthlyPrices: [],
+      weeklyPrices: historicals.weeklyCloses || [],
+      monthlyPrices: historicals.monthlyCloses || [],
       sma50: stockData.ma_50d || 0,
       sma200: stockData.price_200mma || 0,
       wma200: stockData.price_200wma || 0,
