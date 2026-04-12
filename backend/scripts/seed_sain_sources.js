@@ -93,4 +93,11 @@ async function seed() {
   console.log(`\nSeeded ${SOURCES.length} SAIN sources.`);
 }
 
-seed();
+if (require.main === module) {
+  seed().catch(err => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = seed;

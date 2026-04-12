@@ -236,10 +236,13 @@ async function main() {
   await computeConsensus();
 
   console.log('\n13F seed complete.');
-  process.exit(0);
 }
 
-main().catch(err => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = main;
