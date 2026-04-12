@@ -166,30 +166,9 @@ app.get('/api/admin/seed-status', async (_req, res) => {
 app.get('/api/admin/rescore/:ticker', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
   try {
-    const fetcher = require('./services/fetcher');
-    const fundamentals = await fetcher.fetchFundamentals(ticker);
-    const historical = await fetcher.fetchHistoricalPrices(ticker);
-
-    res.json({
-      ticker,
-      fundamentals: {
-        eps_diluted: fundamentals?.eps_diluted ?? 'MISSING',
-        net_income: fundamentals?.net_income ?? 'MISSING',
-        operating_income: fundamentals?.operating_income ?? 'MISSING',
-        operating_margin: fundamentals?.operating_margin ?? 'MISSING',
-        free_cash_flow: fundamentals?.free_cash_flow ?? 'MISSING',
-        fcf_margin: fundamentals?.fcf_margin ?? 'MISSING',
-        revenue: fundamentals?.revenue ?? 'MISSING',
-        pe_ratio: fundamentals?.pe_ratio ?? 'MISSING',
-        current_price: fundamentals?.current_price ?? 'MISSING',
-      },
-      historical: {
-        weekly_count: historical?.weekly?.length || 0,
-        monthly_count: historical?.monthly?.length || 0,
-        latest_weekly: historical?.weekly?.[0] || null,
-      },
-      all_fundamental_keys: Object.keys(fundamentals || {}).sort(),
-    });
+    const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
+    const result = await deepScoreSingle(ticker);
+    res.json({ success: true, ticker, result });
   } catch (err) {
     res.json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) });
   }
