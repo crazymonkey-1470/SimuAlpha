@@ -197,11 +197,13 @@ async function main() {
   console.log(`\n═══════════════════════════════════════════`);
   console.log(`NVDA Reference Chart: ${result.chunks_stored}/${result.chunks_total} chunks stored`);
   console.log('═══════════════════════════════════════════');
-
-  process.exit(0);
 }
 
-main().catch(err => {
-  console.error('[seed_doc_3] FAILED:', err.message);
-  process.exit(1);
-});
+module.exports = main;
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[seed_doc_3] FAILED:', err.message);
+    process.exit(1);
+  });
+}
