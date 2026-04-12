@@ -12,8 +12,30 @@
 const { completeJSON } = require('../../services/llm');
 
 const SAFETY_RULES = {
-  // Core TLI rules that MUST NOT be removed — only weight adjustments allowed
+  // Immutable TLI core methodology — NEVER adjust these
   CORE_RULES: [
+    // Elliott Wave hard rules
+    'elliott_wave_hard_rule_w2_not_below_w1',
+    'elliott_wave_hard_rule_w3_not_shortest',
+    'elliott_wave_hard_rule_w4_not_in_w2',
+    // Fibonacci target formulas
+    'fib_retracement_0618',
+    'fib_retracement_0500',
+    'fib_retracement_0382',
+    'fib_extension_1618',
+    'fib_extension_2618',
+    // 5-tranche DCA structure
+    'tranche_schedule_10_15_20_25_30',
+    // Fundamental gate pass/fail criteria
+    'fundamental_gate_revenue_growth',
+    'fundamental_gate_gross_margin',
+    'fundamental_gate_operating_leverage',
+    'fundamental_gate_dilution',
+    // Language rule
+    'never_say_buy_sell',
+    // Risk formula
+    'per_trade_risk_max_2pct',
+    // Legacy v2 immutable rules (retained for backward compatibility)
     'revenue_growth_3yr',
     'growth_momentum',
     'fcf_profitability',
@@ -25,8 +47,39 @@ const SAFETY_RULES = {
   ],
   // Maximum points adjustment per factor per iteration
   MAX_ADJUSTMENT_PER_FACTOR: 3,
-  // Only bonus/penalty weights can be adjusted — base scoring is fixed
+  // Adjustable v3 scoring_config keys (mirrors scoring_config table)
   ADJUSTABLE_CATEGORIES: [
+    // Fundamental component weights
+    'fundamental_revenue_growth',
+    'fundamental_gross_margin',
+    'fundamental_fcf',
+    'fundamental_balance_sheet',
+    'fundamental_tam',
+    'fundamental_moat',
+    // Confluence support stack weights
+    'confluence_previous_low',
+    'confluence_round_number',
+    'confluence_50ma',
+    'confluence_200ma',
+    'confluence_200wma',
+    'confluence_fib_0382',
+    'confluence_fib_050',
+    'confluence_fib_0618',
+    'confluence_fib_0786',
+    'confluence_wave1_origin',
+    'confluence_zone_bonus',
+    'generational_buy_bonus',
+    // SAIN bonuses
+    'sain_full_stack',
+    'sain_three_layer',
+    'sain_politician_conviction',
+    'sain_ai_consensus',
+    // Risk filter parameters
+    'downtrend_threshold',
+    'chase_filter_pct',
+    'earnings_blackout_days',
+    'sentiment_boost',
+    // Legacy v2 bonus/penalty weights (retained)
     'bonus_dividend',
     'bonus_institutional_new_buy',
     'bonus_institutional_multi_investor',
@@ -59,35 +112,78 @@ const SAFETY_RULES = {
   ],
 };
 
-const SYSTEM_PROMPT = `You are a quantitative analyst tuning a stock scoring algorithm. Given signal outcomes (what the scoring system predicted vs what actually happened), propose weight adjustments.
+const SYSTEM_PROMPT = `You adjust SimuAlpha's scoring weights based on backtested signal outcomes.
 
-STRICT RULES:
-1. NEVER remove core TLI rules: ${SAFETY_RULES.CORE_RULES.join(', ')}. These are foundational and permanent.
-2. Maximum adjustment is +/- 3 points per factor per iteration. Small, incremental changes only.
-3. ONLY adjust bonus/penalty weights. Base scoring (fundamental 50pts + technical 50pts) is fixed.
-4. Each adjustment must cite specific outcome data that justifies the change.
-5. If outcomes are mixed or sample size is small (<10 signals), recommend NO CHANGE.
-6. Prefer making fewer, higher-confidence adjustments over many speculative ones.
-7. Always explain the statistical reasoning: what was the hit rate, how did the factor perform.
+═══════════════════════════════════════════════════════
+CURRENT SCORING STRUCTURE (v3)
+═══════════════════════════════════════════════════════
+- Fundamental (0-30): 6 components at 5pts each
+- Wave Position (-15 to +30): based on Elliott Wave cycle position
+- Confluence (0-40): 10-item support stack + special bonuses
+- SAIN Bonus: up to +15 for Full Stack Consensus
 
-ADJUSTABLE FACTORS:
-${SAFETY_RULES.ADJUSTABLE_CATEGORIES.join(', ')}
+═══════════════════════════════════════════════════════
+ADJUSTABLE WEIGHTS (you can propose changes to these)
+═══════════════════════════════════════════════════════
+- Each fundamental component's point value (currently 5 each)
+- Confluence support stack point values (currently 2-5 each)
+- SAIN bonus values (currently +2 to +15)
+- Downtrend suppression threshold (currently 4/8)
+- Risk filter parameters (chase filter %, earnings blackout days)
 
+Full adjustable list: ${SAFETY_RULES.ADJUSTABLE_CATEGORIES.join(', ')}
+
+═══════════════════════════════════════════════════════
+NON-ADJUSTABLE (core TLI methodology — NEVER change)
+═══════════════════════════════════════════════════════
+- Elliott Wave hard rules (W2 never below W1, W3 never shortest, W4 not in W2)
+- Fibonacci target formulas (0.618, 1.618, 0.382, etc)
+- 5-tranche DCA structure (10/15/20/25/30)
+- Fundamental gate pass/fail criteria
+- "Never say buy/sell" language rule
+- Position sizing risk formula (1-2% max risk per trade)
+
+Core rule list: ${SAFETY_RULES.CORE_RULES.join(', ')}
+
+═══════════════════════════════════════════════════════
+ANALYSIS PROCESS
+═══════════════════════════════════════════════════════
+1. For each scoring factor, compute win rate across all backtested signals
+2. Win = stock achieved >10% return within 12 months of signal
+3. If a factor's win rate > 70% → propose increasing its weight (+1 to +3)
+4. If a factor's win rate < 40% → propose decreasing its weight (-1 to -3)
+5. If sample size < 10 → insufficient data, do not adjust
+6. Check if proposed change conflicts with any NON-ADJUSTABLE rule — if yes, skip
+7. Maximum adjustment is +/- 3 points per factor per iteration (small, incremental)
+8. Write reasoning memo for each adjustment — cite hit rate, sample size, evidence
+9. Prefer fewer, higher-confidence adjustments over many speculative ones
+
+═══════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════
 Respond with JSON:
 {
   "adjustments": [
     {
-      "factor": "factor_name",
+      "factor": "factor_name (must be in ADJUSTABLE list)",
       "current_weight": number,
       "proposed_weight": number,
-      "change": number,
-      "reasoning": "Based on X outcomes, this factor had Y% hit rate...",
-      "confidence": "LOW|MODERATE|HIGH"
+      "change": number (+/- 3 max),
+      "reasoning": "Based on X outcomes, this factor had Y% hit rate over Z-month horizon...",
+      "confidence": "LOW|MODERATE|HIGH",
+      "sample_size": number,
+      "win_rate": number (0-100)
     }
   ],
   "no_change": ["factor1", "factor2"],
   "overall_assessment": "Summary of algorithm performance and proposed changes",
-  "version": "suggested version string"
+  "version": "suggested version string",
+  "model_performance": {
+    "total_signals_analyzed": number,
+    "overall_hit_rate": number,
+    "avg_return_on_wins": number,
+    "avg_return_on_losses": number
+  }
 }`;
 
 async function execute({ signalOutcomes, currentWeights, knowledgeContext }) {

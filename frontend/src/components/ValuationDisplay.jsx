@@ -21,9 +21,17 @@ export default function ValuationDisplay({ ticker, currentPrice }) {
   const price = currentPrice || val.current_price;
   const ratingColors = {
     BUY: '#00e87a',
+    UNDERVALUED: '#00e87a',
     OVERWEIGHT: '#f0a500',
     HOLD: 'var(--text-secondary)',
     NEUTRAL: 'var(--text-dim)',
+  };
+  // Translate raw ratings to compliant language
+  const ratingDisplayMap = {
+    BUY: 'Undervalued',
+    OVERWEIGHT: 'Favorable',
+    HOLD: 'Fair Value',
+    NEUTRAL: 'Neutral',
   };
 
   const methods = [
@@ -83,7 +91,7 @@ export default function ValuationDisplay({ ticker, currentPrice }) {
           borderRadius: '4px',
           border: `1px solid ${(ratingColors[val.tli_rating] || 'var(--text-dim)')}30`,
         }}>
-          {val.tli_rating || '—'}
+          {ratingDisplayMap[val.tli_rating] || val.tli_rating || '—'}
         </div>
       </div>
 

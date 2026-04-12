@@ -6,6 +6,8 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MarketRiskBanner from '../components/MarketRiskBanner';
 import ExitSignalPanel from '../components/ExitSignalPanel';
+import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
+import SAINStatsWidget from '../components/SAINStatsWidget';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -25,6 +27,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ paddingTop: '48px' }}>
+      <FullStackConsensusBanner />
       <MarketRiskBanner />
       <ExitSignalPanel />
 
@@ -112,7 +115,7 @@ export default function Dashboard() {
             fontFamily: 'Cormorant Garamond', fontSize: '32px',
             fontWeight: 400, color: '#00bfff'
           }}>
-            Generational Buy Zones
+            Generational Support Zones
           </h2>
           <span style={{
             fontFamily: 'IBM Plex Mono', fontSize: '11px',
@@ -136,13 +139,13 @@ export default function Dashboard() {
               fontFamily: 'Cormorant Garamond', fontSize: '20px',
               fontWeight: 400, color: 'var(--text-secondary)', marginBottom: '8px'
             }}>
-              No generational buy zones detected
+              No generational support zones detected
             </div>
             <div style={{
               fontFamily: 'IBM Plex Mono', fontSize: '11px',
               color: 'var(--text-dim)', lineHeight: 1.7
             }}>
-              Generational buys require 3-level convergence: 0.786 Fibonacci retracement, Wave 1 origin,
+              Generational support zones require 3-level convergence: 0.786 Fibonacci retracement, Wave 1 origin,
               and 200 Monthly Moving Average all within 15% of each other. These are the rarest and
               highest-conviction TLI setups.
             </div>
@@ -258,6 +261,22 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* SAIN Network Stats */}
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '24px'
+        }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--blue)'
+          }}>
+            Intelligence Network
+          </h2>
+        </div>
+        <SAINStatsWidget />
       </div>
 
       <motion.div

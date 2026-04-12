@@ -37,7 +37,7 @@ export default function MADistanceBar({ currentPrice, price200wma, price200mma, 
         display: 'flex', marginBottom: '4px',
         fontFamily: 'IBM Plex Mono', fontSize: '9px', letterSpacing: '0.05em'
       }}>
-        <span style={{ width: '40%', color: 'var(--signal-green)', opacity: 0.7 }}>BUY ZONE</span>
+        <span style={{ width: '40%', color: 'var(--signal-green)', opacity: 0.7 }}>ENTRY ZONE</span>
         <span style={{ width: '30%', color: 'var(--signal-amber)', opacity: 0.7 }}>APPROACHING</span>
         <span style={{ width: '30%', textAlign: 'right', color: 'var(--text-dim)' }}>EXTENDED</span>
       </div>

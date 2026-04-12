@@ -214,7 +214,8 @@ export default function ThesisDisplay({ ticker }) {
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ marginTop: '20px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
                 {greats.investor_views.map((view, i) => {
-                  const verdictColor = view.verdict === 'BUY' ? '#10b981' : view.verdict === 'PASS' || view.verdict === 'AVOID' ? '#ef4444' : '#f59e0b';
+                  const verdictColor = view.verdict === 'BUY' || view.verdict === 'FAVORABLE' ? '#10b981' : view.verdict === 'PASS' || view.verdict === 'AVOID' ? '#ef4444' : '#f59e0b';
+                  const verdictDisplay = { BUY: 'Favorable', SELL: 'Unfavorable', PASS: 'Pass', AVOID: 'Avoid', HOLD: 'Hold' };
                   return (
                     <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -222,7 +223,7 @@ export default function ThesisDisplay({ ticker }) {
                           {view.investor}
                         </span>
                         <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: verdictColor }}>
-                          {view.verdict}
+                          {verdictDisplay[view.verdict] || view.verdict}
                         </span>
                       </div>
                       <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>

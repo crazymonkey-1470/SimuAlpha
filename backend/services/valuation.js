@@ -1,8 +1,11 @@
 const supabase = require('./supabase');
+const { classifyMaturity } = require('./maturity_classifier');
 
 /**
- * Three-Pillar Valuation Engine — Sprint 6B
+ * Three-Pillar Valuation Engine — Sprint 6B + Sprint 10B Calibration
  * TLI methodology: DCF + EV/Sales + EV/EBITDA
+ * Sprint 10B: Maturity-based WACC, DCF exclusion rule, composite,
+ *             method agreement, total return (Siegel)
  */
 
 // ═══════════════════════════════════════════
@@ -56,19 +59,33 @@ const SECTOR_EV_EBITDA = {
 };
 
 function estimateWACC(stock) {
-  let wacc = SECTOR_WACC[stock.sector] || 8.0;
+  // Sprint 10B: Try maturity classifier first (validated TLI parameters)
+  const maturity = classifyMaturity(stock);
+  if (maturity && maturity.wacc != null) {
+    let wacc = maturity.wacc;
+    // Still apply micro-adjustments on top of maturity base
+    if (stock.marketCap != null && stock.marketCap < 2e9) wacc += 1.0;
+    if (stock.debtToEquity != null && stock.debtToEquity > 1.5) wacc += 0.5;
+    return Math.min(Math.max(wacc, 3), 12);
+  }
 
-  // Use real beta if available, otherwise skip the beta adjustment
+  // Fallback: sector-based estimation
+  let wacc = SECTOR_WACC[stock.sector] || 8.0;
   if (stock.beta != null && stock.beta > 1.5) wacc += 1.0;
-  else if (stock.beta != null && stock.beta < 0.7) wacc -= 0.5; // low beta = lower risk
+  else if (stock.beta != null && stock.beta < 0.7) wacc -= 0.5;
   if (stock.debtToEquity != null && stock.debtToEquity > 1.5) wacc += 0.5;
   if (stock.marketCap != null && stock.marketCap < 2e9) wacc += 1.0;
   if (stock.revenueGrowth3YrAvg != null && stock.revenueGrowth3YrAvg < 0) wacc += 1.0;
 
-  return Math.min(Math.max(wacc, 3), 12); // floor at 3%
+  return Math.min(Math.max(wacc, 3), 12);
 }
 
 function estimateTerminalRate(stock) {
+  // Sprint 10B: Try maturity classifier first
+  const maturity = classifyMaturity(stock);
+  if (maturity && maturity.terminal != null) return maturity.terminal;
+
+  // Fallback
   const growth = stock.revenueGrowth3YrAvg;
   if (growth != null && growth > 20) return 2.5;
   if (growth != null && growth > 10) return 2.0;
@@ -76,8 +93,15 @@ function estimateTerminalRate(stock) {
 }
 
 function estimateGrowthRate(stock) {
+  // Sprint 10B: Try maturity classifier first
+  const maturity = classifyMaturity(stock);
+  if (maturity && maturity.fcfGrowth != null) {
+    return Math.max(0, Math.min(maturity.fcfGrowth, 25));
+  }
+
+  // Fallback
   const trailing = stock.fcfGrowth3YrAvg || stock.revenueGrowth3YrAvg;
-  if (trailing == null) return 5; // conservative default
+  if (trailing == null) return 5;
   return Math.max(0, Math.min(trailing * 0.6, 25));
 }
 
@@ -176,12 +200,23 @@ function computeThreePillarValuation(stock) {
     sector: stock.sector,
   });
 
-  // Average of available methods
-  const targets = [dcfTarget, evSalesTarget, evEbitdaTarget].filter(t => t != null);
-  if (targets.length === 0) return null;
+  const upside = (target) => target != null
+    ? Math.round(((target - currentPrice) / currentPrice) * 10000) / 100
+    : null;
 
-  const avgTarget = Math.round(targets.reduce((a, b) => a + b, 0) / targets.length * 100) / 100;
-  const avgUpside = Math.round(((avgTarget - currentPrice) / currentPrice) * 10000) / 100;
+  // ═══════════════════════════════════════════
+  // DCF EXCLUSION RULE (Sprint 10B)
+  // ═══════════════════════════════════════════
+  const composite = computeComposite(dcfTarget, evSalesTarget, evEbitdaTarget, currentPrice);
+  if (!composite) return null;
+
+  const avgTarget = Math.round(composite.avgTarget * 100) / 100;
+  const avgUpside = Math.round(composite.compositeUpside * 100) / 100;
+
+  // ═══════════════════════════════════════════
+  // TOTAL RETURN (Siegel) — Sprint 10B
+  // ═══════════════════════════════════════════
+  const totalReturnResult = computeTotalReturn(composite.compositeUpside, stock.dividendYield);
 
   // WACC risk tier
   let waccTier;
@@ -197,9 +232,8 @@ function computeThreePillarValuation(stock) {
   else if (avgUpside > 0) rating = 'HOLD';
   else rating = 'NEUTRAL';
 
-  const upside = (target) => target != null
-    ? Math.round(((target - currentPrice) / currentPrice) * 10000) / 100
-    : null;
+  // Maturity profile info (Sprint 10B)
+  const maturity = classifyMaturity(stock);
 
   return {
     dcf: { target: dcfTarget, upside: upside(dcfTarget), growthRate, terminalRate },
@@ -211,7 +245,85 @@ function computeThreePillarValuation(stock) {
     waccTier,
     wacc,
     currentPrice,
+    // Sprint 10B additions
+    dcfIncluded: composite.dcfIncluded,
+    dcfExclusionReason: composite.dcfExclusionReason,
+    methodAgreement: composite.methodAgreement,
+    methodStdDev: composite.methodStdDev,
+    methodsUsed: composite.methodsUsed,
+    totalReturn: totalReturnResult.totalReturn,
+    isIncomePlay: totalReturnResult.isIncomePlay,
+    maturityProfile: maturity.profile,
   };
+}
+
+// ═══════════════════════════════════════════
+// DCF EXCLUSION + COMPOSITE (Sprint 10B)
+// ═══════════════════════════════════════════
+
+function computeComposite(dcfTarget, evSalesTarget, evEbitdaTarget, currentPrice) {
+  const targets = [];
+  const methods = [];
+
+  if (evSalesTarget) { targets.push(evSalesTarget); methods.push('EV/Sales'); }
+  if (evEbitdaTarget) { targets.push(evEbitdaTarget); methods.push('EV/EBITDA'); }
+
+  // DCF exclusion rule: exclude if diverges >20% from multiples average
+  let dcfIncluded = true;
+  let dcfExclusionReason = null;
+
+  if (dcfTarget && targets.length >= 2) {
+    const multiplesAvg = targets.reduce((a, b) => a + b, 0) / targets.length;
+    const dcfUpside = ((dcfTarget - currentPrice) / currentPrice) * 100;
+    const multiplesUpside = ((multiplesAvg - currentPrice) / currentPrice) * 100;
+    const divergence = Math.abs(dcfUpside - multiplesUpside);
+
+    if (divergence > 20) {
+      dcfIncluded = false;
+      dcfExclusionReason = `DCF diverges ${divergence.toFixed(1)}% from multiples average — excluded`;
+    }
+  }
+
+  if (dcfIncluded && dcfTarget) {
+    targets.push(dcfTarget);
+    methods.push('DCF');
+  }
+
+  if (targets.length === 0) return null;
+
+  const avgTarget = targets.reduce((a, b) => a + b, 0) / targets.length;
+  const compositeUpside = ((avgTarget - currentPrice) / currentPrice) * 100;
+
+  // Method Agreement Score (standard deviation of upsides)
+  const upsides = targets.map(t => ((t - currentPrice) / currentPrice) * 100);
+  const mean = upsides.reduce((a, b) => a + b, 0) / upsides.length;
+  const variance = upsides.reduce((sum, u) => sum + Math.pow(u - mean, 2), 0) / upsides.length;
+  const stdDev = Math.sqrt(variance);
+
+  let methodAgreement;
+  if (stdDev < 5) methodAgreement = 'HIGH';
+  else if (stdDev < 15) methodAgreement = 'MEDIUM';
+  else methodAgreement = 'LOW';
+
+  return {
+    avgTarget,
+    compositeUpside,
+    dcfIncluded,
+    dcfExclusionReason,
+    methodAgreement,
+    methodStdDev: Math.round(stdDev * 100) / 100,
+    methodsUsed: methods,
+  };
+}
+
+// ═══════════════════════════════════════════
+// TOTAL RETURN — Siegel (Sprint 10B)
+// ═══════════════════════════════════════════
+
+function computeTotalReturn(compositeUpside, dividendYield) {
+  const totalReturn = compositeUpside + (dividendYield || 0);
+  const isIncomePlay = (dividendYield || 0) > compositeUpside;
+  return { totalReturn, isIncomePlay };
 }
 
 // ═══════════════════════════════════════════
@@ -286,6 +398,15 @@ async function saveValuation(ticker, valuation) {
     tli_rating: valuation.rating,
     wacc_risk_tier: valuation.waccTier,
     current_price: valuation.currentPrice,
+    // Sprint 10B columns
+    dcf_included: valuation.dcfIncluded ?? null,
+    dcf_exclusion_reason: valuation.dcfExclusionReason ?? null,
+    method_agreement: valuation.methodAgreement ?? null,
+    method_std_dev: valuation.methodStdDev ?? null,
+    methods_used: valuation.methodsUsed ?? null,
+    total_return: valuation.totalReturn ?? null,
+    is_income_play: valuation.isIncomePlay ?? null,
+    maturity_profile: valuation.maturityProfile ?? null,
   };
 
   const { error } = await supabase
@@ -325,9 +446,11 @@ async function computeAndSaveValuation(ticker) {
   }
 
   const input = {
+    ticker: stock.ticker,
     currentPrice: stock.current_price,
     sector: stock.sector,
     marketCap: stock.market_cap,
+    beta: stock.beta,
     debtToEquity: stock.debt_to_equity,
     totalDebt: stock.total_debt,
     cashAndEquivalents: stock.cash_and_equivalents,
@@ -337,8 +460,10 @@ async function computeAndSaveValuation(ticker) {
     ttmRevenue: stock.revenue_current,
     revenueGrowth3YrAvg: stock.revenue_growth_3yr,
     fcfGrowth3YrAvg: stock.fcf_growth_yoy, // approximation
+    fcfMargin: stock.fcf_margin,
     dilutedShares: stock.diluted_shares,
     sharesOutstanding: stock.shares_outstanding,
+    dividendYield: stock.dividend_yield,
     // Historical multiples (defaults used if not available)
     historicalEVSales5YrAvg: stock.historical_ev_sales || null,
     historicalEVEBITDA5YrAvg: stock.historical_ev_ebitda || null,
@@ -391,6 +516,8 @@ module.exports = {
   computeDCF,
   computeEVSales,
   computeEVEBITDA,
+  computeComposite,
+  computeTotalReturn,
   saveValuation,
   getValuation,
   computeAndSaveValuation,
