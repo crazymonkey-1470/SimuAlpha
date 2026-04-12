@@ -274,42 +274,123 @@ EARNINGS PROXIMITY: Earnings within 14 days of buy zone = Yellow caution
 
 ---
 
-## 7. HARD RULES (Never Violate)
+## 7. THE MASTER TRADE CYCLE (State Machine)
 
-1. Wave 2 never retraces below Wave 1 start
-2. Wave 3 never shortest of 1, 3, 5
-3. Wave 4 never overlaps Wave 1 price territory (standard impulse)
-4. 5-tranche DCA: 10% / 15% / 20% / 25% / 30% increasing as confirmation builds
-5. Per-trade risk ≤ 2% of portfolio
-6. Never average down on a broken thesis (Laffont rule)
-7. Never say "buy" or "sell" — use "accumulate / entry zone / trim zone / target achieved"
+The engine tracks each stock through 8 states with corresponding signals:
 
----
+STATE 1 WAVE_2_ENTRY: Trigger = Price at 0.5-0.618 Fib + holds above 50-day MA. Action = BUY (1st + 2nd tranche of 5-part system). Display = Wave 3 price target.
 
-## 8. RISK FILTERS (Override Buy Signals)
+STATE 2 WAVE_3_IN_PROGRESS: Trigger = Price moving up in 5-wave sub-structure. Action = HOLD + ADD (3rd + 4th tranche in sub-wave 2). Display = Wave 3 target at 1.618.
 
-Chase filter: price > 20% above entry → expire signal
-Earnings blackout: within 14 days of earnings → suppress new entries
-Sentiment extreme: ±5 adjustment
-Downtrend filter: downtrend score ≥4/8 → suppress buys (see Section 3.7)
-Kill Thesis flags ≥3 → force downgrade from BUY/STRONG_BUY to NEUTRAL
+STATE 3 WAVE_3_TARGET_HIT: Trigger = Price reaches 1.618 extension. Action = TRIM profits. Display = Wave 4 pullback level at 0.382.
 
----
+STATE 4 WAVE_4_SUPPORT_HOLD: Trigger = Price at 0.382 Fib of Wave 3, holding support. Action = ADD position. Display = Wave 5 target.
 
-## 9. POSITION MANAGEMENT STATE MACHINE (8 States)
+STATE 5 WAVE_5_EXHAUSTION: Trigger = Parabolic move, ending diagonal, volume divergence. Action = TAKE up to 50% profit. Display = Corrective targets.
 
-WATCHING → ENTRY_ZONE → STARTER (1st tranche) → CONFIRMED (3rd tranche) →
-FULL (5th tranche) → TRIM_WAVE_3 → WAVE_4_RE_ADD → EXIT_WAVE_5
+STATE 6 WAVE_A_BOTTOM: Trigger = Wave A completes 5-wave decline. Action = RE-ENTER (only if fundamentals still pass). Display = Wave B bounce target.
 
-CYCLE RESTART: After Wave C completion, resume 5-tranche DCA from zero.
+STATE 7 WAVE_B_REJECTION: Trigger = 3-wave bounce rejects at/near prior high. Action = TRIM profits. Display = Wave C target at 0.618.
+
+STATE 8 WAVE_C_BOTTOM: Trigger = Price at 0.5-0.618 Fib of entire impulse. Action = RESTART CYCLE (full position rebuild). Display = New Wave 1 target.
+
+Continuous check at every state: fundamentals_still_pass() — if fundamentals deteriorate at any point, exit. Do not re-enter at Wave A/C.
 
 ---
 
-## 10. LANGUAGE RULES
+## 8. POSITION SIZING MODULE
 
-Never use "buy" or "sell" verbatim.
-Use: "entering accumulation zone", "approaching support", "trim zone reached",
-"target achieved", "watchlist setup detected", "confluence zone active"
+### 8.1 Core Formula
+
+max_risk = portfolio_value * risk_tolerance (1-2%)
+position_size = max_risk / stop_loss_pct (typically 10-15%)
+
+### 8.2 The 5-Part Entry System (Maps to Wave Cycle)
+
+Tranche 1 (10%): Price breaks out and holds support — Wave 1 confirmation
+Tranche 2 (15%): Retest of support — Wave 2 bottom
+Tranche 3 (20%): Moving up Wave 3 — sub-wave 2
+Tranche 4 (25%): Continued Wave 3 — sub-wave 2 (add)
+Tranche 5 (30%): Reserve for unknowns — sudden pullback / retest
+
+### 8.3 Position Sizing Modifiers
+
+If volatility high: position_size *= 0.75 (reduce for volatile names)
+If conviction very_high: position_size *= 1.15 (slight increase, stay within risk params)
+If portfolio_concentration > 0.15: WARN (single position exceeds 15% of portfolio)
+
+### 8.4 Non-Negotiable Rules
+
+Add to winners only, never losers — suppress add signals for positions in drawdown
+If using stop-losses: set at -15%, NOT -10% (avoid market maker stop raids)
+No chasing, no shorting, no options, no leverage, no meme stocks
+Never trade earnings
+
+---
+
+## 9. RISK FLAGS & OVERRIDES
+
+### 9.1 Earnings Proximity Flag
+
+If days_to_earnings <= 14 AND stock in buy zone: flag = EARNINGS_PROXIMITY. Do NOT suppress signal, but display caution badge. Note: Consider waiting for post-earnings confirmation.
+
+### 9.2 Ending Diagonal Detection
+
+If wave_position == wave_5 AND pattern == ending_diagonal: override_signal = ENDING_DIAGONAL_TOP. Sharp reversal imminent. Retraces to at minimum Wave 1 origin of the diagonal. suppress_buy_signals = True.
+
+### 9.3 Extended Wave Detection
+
+If wave3_length > wave1_height * 2.0 AND volume_surging AND fundamental_catalyst: flag = EXTENDED_WAVE_3. Widen Wave 3 target from 1.618 to 2.618. Wave 4 pullback may be deeper/longer than normal.
+
+### 9.4 Black Swan Protection (Portfolio Level)
+
+Maintain Safe Haven allocation.
+Cap high-risk positions at smaller portfolio percentage.
+Portfolio health score based on diversification + safe haven ratio.
+
+---
+
+## 10. SIGNAL TYPES (Complete List)
+
+WAVE_2_ENTRY: Price at 0.5-0.618 Fib, 50MA confirmed — BUY
+WAVE_3_IN_PROGRESS: 5-wave impulse up from Wave 2 — HOLD
+WAVE_3_TARGET_HIT: Price at 1.618 extension — TRIM
+WAVE_4_SUPPORT_HOLD: Price at 0.382 of W3, holding — ADD
+WAVE_5_EXHAUSTION: Parabolic move / ending diagonal — TAKE 50%
+WAVE_A_BOTTOM: Wave A 5-wave decline complete — RE-ENTER (if fundamentals pass)
+WAVE_B_REJECTION: 3-wave bounce rejects near prior high — TRIM
+WAVE_C_BOTTOM: Price at 0.618 of entire impulse — FULL RESET
+FLAT_CORRECTION_WARNING: 3-wave bounce after 3-wave decline — CAUTION
+FLAT_CORRECTION_C_BOTTOM: Wave C of confirmed Flat at Fib support — BUY
+ENDING_DIAGONAL_TOP: 3-3-3-3-3 wedge in W5/WC position — SELL/TRIM
+EXTENDED_WAVE_POSSIBLE: W3 >> 1.618x + catalyst — HOLD TIGHT
+CONFLUENCE_ZONE: 200WMA + 0.618 Fib within 3% — MAX BUY
+GENERATIONAL_SUPPORT: 0.786 + W1 origin + 200MMA converging — MAX BUY
+LEADING_DIAGONAL: Converging wedge at trend start, W4/W1 overlap — EARLY BUY
+DOWNTREND_ACTIVE: Bearish score >= 4/8 — AVOID
+
+---
+
+## 11. UI LANGUAGE RULES
+
+SimuAlpha must NEVER say BUY or SELL directly.
+
+Use instead:
+Entering buy zone / Approaching support
+Trim zone reached / Target achieved
+Watchlist setup detected
+Confluence zone active
+
+This mirrors TLI's no-financial-advice stance and provides regulatory protection.
+
+---
+
+## 12. MULTI-TIMEFRAME ANALYSIS
+
+PRIMARY DEGREE (Monthly chart + 200 MMA): Where is the stock in its multi-year lifecycle? Sets WHAT to buy.
+INTERMEDIATE DEGREE (Weekly chart + 200 WMA): Where specifically within the primary structure? Sets WHEN to buy.
+
+Both run simultaneously. Monthly context + Weekly entry = full signal.
 `;
 
 // ─── SPEC 2: Fundamental Analysis Engine Master Prompt ───
