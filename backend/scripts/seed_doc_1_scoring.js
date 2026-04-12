@@ -39,25 +39,23 @@ DOWNTREND FILTER: 8 signals scored. Score >=4 suppresses all buys except GENERAT
 `;
 
 async function main() {
-  console.log('═══════════════════════════════════════════');
-  console.log('Seeding TLI Scoring Algorithm Reference');
-  console.log('═══════════════════════════════════════════\n');
+  console.log('[seed_doc_1] SEED START — TLI Scoring Algorithm Reference');
 
   // Step 1: Clear existing chunks for this source name
-  console.log(`[seed_doc_1] Clearing existing chunks for "${SOURCE_NAME}"...`);
+  console.log(`[seed_doc_1] Deleting existing chunks for "${SOURCE_NAME}"...`);
   const { error: delError, count } = await supabase
     .from('knowledge_chunks')
     .delete()
     .eq('source_name', SOURCE_NAME);
 
   if (delError) {
-    console.error('[seed_doc_1] Delete error:', delError.message);
+    console.error('[seed_doc_1] Delete error:', delError.message, delError);
   } else {
-    console.log(`[seed_doc_1] Cleared ${count ?? 'unknown'} existing chunks.`);
+    console.log(`[seed_doc_1] Delete OK — cleared ${count ?? 'unknown'} existing chunks`);
   }
 
   // Step 2: Ingest the document
-  console.log(`[seed_doc_1] Ingesting "${SOURCE_NAME}"...`);
+  console.log(`[seed_doc_1] Calling ingestDocument for "${SOURCE_NAME}"...`);
   const result = await ingestDocument({
     text: TLI_SCORING_DOC,
     sourceName: SOURCE_NAME,
@@ -65,9 +63,9 @@ async function main() {
     sourceDate: SOURCE_DATE,
   });
 
-  console.log(`\n═══════════════════════════════════════════`);
-  console.log(`TLI Scoring Algorithm: ${result.chunks_stored}/${result.chunks_total} chunks stored`);
-  console.log('═══════════════════════════════════════════');
+  console.log(`[seed_doc_1] Ingest result:`, JSON.stringify(result));
+  console.log(`[seed_doc_1] SEED DONE — ${result.chunks_stored}/${result.chunks_total} chunks stored`);
+  return { chunks_stored: result.chunks_stored, chunks_total: result.chunks_total };
 }
 
 module.exports = main;
