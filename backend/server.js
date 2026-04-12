@@ -162,6 +162,18 @@ app.get('/api/admin/seed-status', async (_req, res) => {
   res.json(counts);
 });
 
+// Force re-score a single ticker through the full pipeline
+app.get('/api/admin/rescore/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
+    const result = await deepScoreSingle(ticker);
+    res.json({ success: true, ticker, result });
+  } catch (err) {
+    res.json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) });
+  }
+});
+
 // Debug endpoint: test direct inserts into sain_sources and knowledge_chunks
 app.get('/api/admin/test-insert', async (req, res) => {
   // Try inserting one row directly
