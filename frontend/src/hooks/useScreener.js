@@ -153,7 +153,23 @@ export function useExitSignals(showAll = false) {
     fetchData();
   }
 
-  return { data, loading, acknowledge, refetch: fetchData };
+  async function acknowledgeAll() {
+    const ids = data.map(d => d.id);
+    if (ids.length === 0) return;
+    await supabase
+      .from('exit_signals')
+      .update({ acknowledged: true })
+      .in('id', ids);
+    fetchData();
+  }
+
+  // Sort by severity: HIGH first, then MEDIUM, then LOW
+  const severityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  const sorted = [...data].sort((a, b) =>
+    (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
+  );
+
+  return { data: sorted, loading, acknowledge, acknowledgeAll, refetch: fetchData };
 }
 
 export function useGenerationalBuys() {
