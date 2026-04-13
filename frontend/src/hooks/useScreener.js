@@ -217,3 +217,21 @@ export function useTickerDetail(symbol) {
 
   return { result, waveCount, backtest, loading };
 }
+
+export function useLastPipelineRun() {
+  const [lastRun, setLastRun] = useState(null);
+
+  useEffect(() => {
+    async function fetch() {
+      const { data } = await supabase
+        .from('screener_results')
+        .select('last_updated')
+        .order('last_updated', { ascending: false })
+        .limit(1);
+      if (data?.[0]?.last_updated) setLastRun(data[0].last_updated);
+    }
+    fetch();
+  }, []);
+
+  return lastRun;
+}

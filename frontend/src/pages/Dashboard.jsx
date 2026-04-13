@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys } from '../hooks/useScreener';
+import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys, useLastPipelineRun } from '../hooks/useScreener';
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const { data: scanHistory } = useScanHistory();
   const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
   const { data: generationalBuys, loading: genLoading } = useGenerationalBuys();
+  const lastPipelineRun = useLastPipelineRun();
 
   const topOpportunities = allStocks
     .filter(s => s.signal === 'LOAD THE BOAT')
@@ -95,14 +96,13 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {lastScan && (
-          <div style={{
-            marginTop: '16px', fontFamily: 'IBM Plex Mono',
-            fontSize: '11px', color: 'var(--text-dim)'
-          }}>
-            Last scan: {new Date(lastScan).toLocaleString()}
-          </div>
-        )}
+        <div style={{
+          marginTop: '16px', fontFamily: 'IBM Plex Mono',
+          fontSize: '11px', color: 'var(--text-dim)', display: 'flex', gap: '16px'
+        }}>
+          {lastPipelineRun && <span>Last pipeline: {formatTimeAgo(lastPipelineRun)}</span>}
+          {lastScan && <span>Last scan: {new Date(lastScan).toLocaleString()}</span>}
+        </div>
       </motion.div>
 
       {/* Generational Buy Zones */}
@@ -325,4 +325,14 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 1) return 'less than 1 hour ago';
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days !== 1 ? 's' : ''} ago`;
 }
