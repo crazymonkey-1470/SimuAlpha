@@ -305,23 +305,67 @@ async function analyzeStock(ticker) {
     layers_aligned: results.consensus?.layers_aligned || 0,
   } : null;
 
-  // stockData from getStockData is already camelCase — add scorer-specific aliases
-  const cp = stockData.currentPrice;
-  const p200wma = stockData.wma200;
-  const p200mma = stockData.mma200;
-  const w52h = stockData.week52High;
-  const w52l = stockData.week52Low;
-  const ma50 = stockData.sma50;
+  // Map snake_case DB columns to camelCase properties expected by v3 scorer
+  // (Reference: stage3_deepscore.js v3Stock builder)
+  const cp = stockData.current_price;
+  const p200wma = stockData.price_200wma;
+  const p200mma = stockData.price_200mma;
+  const w52h = stockData.week_52_high;
+  const w52l = stockData.week_52_low;
+  const ma50 = stockData.ma_50d;
 
   const stockForScorer = {
-    ...stockData,
-    // Scorer-specific aliases
+    // Prices & moving averages
+    currentPrice: cp,
     price200WMA: p200wma, price200MMA: p200mma,
-    ma50d: ma50,
+    wma200: p200wma, mma200: p200mma,
+    ma50d: ma50, sma50: ma50, sma200: p200mma,
+    week52High: w52h,
+    week52Low: w52l,
     previousLow: w52l,
 
+    // Fundamental growth
+    revenueGrowthYoY: stockData.revenue_growth_pct,
+    revenueGrowthPriorYoY: stockData.revenue_growth_prior_year ?? null,
+    revenueGrowth3YrAvg: stockData.revenue_growth_3yr,
+    grossMarginCurrent: stockData.gross_margin_current,
+    grossMarginPriorYear: stockData.gross_margin_prior_year ?? null,
+    epsGrowthYoY: stockData.eps_growth_yoy ?? null,
+    epsGrowthQoQ: stockData.eps_growth_qoq ?? null,
+    epsGrowthPriorQoQ: stockData.eps_growth_prior_qoq ?? null,
+    epsGrowth5Yr: stockData.eps_growth_5yr ?? null,
+
+    // Balance sheet & debt
+    ttmEBITDA: stockData.ttm_ebitda,
+    totalDebt: stockData.total_debt,
+    debtToEquity: stockData.debt_to_equity,
+    cashAndEquivalents: stockData.cash_and_equivalents,
+
+    // Cash flow & earnings
+    freeCashFlow: stockData.free_cash_flow,
+    fcfMargin: stockData.fcf_margin,
+    fcfGrowthYoY: stockData.fcf_growth_yoy,
+    netIncome: stockData.net_income,
+    operatingMargin: stockData.operating_margin,
+    epsDiluted: stockData.eps_diluted,
+
+    // Valuation
+    peRatio: stockData.pe_ratio,
+    psRatio: stockData.ps_ratio,
+    forwardPE: stockData.forward_pe,
+    marketCap: stockData.market_cap,
+    dividendYield: stockData.dividend_yield,
+
+    // Classification
+    sector: stockData.sector,
+    moatTier: stockData.moat_tier ?? null,
+
+    // Shares & insiders
+    sharesOutstandingChange: stockData.shares_outstanding_change,
+    insiderNetBuying: stockData.insider_net_buying ?? null,
+
     // Technical flags
-    deathCrossActive: stockData.deathCross,
+    deathCrossActive: stockData.death_cross,
     sma50SlopeNegative: ma50 != null && p200wma != null && ma50 < p200wma,
     sma200SlopeNegative: false,
 
