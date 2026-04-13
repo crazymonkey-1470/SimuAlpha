@@ -1404,6 +1404,30 @@ app.get('/api/admin/rescore-batch', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════
+// SEARCH ENDPOINT
+// ═══════════════════════════════════════════
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim().toUpperCase();
+    if (!q || q.length < 1) return res.json({ results: [] });
+
+    // Search by ticker (exact prefix) and company name (ilike)
+    const { data, error } = await supabase
+      .from('screener_results')
+      .select('ticker, company_name, total_score, signal, sector, current_price')
+      .or(`ticker.ilike.${q}%,company_name.ilike.%${q}%`)
+      .order('total_score', { ascending: false })
+      .limit(15);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ results: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   log.info({ port: PORT }, 'The Long Screener backend listening');
 

@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useSAINSignalCount } from '../hooks/useSAIN';
+import SearchBar from './SearchBar';
 
 const links = [
   { to: '/', label: 'Dashboard' },
@@ -44,6 +45,7 @@ export default function NavBar() {
       </Link>
 
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <SearchBar />
         {links.map(link => {
           const active = link.to === '/'
             ? location.pathname === '/'
