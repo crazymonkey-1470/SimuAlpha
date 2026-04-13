@@ -213,7 +213,7 @@ app.get('/api/admin/test-insert', async (req, res) => {
 // Seed all scripts in one call
 app.get('/api/admin/seed-all', async (req, res) => {
   const results = {};
-  const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_3_nvda'];
+  const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda'];
   results._version = 'v3-auto-migrate';
 
   // ── Auto-migrations: ensure tables exist before seeding ──
