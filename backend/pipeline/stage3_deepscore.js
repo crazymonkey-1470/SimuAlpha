@@ -1199,7 +1199,7 @@ async function deepScoreSingle(ticker) {
     return { error: upsertErr.message, row };
   }
 
-  log.info(`[deepScoreSingle] ${ticker}: score=${scores.totalScore} signal=${scores.signal} eps=${fund.epsDiluted} net_income=${fund.netIncome} fcf=${fund.freeCashFlow}`);
+  log.info({ ticker, score: scores.totalScore, signal: scores.signal, eps: fund.epsDiluted, netIncome: fund.netIncome, fcf: fund.freeCashFlow }, 'Single ticker scored');
 
   return {
     ticker,

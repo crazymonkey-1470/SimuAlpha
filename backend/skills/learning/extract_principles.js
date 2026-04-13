@@ -1,5 +1,4 @@
 /**
-const log = require('../../services/logger').child({ module: 'extract_principles' });
  * Skill: Extract Investing Principles
  *
  * Extracts structured investing principles from documents — scoring rules,
@@ -9,6 +8,7 @@ const log = require('../../services/logger').child({ module: 'extract_principles
  * -> { scoring_rules, investor_signals, principles, red_flags, sector_signals }
  */
 
+const log = require('../../services/logger').child({ module: 'extract_principles' });
 const { completeJSON } = require('../../services/llm');
 const { retrieve } = require('../../services/knowledge');
 
@@ -106,7 +106,7 @@ async function execute({ documentText, sourceName, sourceType }) {
         existing.map(c => `- ${c.content?.substring(0, 200)}`).join('\n');
     }
   } catch (err) {
-    log.error(`[extract_principles] Knowledge retrieval failed:`, err.message);
+    log.error({ err }, 'Knowledge retrieval failed');
     // Non-fatal
   }
 
@@ -134,7 +134,7 @@ ${truncatedText}${truncationNote}${existingContext}`;
       maxTokens: 3000,
     });
   } catch (err) {
-    log.error(`[extract_principles] LLM extraction failed:`, err.message);
+    log.error({ err }, 'LLM extraction failed');
     throw new Error(`Principle extraction failed: ${err.message}`);
   }
 
@@ -166,7 +166,7 @@ ${truncatedText}${truncationNote}${existingContext}`;
 
   const totalExtracted = Object.values(validated).reduce((sum, arr) => sum + arr.length, 0);
   if (totalExtracted === 0) {
-    log.warn(`[extract_principles] No principles extracted from "${sourceName}"`);
+    log.warn({ sourceName }, 'No principles extracted');
   }
 
   return validated;

@@ -1,5 +1,4 @@
 /**
-const log = require('../services/logger').child({ module: 'seed_doc_3_nvda' });
  * seed_doc_3_nvda.js — NVDA Reference Chart Analysis
  *
  * Ingests the NVDA Elliott Wave calibration benchmark into the knowledge base.
@@ -8,6 +7,7 @@ const log = require('../services/logger').child({ module: 'seed_doc_3_nvda' });
  * Run: node backend/scripts/seed_doc_3_nvda.js
  */
 require('dotenv').config();
+const log = require('../services/logger').child({ module: 'seed_doc_3_nvda' });
 const supabase = require('../services/supabase');
 const { ingestDocument } = require('../services/ingest');
 
@@ -169,25 +169,23 @@ Any wave interpretation that produces levels inconsistent with these observed ra
 `;
 
 async function main() {
-  log.info('═══════════════════════════════════════════');
   log.info('Seeding NVDA Reference Chart Analysis');
-  log.info('═══════════════════════════════════════════\n');
 
   // Step 1: Clear existing chunks for this source name
-  log.info(`[seed_doc_3] Clearing existing chunks for "${SOURCE_NAME}"...`);
+  log.info({ sourceName: SOURCE_NAME }, 'Clearing existing chunks');
   const { error: delError, count } = await supabase
     .from('knowledge_chunks')
     .delete()
     .eq('source_name', SOURCE_NAME);
 
   if (delError) {
-    log.error('[seed_doc_3] Delete error:', delError.message);
+    log.error({ err: delError }, 'Delete error');
   } else {
-    log.info(`[seed_doc_3] Cleared ${count ?? 'unknown'} existing chunks.`);
+    log.info({ count: count ?? 'unknown' }, 'Cleared existing chunks');
   }
 
   // Step 2: Ingest the document
-  log.info(`[seed_doc_3] Ingesting "${SOURCE_NAME}"...`);
+  log.info({ sourceName: SOURCE_NAME }, 'Ingesting document');
   const result = await ingestDocument({
     text: NVDA_REFERENCE_CHART,
     sourceName: SOURCE_NAME,
@@ -195,16 +193,14 @@ async function main() {
     sourceDate: SOURCE_DATE,
   });
 
-  log.info(`\n═══════════════════════════════════════════`);
-  log.info(`NVDA Reference Chart: ${result.chunks_stored}/${result.chunks_total} chunks stored`);
-  log.info('═══════════════════════════════════════════');
+  log.info({ chunksStored: result.chunks_stored, chunksTotal: result.chunks_total }, 'NVDA Reference Chart seeded');
 }
 
 module.exports = main;
 
 if (require.main === module) {
   main().catch(err => {
-    log.error('[seed_doc_3] FAILED:', err.message);
+    log.error({ err }, 'Seed failed');
     process.exit(1);
   });
 }

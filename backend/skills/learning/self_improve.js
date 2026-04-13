@@ -1,5 +1,4 @@
 /**
-const log = require('../../services/logger').child({ module: 'self_improve' });
  * Skill: self_improve — Agent Self-Improvement Engine
  *
  * Runs weekly. Analyzes the knowledge base, scoring outcomes, and error logs
@@ -7,6 +6,7 @@ const log = require('../../services/logger').child({ module: 'self_improve' });
  * Stores actionable suggestions with exact Claude Code prompts in agent_suggestions.
  */
 
+const log = require('../../services/logger').child({ module: 'self_improve' });
 const { complete } = require('../../services/llm');
 const supabase = require('../../services/supabase');
 
@@ -127,7 +127,7 @@ Identify gaps and write specific Claude Code prompts to fix them.`,
     const suggestions = JSON.parse(cleaned);
 
     if (!Array.isArray(suggestions)) {
-      log.warn('[self_improve] LLM returned non-array, skipping storage');
+      log.warn('LLM returned non-array, skipping storage');
       return { suggestions_generated: 0, raw: result };
     }
 
@@ -143,16 +143,16 @@ Identify gaps and write specific Claude Code prompts to fix them.`,
       });
 
       if (error) {
-        log.error('[self_improve] Insert failed:', error.message);
+        log.error({ err: error }, 'Insert failed');
       } else {
         suggestionsStored++;
-        log.info(`[self_improve] Stored suggestion: ${s.title} (${s.priority})`);
+        log.info({ title: s.title, priority: s.priority }, 'Stored suggestion');
       }
     }
 
     return { suggestions_generated: suggestionsStored, suggestions };
   } catch (e) {
-    log.error('[self_improve] Failed to parse LLM response:', e.message);
+    log.error({ err: e }, 'Failed to parse LLM response');
     return { suggestions_generated: 0, error: 'Failed to parse suggestions', raw: result };
   }
 }

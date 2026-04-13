@@ -1,5 +1,4 @@
 /**
-const log = require('../services/logger').child({ module: 'seed_knowledge_base' });
  * Seed Knowledge Base — Sprint 8
  *
  * Ingests all existing documents into the knowledge_chunks table.
@@ -10,6 +9,7 @@ const log = require('../services/logger').child({ module: 'seed_knowledge_base' 
  * provide the text directly in the documents array.
  */
 require('dotenv').config();
+const log = require('../services/logger').child({ module: 'seed_knowledge_base' });
 const fs = require('fs');
 const path = require('path');
 const { ingestDocument } = require('../services/ingest');
@@ -19,8 +19,8 @@ let pdfParse = null;
 try {
   pdfParse = require('pdf-parse');
 } catch (_) {
-  log.info('[Seed] pdf-parse not installed. PDF files will be skipped.');
-  log.info('[Seed] Install with: npm install pdf-parse');
+  log.info('pdf-parse not installed, PDF files will be skipped');
+  log.info('Install with: npm install pdf-parse');
 }
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -159,14 +159,12 @@ Graham Chapter 12: Never trust single-year earnings. Use 2-3 year averages.`,
 // ═══════════════════════════════════════════
 
 async function main() {
-  log.info('═══════════════════════════════════════════');
   log.info('Seeding SimuAlpha Knowledge Base');
-  log.info('═══════════════════════════════════════════\n');
 
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    log.info(`[Seed] Created ${DATA_DIR} — place PDF files here.\n`);
+    log.info({ dataDir: DATA_DIR }, 'Created data directory — place PDF files here');
   }
 
   let ingested = 0;
@@ -179,7 +177,7 @@ async function main() {
     if (!text && doc.file) {
       const filePath = path.join(DATA_DIR, doc.file);
       if (!fs.existsSync(filePath)) {
-        log.info(`[Seed] SKIP: ${doc.file} not found in ${DATA_DIR}`);
+        log.info({ file: doc.file, dataDir: DATA_DIR }, 'Skipping — file not found');
         skipped++;
         continue;
       }
@@ -190,21 +188,21 @@ async function main() {
           const parsed = await pdfParse(buffer);
           text = parsed.text;
         } catch (err) {
-          log.error(`[Seed] PDF parse error for ${doc.file}:`, err.message);
+          log.error({ err, file: doc.file }, 'PDF parse error');
           skipped++;
           continue;
         }
       } else if (doc.file.endsWith('.txt') || doc.file.endsWith('.md')) {
         text = fs.readFileSync(filePath, 'utf-8');
       } else if (!pdfParse && doc.file.endsWith('.pdf')) {
-        log.info(`[Seed] SKIP: ${doc.file} (pdf-parse not installed)`);
+        log.info({ file: doc.file }, 'Skipping — pdf-parse not installed');
         skipped++;
         continue;
       }
     }
 
     if (!text || text.trim().length < 50) {
-      log.info(`[Seed] SKIP: ${doc.source_name} — insufficient text`);
+      log.info({ sourceName: doc.source_name }, 'Skipping — insufficient text');
       skipped++;
       continue;
     }
@@ -217,21 +215,19 @@ async function main() {
         sourceDate: doc.source_date,
       });
       ingested++;
-      log.info(`  ${doc.source_name}: ${result.chunks_stored} chunks\n`);
+      log.info({ sourceName: doc.source_name, chunksStored: result.chunks_stored }, 'Document ingested');
     } catch (err) {
-      log.error(`[Seed] Failed: ${doc.source_name} —`, err.message);
+      log.error({ err, sourceName: doc.source_name }, 'Ingestion failed');
       skipped++;
     }
   }
 
-  log.info('\n═══════════════════════════════════════════');
-  log.info(`Knowledge base seed complete: ${ingested} ingested, ${skipped} skipped`);
-  log.info('═══════════════════════════════════════════');
+  log.info({ ingested, skipped }, 'Knowledge base seed complete');
 }
 
 if (require.main === module) {
   main().catch(err => {
-    log.error('Seed failed:', err);
+    log.error({ err }, 'Seed failed');
     process.exit(1);
   });
 }

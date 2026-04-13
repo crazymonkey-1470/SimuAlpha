@@ -32,7 +32,7 @@ async function fetchExtendedMonthly(ticker) {
     const data = await res.json();
     return (data.monthly || []).filter((q) => q.date && q.close != null);
   } catch (err) {
-    log.error(`[Stage 4] Extended monthly fetch failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Extended monthly fetch failed');
     return [];
   }
 }
@@ -42,7 +42,7 @@ async function fetchExtendedMonthly(ticker) {
  * Runs only on ACCUMULATE and LOAD THE BOAT candidates from Stage 3.
  */
 async function runWaveCount() {
-  log.info('\n[Stage 4] Starting wave count analysis...');
+  log.info('Starting wave count analysis');
   const startTime = Date.now();
 
   // Get scored tickers that qualify
@@ -52,11 +52,11 @@ async function runWaveCount() {
     .in('signal', ['LOAD THE BOAT', 'ACCUMULATE']);
 
   if (error || !candidates || candidates.length === 0) {
-    log.info('[Stage 4] No ACCUMULATE/LOAD THE BOAT candidates to analyze');
+    log.info('No ACCUMULATE/LOAD THE BOAT candidates to analyze');
     return;
   }
 
-  log.info(`[Stage 4] Analyzing ${candidates.length} candidates...`);
+  log.info({ count: candidates.length }, 'Analyzing candidates');
 
   let waveCounts = 0;
   let alertsFired = 0;
@@ -73,7 +73,7 @@ async function runWaveCount() {
         monthlyWithDates = (histData.monthly || []).filter((q) => q.date && q.close != null);
         weeklyWithDates = (histData.weekly || []).filter((q) => q.date && q.close != null);
       } catch (e) {
-        log.error(`  ${ticker}: price fetch failed -`, e.message);
+        log.error({ err: e, ticker }, 'Price fetch failed');
         await sleep(400);
         continue;
       }
@@ -87,7 +87,7 @@ async function runWaveCount() {
           const { error: wcErr } = await supabase
             .from('wave_counts')
             .upsert(wc, { onConflict: 'ticker,timeframe,wave_degree' });
-          if (wcErr) log.error(`  ${ticker}: wave_counts upsert error -`, wcErr.message);
+          if (wcErr) log.error({ err: wcErr, ticker }, 'wave_counts upsert error');
         }
 
         // ── Exit Signal Detection (Part 7) ──
@@ -125,7 +125,7 @@ async function runWaveCount() {
               new_signal: es.signal_type,
             });
             alertsFired++;
-            log.info(`  ${ticker}: EXIT SIGNAL — ${es.signal_type}`);
+            log.info({ ticker, signalType: es.signal_type }, 'Exit signal fired');
           }
         }
 
@@ -159,7 +159,7 @@ async function runWaveCount() {
             .maybeSingle();
 
           if (shouldInterpret(topWaveForClaude, prevWave)) {
-            log.info(`  Calling Claude for ${ticker}...`);
+            log.info({ ticker }, 'Calling Claude for interpretation');
             claudeCallsToday++;
 
             const backtestData = await getBacktestSummary(ticker);
@@ -190,13 +190,13 @@ async function runWaveCount() {
               .eq('timeframe', topWaveForClaude.timeframe)
               .eq('wave_degree', topWaveForClaude.wave_degree);
 
-            log.info(`  Claude: ${ticker} — ${interpretation.conviction} conviction | "${interpretation.one_liner}"`);
+            log.info({ ticker, conviction: interpretation.conviction, oneLiner: interpretation.one_liner }, 'Claude interpretation complete');
             await sleep(500);
           } else {
-            log.info(`  Skipping Claude for ${ticker} — interpretation still fresh`);
+            log.info({ ticker }, 'Skipping Claude — interpretation still fresh');
           }
         } else if (getClaudeCallCount() >= CLAUDE_DAILY_LIMIT) {
-          log.info(`  Claude daily limit reached (${CLAUDE_DAILY_LIMIT}). Skipping remaining interpretations.`);
+          log.info({ limit: CLAUDE_DAILY_LIMIT }, 'Claude daily limit reached, skipping remaining interpretations');
         }
 
         // Check for BUY_ZONE alerts
@@ -280,19 +280,19 @@ async function runWaveCount() {
         }
 
         const bestWave = waveResults[0];
-        log.info(`  ${ticker}: ${waveResults.length} counts | best: ${bestWave.wave_structure} W${bestWave.current_wave} (${bestWave.confidence_score}%) ${bestWave.tli_signal}`);
+        log.info({ ticker, counts: waveResults.length, structure: bestWave.wave_structure, wave: bestWave.current_wave, confidence: bestWave.confidence_score, signal: bestWave.tli_signal }, 'Wave analysis result');
       } else {
-        log.info(`  ${ticker}: no valid wave counts`);
+        log.info({ ticker }, 'No valid wave counts');
       }
     } catch (err) {
-      log.error(`  ${ticker}: ERROR -`, err.message);
+      log.error({ err, ticker }, 'Wave count error');
     }
 
     await sleep(400);
   }
 
   // Run backtests
-  log.info('\n[Stage 4] Running backtests...');
+  log.info('Running backtests');
   const tickerList = candidates.map((c) => c.ticker);
   await runBacktestAll(tickerList, fetchExtendedMonthly);
 
@@ -305,7 +305,7 @@ async function runWaveCount() {
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  log.info(`[Stage 4] Complete: ${candidates.length} analyzed | ${waveCounts} wave counts | ${alertsFired} alerts (${elapsed}s)`);
+  log.info({ analyzed: candidates.length, waveCounts, alertsFired, elapsedSec: elapsed }, 'Stage 4 complete');
 }
 
 /**
