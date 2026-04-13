@@ -1056,6 +1056,36 @@ app.get('/health', async (_req, res) => {
   });
 });
 
+// ═══════════════════════════════════════════
+// ADMIN: RESCORE TOP STOCKS
+// ═══════════════════════════════════════════
+
+app.get('/api/admin/rescore-top', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
+
+  const { data: stocks } = await supabase.from('screener_results')
+    .select('ticker')
+    .order('total_score', { ascending: false })
+    .limit(limit);
+
+  if (!stocks || stocks.length === 0) return res.json({ error: 'No stocks found' });
+
+  const results = [];
+  for (const s of stocks) {
+    try {
+      await deepScoreSingle(s.ticker);
+      results.push({ ticker: s.ticker, status: 'OK' });
+    } catch (err) {
+      results.push({ ticker: s.ticker, status: 'ERROR', error: err.message });
+    }
+    // Rate limit: 1 per second
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  res.json({ rescored: results.length, results });
+});
+
 app.listen(PORT, () => {
   log.info({ port: PORT }, 'The Long Screener backend listening');
 
