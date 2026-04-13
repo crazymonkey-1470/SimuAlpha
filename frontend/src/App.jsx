@@ -10,6 +10,7 @@ import InvestorDetail from './pages/InvestorDetail';
 import MarketContext from './pages/MarketContext';
 import IntelligenceFeed from './pages/IntelligenceFeed';
 import ConsensusLeaderboard from './pages/ConsensusLeaderboard';
+import AgentConsole from './pages/AgentConsole';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="watchlist" element={<Watchlist />} />
           <Route path="intelligence" element={<IntelligenceFeed />} />
           <Route path="consensus" element={<ConsensusLeaderboard />} />
+          <Route path="agent" element={<AgentConsole />} />
         </Route>
       </Routes>
     </BrowserRouter>

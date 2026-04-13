@@ -10,6 +10,7 @@ const links = [
   { to: '/consensus', label: 'SAIN Consensus' },
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/agent', label: 'Agent' },
 ];
 
 export default function NavBar() {
