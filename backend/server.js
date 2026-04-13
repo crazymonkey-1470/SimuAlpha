@@ -923,6 +923,52 @@ app.post('/api/sain/scan/:category', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// DEBUG ENDPOINT
+// ═══════════════════════════════════════════
+
+app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+
+  // Check stock_analysis table
+  const { data: analysis, error: aErr } = await supabase
+    .from('stock_analysis')
+    .select('id, ticker, signal, composite_score, analyzed_at')
+    .eq('ticker', ticker);
+
+  // Check screener_results
+  const { data: screener, error: sErr } = await supabase
+    .from('screener_results')
+    .select('ticker, tli_score, signal, eps_gaap, net_income, operating_margin, free_cash_flow, ma_50d, price_200wma, updated_at')
+    .eq('ticker', ticker);
+
+  // Try running analyzeStock synchronously and catch any error
+  let analyzeResult = null;
+  let analyzeError = null;
+  try {
+    const { analyzeStock } = require('./services/orchestrator');
+    analyzeResult = await analyzeStock(ticker);
+  } catch (err) {
+    analyzeError = { message: err.message, stack: err.stack?.split('\n').slice(0, 10) };
+  }
+
+  // Re-read stock_analysis after analyze
+  const { data: analysisAfter } = await supabase
+    .from('stock_analysis')
+    .select('id, ticker, signal, composite_score, analyzed_at')
+    .eq('ticker', ticker);
+
+  res.json({
+    stock_analysis_before: analysis,
+    stock_analysis_error: aErr?.message,
+    screener_results: screener,
+    screener_error: sErr?.message,
+    analyze_result: analyzeResult ? 'SUCCESS' : 'FAILED',
+    analyze_error: analyzeError,
+    stock_analysis_after: analysisAfter,
+  });
+});
+
+// ═══════════════════════════════════════════
 
 app.get('/health', async (_req, res) => {
   let candidatesCount = 0;
