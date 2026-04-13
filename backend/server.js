@@ -957,13 +957,32 @@ app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
     .select('id, ticker, signal, composite_score, analyzed_at')
     .eq('ticker', ticker);
 
+  // Show key fields from the screener data that the orchestrator will use
+  const sr = screener?.[0] || {};
+  const stockDataSample = {
+    eps_gaap: sr.eps_gaap ?? 'MISSING',
+    net_income: sr.net_income ?? 'MISSING',
+    operating_margin: sr.operating_margin ?? 'MISSING',
+    free_cash_flow: sr.free_cash_flow ?? 'MISSING',
+    current_price: sr.current_price ?? 'MISSING',
+    revenue_growth_pct: sr.revenue_growth_pct ?? 'MISSING',
+    gross_margin_current: sr.gross_margin_current ?? 'MISSING',
+    total_score: sr.total_score ?? 'MISSING',
+    ma_50d: sr.ma_50d ?? 'MISSING',
+    price_200wma: sr.price_200wma ?? 'MISSING',
+    price_200mma: sr.price_200mma ?? 'MISSING',
+  };
+
   res.json({
     stock_analysis_before: analysis,
     stock_analysis_error: aErr?.message,
     screener_results: screener,
     screener_error: sErr?.message,
+    stock_data_sample: stockDataSample,
     analyze_result: analyzeResult ? 'SUCCESS' : 'FAILED',
     analyze_error: analyzeError,
+    analyze_score: analyzeResult?.composite_score ?? null,
+    analyze_signal: analyzeResult?.signal ?? null,
     stock_analysis_after: analysisAfter,
   });
 });

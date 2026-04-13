@@ -37,18 +37,53 @@ async function analyzeStock(ticker) {
   const startTime = Date.now();
 
   // Step 1: Gather existing data from screener_results
-  const { data: stockData } = await supabase
+  const { fetchHistoricalPrices, fetchFundamentals } = require('./fetcher');
+
+  let { data: stockData } = await supabase
     .from('screener_results')
     .select('*')
     .eq('ticker', ticker)
     .single();
 
   if (!stockData) {
-    throw new Error(`${ticker} not found in screener_results. Run pipeline first.`);
+    // Fallback: fetch fresh fundamentals from scraper if not in screener_results
+    log.warn({ ticker }, 'Not in screener_results — fetching from scraper');
+    const fresh = await fetchFundamentals(ticker);
+    if (!fresh) throw new Error(`${ticker} not found in screener_results and scraper fetch failed.`);
+    stockData = {
+      ticker,
+      company_name: fresh.companyName,
+      sector: fresh.sector,
+      market_cap: fresh.marketCap,
+      current_price: fresh.currentPrice,
+      week_52_high: fresh.week52High,
+      revenue_current: fresh.revenueCurrent,
+      revenue_prior_year: fresh.revenuePrior,
+      revenue_growth_pct: fresh.revenueGrowthPct,
+      revenue_growth_3yr: fresh.revenueGrowth3YrAvg,
+      gross_margin_current: fresh.grossMarginCurrent,
+      pe_ratio: fresh.peRatio,
+      ps_ratio: fresh.psRatio,
+      eps_gaap: fresh.epsDiluted,
+      eps_diluted: fresh.epsDiluted,
+      net_income: fresh.netIncome,
+      free_cash_flow: fresh.freeCashFlow,
+      fcf_margin: fresh.fcfMargin,
+      fcf_growth_yoy: fresh.fcfGrowthYoY,
+      operating_income: fresh.operatingIncome,
+      operating_margin: fresh.operatingMargin,
+      ttm_ebitda: fresh.ebitda,
+      diluted_shares: fresh.dilutedShares,
+      shares_outstanding: fresh.sharesOutstanding,
+      cash_and_equivalents: fresh.cashAndEquivalents,
+      total_debt: fresh.totalDebt,
+      debt_to_equity: fresh.debtToEquity,
+      shares_outstanding_change: fresh.sharesOutstandingChange,
+      capex: fresh.capex,
+    };
   }
 
   // Step 2: Gather supplementary data
-  const { fetchHistoricalPrices } = require('./fetcher');
   const [{ data: valData }, { data: instData }, { data: waveData }, historicals] = await Promise.all([
     supabase.from('stock_valuations').select('*').eq('ticker', ticker).order('computed_date', { ascending: false }).limit(1),
     supabase.from('consensus_signals').select('*').eq('ticker', ticker).order('quarter', { ascending: false }).limit(1),
@@ -550,6 +585,8 @@ async function analyzeStock(ticker) {
     analyzed_at: new Date().toISOString(),
   };
 
+  log.info({ ticker, score: analysis.composite_score, signal: analysis.signal }, 'Upserting analysis');
+
   const { error } = await supabase
     .from('stock_analysis')
     .upsert(analysis, { onConflict: 'ticker' });
@@ -558,7 +595,7 @@ async function analyzeStock(ticker) {
     log.error({ err: error, ticker }, 'Storage error');
   }
 
-  log.info({ ticker, elapsedSec: (elapsed / 1000).toFixed(1), rating: ratingResult.rating, lynchCategory: lynchClass.category }, 'Analysis complete');
+  log.info({ ticker, elapsedSec: (elapsed / 1000).toFixed(1), score: analysis.composite_score, signal: analysis.signal, rating: ratingResult.rating, lynchCategory: lynchClass.category }, 'Analysis complete');
   return analysis;
 }
 
