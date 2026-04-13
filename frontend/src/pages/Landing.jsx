@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import usePageTitle from '../hooks/usePageTitle';
 
 const SIGNAL_HIERARCHY = [
   { signal: 'LOAD THE BOAT', color: '#10b981', desc: 'Maximum conviction. Fundamentals, technicals, and wave position all align at 200MA support.' },
@@ -46,6 +47,7 @@ const FEATURES = [
 
 export default function Landing() {
   const navigate = useNavigate();
+  usePageTitle(null);
 
   return (
     <div style={{ paddingTop: '48px' }}>

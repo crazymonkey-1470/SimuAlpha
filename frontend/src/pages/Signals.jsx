@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useSignalAlerts, useExitSignals } from '../hooks/useScreener';
+import usePageTitle from '../hooks/usePageTitle';
 import SignalBadge from '../components/SignalBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
@@ -28,6 +29,7 @@ export default function Signals() {
   const navigate = useNavigate();
   const { data: alerts, loading } = useSignalAlerts();
   const { data: exitSignals, loading: exitLoading } = useExitSignals();
+  usePageTitle('Signals');
   const [tab, setTab] = useState('entry');
 
   return (

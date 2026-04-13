@@ -3,12 +3,14 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import supabase from '../supabaseClient';
 import { useInvestorHoldings, useInvestorSignals } from '../hooks/useInvestors';
+import usePageTitle from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 
 export default function InvestorDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  usePageTitle(`Investor ${id}`);
   const [investor, setInvestor] = useState(null);
   const { data: holdings, loading: holdingsLoading } = useInvestorHoldings(id);
   const { data: signals, loading: signalsLoading } = useInvestorSignals(id);

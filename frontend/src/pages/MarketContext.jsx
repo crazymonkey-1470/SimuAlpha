@@ -2,12 +2,14 @@ import { motion } from 'framer-motion';
 import MarketRiskBanner from '../components/MarketRiskBanner';
 import CarryTradeMonitor from '../components/CarryTradeMonitor';
 import { useMacroContext, useMacroHistory } from '../hooks/useMacro';
+import usePageTitle from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 
 export default function MarketContext() {
   const { data: ctx, loading } = useMacroContext();
   const { data: history, loading: historyLoading } = useMacroHistory(10);
+  usePageTitle('Market Context');
 
   return (
     <div style={{ paddingTop: '48px' }}>

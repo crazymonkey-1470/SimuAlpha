@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSAINSignals, usePoliticianSignals, useAIModelSignals, useTopConsensus } from '../hooks/useSAIN';
+import usePageTitle from '../hooks/usePageTitle';
 import SignalCard from '../components/sain/SignalCard';
 import PoliticianTradeDetail from '../components/sain/PoliticianTradeDetail';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -19,6 +20,7 @@ export default function IntelligenceFeed() {
   const [selectedSignal, setSelectedSignal] = useState(null);
 
   const { data: allSignals, loading: allLoading, refetch } = useSAINSignals();
+  usePageTitle('Intelligence Feed');
   const { data: polSignals, loading: polLoading } = usePoliticianSignals();
   const { data: aiSignals, loading: aiLoading } = useAIModelSignals();
   const { data: topConsensus, loading: topLoading } = useTopConsensus();

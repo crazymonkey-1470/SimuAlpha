@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useConsensusLeaderboard } from '../hooks/useSAIN';
+import usePageTitle from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 
@@ -26,6 +27,7 @@ const DIR_FILTERS = [
 export default function ConsensusLeaderboard() {
   const navigate = useNavigate();
   const { data, loading } = useConsensusLeaderboard();
+  usePageTitle('SAIN Consensus');
   const [sortKey, setSortKey] = useState('total_sain_score');
   const [sortAsc, setSortAsc] = useState(false);
   const [dirFilter, setDirFilter] = useState('ALL');

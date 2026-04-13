@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useInvestors, useConsensusSummary } from '../hooks/useInvestors';
+import usePageTitle from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import supabase from '../supabaseClient';
@@ -10,6 +11,7 @@ export default function SuperInvestors() {
   const navigate = useNavigate();
   const { data: investors, loading: investorsLoading } = useInvestors();
   const { topBuys, topSells, loading: consensusLoading } = useConsensusSummary();
+  usePageTitle('Super Investors');
   const [crossConsensus, setCrossConsensus] = useState([]);
   const [recentSignals, setRecentSignals] = useState([]);
 
