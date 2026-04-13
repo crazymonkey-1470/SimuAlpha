@@ -16,6 +16,8 @@ const IntelligenceFeed = lazy(() => import('./pages/IntelligenceFeed'));
 const ConsensusLeaderboard = lazy(() => import('./pages/ConsensusLeaderboard'));
 const AgentConsole = lazy(() => import('./pages/AgentConsole'));
 const Compare = lazy(() => import('./pages/Compare'));
+const Portfolio = lazy(() => import('./pages/Portfolio'));
+const Backtesting = lazy(() => import('./pages/Backtesting'));
 const Landing = lazy(() => import('./pages/Landing'));
 
 export default function App() {
@@ -36,6 +38,8 @@ export default function App() {
             <Route path="intelligence" element={<IntelligenceFeed />} />
             <Route path="consensus" element={<ConsensusLeaderboard />} />
             <Route path="compare" element={<Compare />} />
+            <Route path="portfolio" element={<Portfolio />} />
+            <Route path="backtesting" element={<Backtesting />} />
             <Route path="agent" element={<AgentConsole />} />
           </Route>
         </Routes>

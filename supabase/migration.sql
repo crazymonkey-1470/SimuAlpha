@@ -368,3 +368,113 @@ create policy "Public delete custom_alerts" on custom_alerts for delete using (t
 
 create index if not exists idx_custom_alerts_ticker on custom_alerts(ticker);
 create index if not exists idx_custom_alerts_active on custom_alerts(active) where active = true;
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE: portfolio_positions                                │
+-- │  User portfolio positions with entry/exit tracking         │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists portfolio_positions (
+  id              uuid        default gen_random_uuid() primary key,
+  ticker          text        not null,
+  entry_price     decimal     not null,
+  shares          decimal     not null,
+  entry_date      date        not null,
+  tranche_number  int         default 1,
+  wave_at_entry   text,
+  score_at_entry  int,
+  signal_at_entry text,
+  notes           text,
+  status          text        default 'OPEN',
+  exit_price      decimal,
+  exit_date       date,
+  exit_reason     text,
+  created_at      timestamptz default now()
+);
+
+create table if not exists portfolio_transactions (
+  id              uuid        default gen_random_uuid() primary key,
+  position_id     uuid        references portfolio_positions(id),
+  ticker          text        not null,
+  action          text        not null,
+  shares          decimal     not null,
+  price           decimal     not null,
+  tranche_number  int,
+  date            date        not null,
+  notes           text,
+  created_at      timestamptz default now()
+);
+
+create index if not exists idx_portfolio_ticker on portfolio_positions(ticker);
+create index if not exists idx_portfolio_status on portfolio_positions(status);
+create index if not exists idx_transactions_ticker on portfolio_transactions(ticker);
+
+alter table portfolio_positions enable row level security;
+alter table portfolio_transactions enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'Public rw portfolio_positions') then
+    create policy "Public rw portfolio_positions" on portfolio_positions for all using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Public rw portfolio_transactions') then
+    create policy "Public rw portfolio_transactions" on portfolio_transactions for all using (true);
+  end if;
+end $$;
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE: chat_sessions / chat_messages                      │
+-- │  Conversational chat foundation                            │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists chat_sessions (
+  id          uuid        default gen_random_uuid() primary key,
+  title       text,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+create table if not exists chat_messages (
+  id                uuid        default gen_random_uuid() primary key,
+  session_id        uuid        references chat_sessions(id),
+  role              text        not null,
+  content           text        not null,
+  skills_used       text[],
+  tickers_mentioned text[],
+  created_at        timestamptz default now()
+);
+
+create index if not exists idx_chat_messages_session on chat_messages(session_id);
+
+alter table chat_sessions enable row level security;
+alter table chat_messages enable row level security;
+
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'Public rw chat_sessions') then
+    create policy "Public rw chat_sessions" on chat_sessions for all using (true);
+  end if;
+  if not exists (select 1 from pg_policies where policyname = 'Public rw chat_messages') then
+    create policy "Public rw chat_messages" on chat_messages for all using (true);
+  end if;
+end $$;
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE: subscription_tiers                                 │
+-- │  Feature gating for monetization prep                      │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists subscription_tiers (
+  id              text primary key,
+  name            text not null,
+  price_monthly   int  not null,
+  features        jsonb not null
+);
+
+insert into subscription_tiers (id, name, price_monthly, features) values
+  ('free', 'Free', 0, '{"screener_limit": 10, "analyses_per_month": 2, "sain_access": false, "portfolio": false, "export": false, "chat": false, "alerts_limit": 1}'),
+  ('starter', 'Starter', 29, '{"screener_limit": 100, "analyses_per_month": 20, "sain_access": true, "portfolio": true, "export": true, "chat": false, "alerts_limit": 10}'),
+  ('pro', 'Pro', 79, '{"screener_limit": -1, "analyses_per_month": -1, "sain_access": true, "portfolio": true, "export": true, "chat": true, "alerts_limit": -1}'),
+  ('institutional', 'Institutional', 199, '{"screener_limit": -1, "analyses_per_month": -1, "sain_access": true, "portfolio": true, "export": true, "chat": true, "alerts_limit": -1, "api_access": true, "custom_reports": true}')
+on conflict (id) do nothing;

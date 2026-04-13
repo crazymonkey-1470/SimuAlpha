@@ -258,6 +258,132 @@ export default function Landing() {
         </div>
       </motion.div>
 
+      {/* Pricing */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        style={{ marginBottom: '80px' }}
+      >
+        <h2 style={{
+          fontFamily: 'Cormorant Garamond',
+          fontSize: '36px',
+          fontWeight: 400,
+          color: 'var(--text-primary)',
+          textAlign: 'center',
+          marginBottom: '12px',
+        }}>
+          Plans
+        </h2>
+        <p style={{
+          fontFamily: 'IBM Plex Mono',
+          fontSize: '11px',
+          color: 'var(--text-dim)',
+          textAlign: 'center',
+          marginBottom: '32px',
+        }}>
+          Choose the level of intelligence that fits your research needs
+        </p>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '16px',
+          maxWidth: '960px',
+          margin: '0 auto',
+        }}>
+          {[
+            {
+              name: 'Free',
+              price: '$0',
+              period: '/mo',
+              features: ['Basic screener access', 'Top 10 scored stocks', 'Weekly digest', 'Signal hierarchy view'],
+              cta: 'Get Started',
+              highlight: false,
+            },
+            {
+              name: 'Starter',
+              price: '$29',
+              period: '/mo',
+              features: ['Full screener (100+ stocks)', 'Deep-dive analysis', 'Elliott Wave overlays', 'Watchlist (25 stocks)', 'Email alerts'],
+              cta: 'Start Free Trial',
+              highlight: false,
+            },
+            {
+              name: 'Pro',
+              price: '$79',
+              period: '/mo',
+              features: ['Everything in Starter', 'SAIN 4-layer consensus', 'Super investor tracking', 'Portfolio tracker + P&L', 'AI chat assistant', 'Unlimited watchlist'],
+              cta: 'Start Free Trial',
+              highlight: true,
+            },
+            {
+              name: 'Institutional',
+              price: '$199',
+              period: '/mo',
+              features: ['Everything in Pro', 'API access', 'Custom alert rules', 'Backtesting dashboard', 'Priority agent analysis', 'PDF report export'],
+              cta: 'Contact Us',
+              highlight: false,
+            },
+          ].map(tier => (
+            <div
+              key={tier.name}
+              style={{
+                background: 'var(--bg-card)',
+                border: tier.highlight ? '2px solid var(--signal-green)' : '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '28px 24px',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {tier.highlight && (
+                <div style={{
+                  position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)',
+                  background: 'var(--signal-green)', color: '#0c0c0e',
+                  fontFamily: 'IBM Plex Mono', fontSize: '9px', fontWeight: 700,
+                  padding: '3px 12px', borderRadius: '10px', letterSpacing: '0.1em',
+                }}>
+                  MOST POPULAR
+                </div>
+              )}
+              <div style={{ fontFamily: 'Cormorant Garamond', fontSize: '22px', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                {tier.name}
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <span style={{ fontFamily: 'Cormorant Garamond', fontSize: '40px', fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
+                <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)' }}>{tier.period}</span>
+              </div>
+              <div style={{ flex: 1, marginBottom: '20px' }}>
+                {tier.features.map(f => (
+                  <div key={f} style={{
+                    fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)',
+                    padding: '4px 0', display: 'flex', gap: '8px', alignItems: 'baseline',
+                  }}>
+                    <span style={{ color: 'var(--signal-green)', fontSize: '10px' }}>{'\u2713'}</span>
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => navigate('/screener')}
+                style={{
+                  background: tier.highlight ? 'var(--signal-green)' : 'transparent',
+                  color: tier.highlight ? '#0c0c0e' : 'var(--text-secondary)',
+                  border: tier.highlight ? 'none' : '1px solid var(--border)',
+                  borderRadius: '8px', padding: '12px',
+                  fontFamily: 'IBM Plex Mono', fontSize: '12px', fontWeight: 600,
+                  cursor: 'pointer', width: '100%',
+                }}
+              >
+                {tier.cta}
+              </button>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
       {/* CTA */}
       <motion.div
         initial={{ opacity: 0 }}

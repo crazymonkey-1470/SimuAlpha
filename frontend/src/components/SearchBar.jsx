@@ -67,6 +67,7 @@ export default function SearchBar() {
       <input
         type="text"
         placeholder="Search stocks..."
+        data-search-input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true); }}

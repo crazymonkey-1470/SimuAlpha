@@ -1,5 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import NavBar from './NavBar';
+import ChatWidget from './ChatWidget';
+import KeyboardShortcuts from './KeyboardShortcuts';
 
 export default function Layout() {
   return (
@@ -18,6 +20,8 @@ export default function Layout() {
       }}>
         Not financial advice. Educational tool only. Do your own research.
       </footer>
+      <ChatWidget />
+      <KeyboardShortcuts />
     </div>
   );
 }

@@ -12,6 +12,8 @@ const links = [
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/compare', label: 'Compare' },
+  { to: '/portfolio', label: 'Portfolio' },
+  { to: '/backtesting', label: 'Backtest' },
   { to: '/agent', label: 'Agent' },
 ];
 

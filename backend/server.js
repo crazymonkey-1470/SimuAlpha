@@ -14,6 +14,71 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // ═══════════════════════════════════════════
+// CORS
+// ═══════════════════════════════════════════
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,
+  'https://simualpha.com',
+  'https://www.simualpha.com',
+  'http://localhost:5173',
+].filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || ALLOWED_ORIGINS.includes(origin) || /\.pages\.dev$/.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*'); // Permissive for now
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-admin-key');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// ═══════════════════════════════════════════
+// RATE LIMITING
+// ═══════════════════════════════════════════
+const rateLimits = new Map();
+
+function rateLimit(maxRequests = 60, windowMs = 60000) {
+  return (req, res, next) => {
+    const key = (req.ip || 'unknown') + ':' + req.baseUrl;
+    const now = Date.now();
+    if (!rateLimits.has(key)) {
+      rateLimits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    const limit = rateLimits.get(key);
+    if (now > limit.resetAt) { limit.count = 1; limit.resetAt = now + windowMs; return next(); }
+    limit.count++;
+    if (limit.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Try again later.' });
+    }
+    next();
+  };
+}
+
+app.use('/api/', rateLimit(120, 60000));
+app.use('/api/analyze', rateLimit(10, 60000));
+app.use('/api/chat', rateLimit(30, 60000));
+app.use('/api/admin', rateLimit(20, 60000));
+
+// ═══════════════════════════════════════════
+// ADMIN AUTH
+// ═══════════════════════════════════════════
+function adminAuth(req, res, next) {
+  const key = req.headers['x-admin-key'] || req.query.admin_key;
+  const ADMIN_KEY = process.env.ADMIN_API_KEY;
+  if (!ADMIN_KEY) return next();
+  if (key === ADMIN_KEY) return next();
+  res.status(403).json({ error: 'Admin access required' });
+}
+
+app.use('/api/admin', adminAuth);
+
+// ═══════════════════════════════════════════
 // INSTITUTIONAL API ENDPOINTS
 // ═══════════════════════════════════════════
 
@@ -1946,6 +2011,316 @@ app.get('/api/search', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ═══════════════════════════════════════════
+// PORTFOLIO ENDPOINTS
+// ═══════════════════════════════════════════
+
+// Get all open positions with current price and P&L
+app.get('/api/portfolio', async (req, res) => {
+  try {
+    const { data: positions } = await supabase.from('portfolio_positions')
+      .select('*').eq('status', 'OPEN').order('created_at', { ascending: false });
+
+    if (!positions?.length) return res.json({ positions: [], summary: {} });
+
+    const tickers = [...new Set(positions.map(p => p.ticker))];
+    const { data: prices } = await supabase.from('screener_results')
+      .select('ticker, current_price, total_score, signal')
+      .in('ticker', tickers);
+
+    const priceMap = {};
+    for (const p of (prices || [])) priceMap[p.ticker] = p;
+
+    const enriched = positions.map(pos => {
+      const current = priceMap[pos.ticker];
+      const currentPrice = current?.current_price || pos.entry_price;
+      const marketValue = currentPrice * pos.shares;
+      const costBasis = pos.entry_price * pos.shares;
+      const pnl = marketValue - costBasis;
+      const pnlPct = ((currentPrice - pos.entry_price) / pos.entry_price) * 100;
+      return {
+        ...pos, current_price: currentPrice,
+        current_score: current?.total_score, current_signal: current?.signal,
+        market_value: marketValue, cost_basis: costBasis, pnl, pnl_pct: pnlPct,
+      };
+    });
+
+    const totalValue = enriched.reduce((sum, p) => sum + p.market_value, 0);
+    const totalCost = enriched.reduce((sum, p) => sum + p.cost_basis, 0);
+    res.json({
+      positions: enriched,
+      summary: {
+        total_positions: enriched.length, total_value: totalValue, total_cost: totalCost,
+        total_pnl: totalValue - totalCost,
+        total_pnl_pct: totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0,
+        unique_tickers: tickers.length,
+      },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add a position
+app.post('/api/portfolio', async (req, res) => {
+  try {
+    const { ticker, entry_price, shares, entry_date, tranche_number, notes } = req.body;
+    if (!ticker || !entry_price || !shares) return res.status(400).json({ error: 'ticker, entry_price, shares required' });
+
+    const { data: stock } = await supabase.from('screener_results')
+      .select('total_score, signal').eq('ticker', ticker.toUpperCase()).maybeSingle();
+
+    const { data, error } = await supabase.from('portfolio_positions').insert({
+      ticker: ticker.toUpperCase(), entry_price, shares,
+      entry_date: entry_date || new Date().toISOString().split('T')[0],
+      tranche_number: tranche_number || 1,
+      score_at_entry: stock?.total_score, signal_at_entry: stock?.signal, notes,
+    }).select();
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabase.from('portfolio_transactions').insert({
+      position_id: data?.[0]?.id, ticker: ticker.toUpperCase(), action: 'BUY',
+      shares, price: entry_price, tranche_number: tranche_number || 1,
+      date: entry_date || new Date().toISOString().split('T')[0], notes,
+    });
+
+    res.json({ position: data?.[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Trim/close a position
+app.put('/api/portfolio/:id/trim', async (req, res) => {
+  try {
+    const { shares_to_sell, price, reason } = req.body;
+    const { data: pos } = await supabase.from('portfolio_positions')
+      .select('*').eq('id', req.params.id).single();
+    if (!pos) return res.status(404).json({ error: 'Position not found' });
+
+    const remainingShares = pos.shares - shares_to_sell;
+    const newStatus = remainingShares <= 0 ? 'CLOSED' : 'TRIMMED';
+
+    await supabase.from('portfolio_positions').update({
+      shares: Math.max(remainingShares, 0), status: newStatus,
+      exit_price: remainingShares <= 0 ? price : null,
+      exit_date: remainingShares <= 0 ? new Date().toISOString().split('T')[0] : null,
+      exit_reason: reason,
+    }).eq('id', req.params.id);
+
+    await supabase.from('portfolio_transactions').insert({
+      position_id: req.params.id, ticker: pos.ticker,
+      action: remainingShares <= 0 ? 'CLOSE' : 'TRIM',
+      shares: shares_to_sell, price,
+      date: new Date().toISOString().split('T')[0], notes: reason,
+    });
+
+    res.json({ status: newStatus, remaining_shares: Math.max(remainingShares, 0) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Transaction history
+app.get('/api/portfolio/history', async (_req, res) => {
+  try {
+    const { data } = await supabase.from('portfolio_transactions')
+      .select('*').order('date', { ascending: false }).limit(100);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Closed positions
+app.get('/api/portfolio/closed', async (_req, res) => {
+  try {
+    const { data } = await supabase.from('portfolio_positions')
+      .select('*').eq('status', 'CLOSED').order('exit_date', { ascending: false });
+    const enriched = (data || []).map(pos => ({
+      ...pos,
+      pnl: (pos.exit_price - pos.entry_price) * pos.shares,
+      pnl_pct: ((pos.exit_price - pos.entry_price) / pos.entry_price) * 100,
+      hold_days: Math.floor((new Date(pos.exit_date) - new Date(pos.entry_date)) / 86400000),
+    }));
+    res.json(enriched);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════
+// BACKTESTING ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.get('/api/backtesting/accuracy', async (_req, res) => {
+  try {
+    const { data: outcomes } = await supabase.from('signal_outcomes')
+      .select('*').not('return_3mo', 'is', null);
+
+    if (!outcomes?.length) {
+      return res.json({ message: 'Insufficient data — signals need 3+ months to mature', total_signals: 0 });
+    }
+
+    const bySignal = {};
+    for (const o of outcomes) {
+      if (!bySignal[o.signal_type]) bySignal[o.signal_type] = { wins: 0, losses: 0, total: 0, returns: [] };
+      const b = bySignal[o.signal_type];
+      b.total++; b.returns.push(o.return_3mo);
+      if (o.return_3mo > 0) b.wins++; else b.losses++;
+    }
+
+    for (const [, data] of Object.entries(bySignal)) {
+      data.avg_return = data.returns.reduce((a, b) => a + b, 0) / data.returns.length;
+      data.win_rate = (data.wins / data.total) * 100;
+      data.best = Math.max(...data.returns);
+      data.worst = Math.min(...data.returns);
+      delete data.returns;
+    }
+
+    const allReturns = outcomes.map(o => o.return_3mo);
+    const avgReturn = allReturns.reduce((a, b) => a + b, 0) / allReturns.length;
+    const wins = allReturns.filter(r => r > 0).length;
+
+    res.json({
+      total_signals: outcomes.length,
+      overall_win_rate: ((wins / outcomes.length) * 100).toFixed(1),
+      overall_avg_return_3mo: avgReturn.toFixed(2),
+      by_signal_type: bySignal,
+      benchmark_3mo: 2.5,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/backtesting/wave-accuracy', async (_req, res) => {
+  try {
+    const { data: outcomes } = await supabase.from('signal_outcomes')
+      .select('*').not('wave_target_hit', 'is', null);
+    if (!outcomes?.length) return res.json({ message: 'No wave target data yet', total: 0 });
+
+    const hits = outcomes.filter(o => o.wave_target_hit === true).length;
+    res.json({
+      total: outcomes.length, targets_hit: hits,
+      targets_missed: outcomes.length - hits,
+      accuracy: ((hits / outcomes.length) * 100).toFixed(1),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/backtesting/top-signals', async (_req, res) => {
+  try {
+    const { data } = await supabase.from('signal_outcomes')
+      .select('ticker, signal_type, price_at_signal, return_3mo, return_6mo, return_12mo, signal_date')
+      .not('return_3mo', 'is', null)
+      .order('return_3mo', { ascending: false }).limit(20);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════
+// DIGEST ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.get('/api/admin/digest-preview', async (_req, res) => {
+  try {
+    const { generateWeeklyDigest, buildDigestHTML } = require('./services/email_digest');
+    const digest = await generateWeeklyDigest();
+    const html = buildDigestHTML(digest);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/digest', async (_req, res) => {
+  try {
+    const { generateWeeklyDigest } = require('./services/email_digest');
+    const digest = await generateWeeklyDigest();
+    res.json(digest);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/send-digest', async (_req, res) => {
+  try {
+    const { generateWeeklyDigest } = require('./services/email_digest');
+    const digest = await generateWeeklyDigest();
+    let text = '\u{1F4CA} *SimuAlpha Weekly Digest*\n\n*Top Opportunities:*\n';
+    for (const s of digest.top_opportunities) {
+      text += `\u2022 ${s.ticker} \u2014 Score: ${s.total_score} \u2014 ${s.signal?.replace(/_/g, ' ')}\n`;
+    }
+    if (digest.full_stack_consensus?.length) {
+      text += `\n\u{1F3C6} *Full Stack Consensus:* ${digest.full_stack_consensus.map(f => f.ticker).join(', ')}\n`;
+    }
+    text += `\n\u{1F4E1} SAIN: ${digest.sain_signals_count} new signals this week`;
+
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (token && chatId) {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+      });
+    }
+    res.json({ sent: true, digest });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════
+// CHAT ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.post('/api/chat/sessions', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('chat_sessions')
+      .insert({ title: req.body?.title || 'New Chat' }).select();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data?.[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/chat/:sessionId/message', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+    const sessionId = req.params.sessionId;
+
+    await supabase.from('chat_messages').insert({
+      session_id: sessionId, role: 'user', content: message,
+    });
+
+    const { routeMessage } = require('./services/chat_router');
+    const result = await routeMessage(message, sessionId);
+
+    await supabase.from('chat_messages').insert({
+      session_id: sessionId, role: 'assistant', content: result.response,
+      skills_used: result.skills_used, tickers_mentioned: result.tickers,
+    });
+
+    await supabase.from('chat_sessions')
+      .update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
+
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/chat/:sessionId/messages', async (req, res) => {
+  try {
+    const { data } = await supabase.from('chat_messages')
+      .select('*').eq('session_id', req.params.sessionId)
+      .order('created_at', { ascending: true });
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/chat/sessions', async (_req, res) => {
+  try {
+    const { data } = await supabase.from('chat_sessions')
+      .select('*').order('updated_at', { ascending: false }).limit(20);
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════
+// SUBSCRIPTION TIERS
+// ═══════════════════════════════════════════
+
+app.get('/api/tiers', async (_req, res) => {
+  try {
+    const { data } = await supabase.from('subscription_tiers').select('*')
+      .order('price_monthly', { ascending: true });
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.listen(PORT, () => {

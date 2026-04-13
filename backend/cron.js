@@ -196,13 +196,38 @@ function startCron() {
     }
   });
 
+  // Sunday 9am: send weekly digest via Telegram
+  cron.schedule('0 9 * * 0', async () => {
+    log.info('Sending weekly digest');
+    try {
+      const { generateWeeklyDigest } = require('./services/email_digest');
+      const digest = await generateWeeklyDigest();
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_CHAT_ID;
+      if (token && chatId) {
+        let text = '\u{1F4CA} SimuAlpha Weekly Digest\n\n';
+        for (const s of digest.top_opportunities) {
+          text += `${s.ticker} (${s.total_score}) ${s.signal?.replace(/_/g, ' ')}\n`;
+        }
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+        });
+      }
+      log.info('Weekly digest sent');
+    } catch (err) {
+      log.error({ err }, 'Weekly digest failed');
+    }
+  });
+
   log.info({
     schedules: {
       fullPipeline: 'Sunday 6am ET + Wednesday 6am ET',
       outcomeTrack: 'Daily 4am ET',
       macroRefresh: 'Daily 5am ET',
-      selfImprove: 'Sunday 10am ET',
       weeklyBrief: 'Sunday 8am ET',
+      weeklyDigest: 'Sunday 9am ET',
+      selfImprove: 'Sunday 10am ET',
     },
   }, 'Cron schedules active');
 }
