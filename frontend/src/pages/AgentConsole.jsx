@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../supabaseClient';
+import usePageTitle from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 
-const TABS = ['Activity', 'Suggestions'];
+const TABS = ['Activity', 'Suggestions', 'Knowledge'];
 const FILTERS = ['All', 'ANALYSIS', 'SCAN', 'LEARNING', 'ERROR', 'SUGGESTION'];
 
 const IMPORTANCE_COLORS = {
@@ -32,6 +33,7 @@ function timeSince(dateStr) {
 }
 
 export default function AgentConsole() {
+  usePageTitle('Agent Console');
   const [tab, setTab] = useState('Activity');
 
   return (
@@ -66,13 +68,19 @@ export default function AgentConsole() {
       </div>
 
       <AnimatePresence mode="wait">
-        {tab === 'Activity' ? (
+        {tab === 'Activity' && (
           <motion.div key="activity" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
             <ActivityLog />
           </motion.div>
-        ) : (
+        )}
+        {tab === 'Suggestions' && (
           <motion.div key="suggestions" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
             <SuggestionsPanel />
+          </motion.div>
+        )}
+        {tab === 'Knowledge' && (
+          <motion.div key="knowledge" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+            <KnowledgePanel />
           </motion.div>
         )}
       </AnimatePresence>
@@ -164,6 +172,194 @@ function ActivityLog() {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KnowledgePanel() {
+  const [stats, setStats] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  async function fetchData() {
+    const [statsRes, docsRes] = await Promise.all([
+      fetch('/api/knowledge/stats').then(r => r.json()),
+      fetch('/api/knowledge/documents').then(r => r.json()),
+    ]);
+    setStats(statsRes.stats || null);
+    setDocuments(docsRes.documents || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function handleSearch() {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch('/api/knowledge/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: searchQuery, limit: 10 }),
+      });
+      const json = await res.json();
+      setSearchResults(json.results || []);
+    } catch {}
+    setSearching(false);
+  }
+
+  async function handleDelete(sourceName) {
+    await fetch(`/api/knowledge/document/${encodeURIComponent(sourceName)}`, { method: 'DELETE' });
+    fetchData();
+  }
+
+  if (loading) return <LoadingSpinner />;
+
+  const TYPE_COLORS = {
+    spec: '#3b82f6', memo: '#8b5cf6', thesis: '#10b981',
+    research: '#f59e0b', filing: '#ef4444',
+  };
+
+  return (
+    <div>
+      {/* Stats */}
+      {stats && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: '12px', marginBottom: '24px'
+        }}>
+          {Object.entries(stats).map(([key, val]) => (
+            <div key={key} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '8px', padding: '14px 16px',
+            }}>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>
+                {key.replace(/_/g, ' ')}
+              </div>
+              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '18px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                {typeof val === 'number' ? val.toLocaleString() : JSON.stringify(val)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder="Search knowledge base..."
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '8px 14px', color: 'var(--text-primary)',
+            fontFamily: 'IBM Plex Mono', fontSize: '12px', outline: 'none', flex: 1,
+          }}
+        />
+        <button
+          onClick={handleSearch}
+          disabled={searching}
+          style={{
+            background: 'var(--signal-green-dim)', border: '1px solid var(--signal-green)40',
+            borderRadius: '6px', padding: '8px 16px', color: 'var(--signal-green)',
+            fontFamily: 'IBM Plex Mono', fontSize: '11px', cursor: 'pointer',
+          }}
+        >
+          {searching ? 'Searching...' : 'Search'}
+        </button>
+      </div>
+
+      {/* Search Results */}
+      {searchResults.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Search Results ({searchResults.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {searchResults.map((r, i) => (
+              <div key={i} style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: '6px', padding: '10px 14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{
+                    fontFamily: 'IBM Plex Mono', fontSize: '9px', fontWeight: 600,
+                    padding: '1px 6px', borderRadius: '3px',
+                    background: (TYPE_COLORS[r.source_type] || '#666') + '20',
+                    color: TYPE_COLORS[r.source_type] || '#666',
+                  }}>
+                    {r.source_type}
+                  </span>
+                  <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-primary)' }}>
+                    {r.source_name}
+                  </span>
+                  {r.score != null && (
+                    <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                      relevance: {(r.score * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+                <div style={{
+                  fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)',
+                  lineHeight: 1.6, maxHeight: '80px', overflow: 'hidden',
+                }}>
+                  {r.content?.substring(0, 300)}...
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Documents list */}
+      <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        Documents ({documents.length})
+      </div>
+      {documents.length === 0 ? (
+        <EmptyState message="No documents" sub="Ingest documents via the API or agent pipeline." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {documents.map(d => (
+            <div key={d.source_name} style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '6px', padding: '10px 14px',
+            }}>
+              <span style={{
+                fontFamily: 'IBM Plex Mono', fontSize: '9px', fontWeight: 600,
+                padding: '1px 6px', borderRadius: '3px',
+                background: (TYPE_COLORS[d.source_type] || '#666') + '20',
+                color: TYPE_COLORS[d.source_type] || '#666',
+              }}>
+                {d.source_type}
+              </span>
+              <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-primary)', flex: 1 }}>
+                {d.source_name}
+              </span>
+              <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
+                {d.chunk_count} chunks
+              </span>
+              <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>
+                {d.created_at ? new Date(d.created_at).toLocaleDateString() : ''}
+              </span>
+              <button
+                onClick={() => handleDelete(d.source_name)}
+                style={{
+                  background: 'transparent', border: '1px solid var(--border)',
+                  borderRadius: '3px', padding: '2px 8px', color: 'var(--text-dim)',
+                  fontFamily: 'IBM Plex Mono', fontSize: '9px', cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
