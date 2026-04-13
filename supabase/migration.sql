@@ -341,3 +341,30 @@ create index if not exists idx_scan_history_time on scan_history(scanned_at desc
 
 -- watchlist
 create index if not exists idx_watchlist_ticker  on watchlist(ticker);
+
+
+-- ┌──────────────────────────────────────────────────────────┐
+-- │  TABLE: custom_alerts                                     │
+-- │  User-configured alert thresholds per ticker              │
+-- └──────────────────────────────────────────────────────────┘
+
+create table if not exists custom_alerts (
+  id          uuid        default gen_random_uuid() primary key,
+  ticker      text        not null,
+  metric      text        not null,        -- 'total_score', 'pct_from_200wma', 'current_price', 'signal'
+  condition   text        not null,        -- 'above', 'below', 'equals'
+  threshold   text        not null,        -- numeric string or signal name
+  telegram    boolean     default false,   -- send Telegram notification
+  active      boolean     default true,
+  last_fired  timestamptz,
+  created_at  timestamptz default now()
+);
+
+alter table custom_alerts enable row level security;
+create policy "Public read custom_alerts"   on custom_alerts for select using (true);
+create policy "Public insert custom_alerts" on custom_alerts for insert with check (true);
+create policy "Public update custom_alerts" on custom_alerts for update using (true);
+create policy "Public delete custom_alerts" on custom_alerts for delete using (true);
+
+create index if not exists idx_custom_alerts_ticker on custom_alerts(ticker);
+create index if not exists idx_custom_alerts_active on custom_alerts(active) where active = true;
