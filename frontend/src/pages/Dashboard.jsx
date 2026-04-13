@@ -9,14 +9,18 @@ import ExitSignalPanel from '../components/ExitSignalPanel';
 import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
 import SAINStatsWidget from '../components/SAINStatsWidget';
 import ScoreDistribution from '../components/ScoreDistribution';
+import Onboarding, { useOnboarding } from '../components/Onboarding';
+import usePageTitle from '../hooks/usePageTitle';
 
 export default function Dashboard() {
+  usePageTitle('Dashboard');
   const navigate = useNavigate();
   const { data: allStocks, loading } = useScreenerResults();
   const { data: scanHistory } = useScanHistory();
   const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
   const { data: generationalBuys, loading: genLoading } = useGenerationalBuys();
   const lastPipelineRun = useLastPipelineRun();
+  const { showOnboarding, dismiss: dismissOnboarding } = useOnboarding();
 
   const topOpportunities = allStocks
     .filter(s => s.signal === 'LOAD THE BOAT')
@@ -29,6 +33,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ paddingTop: '48px' }}>
+      {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
       <FullStackConsensusBanner />
       <MarketRiskBanner />
       <ExitSignalPanel />
