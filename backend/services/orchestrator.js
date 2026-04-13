@@ -29,6 +29,9 @@ const { computeTLIScoreV3 } = require('./scorer_v3');
 const { recordSignal } = require('./signalTracker');
 const { logActivity } = require('./agent_logger');
 
+// Sprint 11 — Robust stock data assembly
+const { getStockData } = require('./stock_data');
+
 /**
  * Run a full agentic analysis for a single ticker.
  * Executes skills in dependency order, stores the result.
@@ -38,59 +41,14 @@ async function analyzeStock(ticker) {
   const startTime = Date.now();
   logActivity({ type: 'ANALYSIS', title: `Starting analysis: ${ticker}`, description: `Running full skill chain for ${ticker}`, ticker });
 
-  // Step 1: Gather existing data from screener_results
-  const { fetchHistoricalPrices, fetchFundamentals } = require('./fetcher');
-
-  let { data: stockData } = await supabase
-    .from('screener_results')
-    .select('*')
-    .eq('ticker', ticker)
-    .single();
-
-  if (!stockData) {
-    // Fallback: fetch fresh fundamentals from scraper if not in screener_results
-    log.warn({ ticker }, 'Not in screener_results — fetching from scraper');
-    const fresh = await fetchFundamentals(ticker);
-    if (!fresh) throw new Error(`${ticker} not found in screener_results and scraper fetch failed.`);
-    stockData = {
-      ticker,
-      company_name: fresh.companyName,
-      sector: fresh.sector,
-      market_cap: fresh.marketCap,
-      current_price: fresh.currentPrice,
-      week_52_high: fresh.week52High,
-      revenue_current: fresh.revenueCurrent,
-      revenue_prior_year: fresh.revenuePrior,
-      revenue_growth_pct: fresh.revenueGrowthPct,
-      revenue_growth_3yr: fresh.revenueGrowth3YrAvg,
-      gross_margin_current: fresh.grossMarginCurrent,
-      pe_ratio: fresh.peRatio,
-      ps_ratio: fresh.psRatio,
-      eps_gaap: fresh.epsDiluted,
-      eps_diluted: fresh.epsDiluted,
-      net_income: fresh.netIncome,
-      free_cash_flow: fresh.freeCashFlow,
-      fcf_margin: fresh.fcfMargin,
-      fcf_growth_yoy: fresh.fcfGrowthYoY,
-      operating_income: fresh.operatingIncome,
-      operating_margin: fresh.operatingMargin,
-      ttm_ebitda: fresh.ebitda,
-      diluted_shares: fresh.dilutedShares,
-      shares_outstanding: fresh.sharesOutstanding,
-      cash_and_equivalents: fresh.cashAndEquivalents,
-      total_debt: fresh.totalDebt,
-      debt_to_equity: fresh.debtToEquity,
-      shares_outstanding_change: fresh.sharesOutstandingChange,
-      capex: fresh.capex,
-    };
-  }
+  // Step 1: Assemble complete stock data from screener_results + fetcher
+  const stockData = await getStockData(ticker);
 
   // Step 2: Gather supplementary data
-  const [{ data: valData }, { data: instData }, { data: waveData }, historicals] = await Promise.all([
+  const [{ data: valData }, { data: instData }, { data: waveData }] = await Promise.all([
     supabase.from('stock_valuations').select('*').eq('ticker', ticker).order('computed_date', { ascending: false }).limit(1),
     supabase.from('consensus_signals').select('*').eq('ticker', ticker).order('quarter', { ascending: false }).limit(1),
     supabase.from('wave_counts').select('*').eq('ticker', ticker).order('last_updated', { ascending: false }).limit(1),
-    fetchHistoricalPrices(ticker).catch(() => ({ weeklyCloses: [], monthlyCloses: [], weeklyVolumes: [] })),
   ]);
 
   const valuation = valData?.[0] || null;
@@ -104,30 +62,30 @@ async function analyzeStock(ticker) {
   const [moatResult, earningsResult, valueTrapResult, macroResult, consensusResult] = await Promise.allSettled([
     invoke('classify_moat', {
       ticker,
-      companyDescription: stockData.company_name || ticker,
+      companyDescription: stockData.companyName || ticker,
       sector: stockData.sector || 'Unknown',
-      grossMargin: stockData.gross_margin_current || 0,
-      marketCap: stockData.market_cap ? stockData.market_cap / 1e9 : 0,
+      grossMargin: stockData.grossMarginCurrent || 0,
+      marketCap: stockData.marketCap ? stockData.marketCap / 1e9 : 0,
       revenueModel: 'Unknown',
     }),
     invoke('assess_earnings', {
       ticker,
-      epsHistory: stockData.eps_gaap ? [stockData.eps_gaap] : (stockData.eps_diluted ? [stockData.eps_diluted] : [0]),
-      fcfHistory: stockData.free_cash_flow
-        ? [stockData.diluted_shares ? Math.round(stockData.free_cash_flow / stockData.diluted_shares * 100) / 100 : stockData.free_cash_flow / 1e6]
+      epsHistory: stockData.epsDiluted ? [stockData.epsDiluted] : [0],
+      fcfHistory: stockData.freeCashFlow
+        ? [stockData.dilutedShares ? Math.round(stockData.freeCashFlow / stockData.dilutedShares * 100) / 100 : stockData.freeCashFlow / 1e6]
         : [0],
-      revenueHistory: stockData.revenue_current ? [stockData.revenue_prior_year || 0, stockData.revenue_current].filter(Boolean).map(v => v / 1e6) : [0],
-      operatingIncome: (stockData.operating_income || 0) / 1e6,
-      netIncome: (stockData.net_income || 0) / 1e6,
+      revenueHistory: stockData.revenueCurrent ? [stockData.revenuePriorYear || 0, stockData.revenueCurrent].filter(Boolean).map(v => v / 1e6) : [0],
+      operatingIncome: (stockData.operatingIncome || 0) / 1e6,
+      netIncome: (stockData.netIncome || 0) / 1e6,
     }),
     invoke('detect_value_trap', {
       ticker,
-      revenueHistory: stockData.revenue_history || [],
+      revenueHistory: [],
       fcfHistory: [],
       marginHistory: [],
-      debtToEquity: stockData.debt_to_equity || 0,
+      debtToEquity: stockData.debtToEquity || 0,
       payoutRatio: 0,
-      pe: stockData.pe_ratio || 0,
+      pe: stockData.peRatio || 0,
       sector: stockData.sector || 'Unknown',
     }),
     invoke('assess_macro', {
@@ -145,15 +103,15 @@ async function analyzeStock(ticker) {
   results.macro = macroResult.status === 'fulfilled' ? macroResult.value : null;
   results.consensus = consensusResult.status === 'fulfilled' ? consensusResult.value : null;
 
-  // Phase 2: Wave interpretation (uses price data)
+  // Phase 2: Wave interpretation (uses price data from getStockData)
   try {
     results.wave = await invoke('interpret_wave', {
       ticker,
-      weeklyPrices: historicals.weeklyRaw || [],
-      monthlyPrices: historicals.monthlyRaw || [],
-      sma50: stockData.ma_50d || 0,
-      sma200: stockData.price_200mma || 0,
-      wma200: stockData.price_200wma || 0,
+      weeklyPrices: stockData.weeklyRaw || [],
+      monthlyPrices: stockData.monthlyRaw || [],
+      sma50: stockData.sma50 || 0,
+      sma200: stockData.mma200 || stockData.sma200 || 0,
+      wma200: stockData.wma200 || 0,
     });
   } catch (err) {
     log.error({ err, ticker }, 'Wave interpretation failed');
@@ -164,10 +122,10 @@ async function analyzeStock(ticker) {
   try {
     results.positionSizing = await invoke('position_sizing', {
       ticker,
-      currentPrice: stockData.current_price || 0,
+      currentPrice: stockData.currentPrice || 0,
       wavePosition: results.wave?.current_wave || 'Unknown',
-      confluenceZone: stockData.confluence_zone || false,
-      totalScore: stockData.total_score || 0,
+      confluenceZone: stockData.confluenceZone || false,
+      totalScore: stockData.totalScore || 0,
     });
   } catch (err) {
     log.error({ err, ticker }, 'Position sizing failed');
@@ -178,15 +136,15 @@ async function analyzeStock(ticker) {
   try {
     results.valuation = await invoke('three_pillar_value', {
       ticker,
-      currentPrice: stockData.current_price || 0,
-      revenue: stockData.revenue_current || 0,
-      revenueGrowth: stockData.revenue_growth_pct || 0,
-      fcf: stockData.free_cash_flow || 0,
-      ebitda: stockData.ttm_ebitda || 0,
+      currentPrice: stockData.currentPrice || 0,
+      revenue: stockData.revenueCurrent || 0,
+      revenueGrowth: stockData.revenueGrowthYoY || 0,
+      fcf: stockData.freeCashFlow || 0,
+      ebitda: stockData.ttmEBITDA || 0,
       sector: stockData.sector || 'Unknown',
-      sharesOutstanding: stockData.shares_outstanding || stockData.diluted_shares || 0,
-      totalDebt: stockData.total_debt || 0,
-      cash: stockData.cash_and_equivalents || 0,
+      sharesOutstanding: stockData.sharesOutstanding || stockData.dilutedShares || 0,
+      totalDebt: stockData.totalDebt || 0,
+      cash: stockData.cashAndEquivalents || 0,
       beta: stockData.beta || 1.0,
     });
   } catch (err) {
@@ -199,12 +157,12 @@ async function analyzeStock(ticker) {
     results.thesis = await invoke('write_thesis', {
       ticker,
       scoring: {
-        fundamental_score: stockData.fundamental_score,
-        technical_score: stockData.technical_score,
-        total_score: stockData.total_score,
+        fundamental_score: stockData.fundamentalScore,
+        technical_score: stockData.technicalScore,
+        total_score: stockData.totalScore,
         signal: stockData.signal,
-        moat_tier: stockData.moat_tier,
-        flags: stockData.flags,
+        moat_tier: stockData.moatTier,
+        flags: stockData.badges,
       },
       waveAnalysis: results.wave,
       valuation: results.valuation,
@@ -224,14 +182,14 @@ async function analyzeStock(ticker) {
     results.greats = await invoke('compare_to_greats', {
       ticker,
       profile: {
-        company_name: stockData.company_name,
+        company_name: stockData.companyName,
         sector: stockData.sector,
-        market_cap: stockData.market_cap,
-        pe_ratio: stockData.pe_ratio,
-        revenue_growth_pct: stockData.revenue_growth_pct,
+        market_cap: stockData.marketCap,
+        pe_ratio: stockData.peRatio,
+        revenue_growth_pct: stockData.revenueGrowthYoY,
       },
       scoring: {
-        total_score: stockData.total_score,
+        total_score: stockData.totalScore,
         signal: stockData.signal,
       },
       valuation: results.valuation,
@@ -248,32 +206,32 @@ async function analyzeStock(ticker) {
 
   // Fundamental Gate — runs before every entry/add/reentry decision
   const gate = fundamentalGate({
-    revenueGrowthYoY: stockData.revenue_growth_pct,
-    revenueGrowthPriorYoY: stockData.revenue_growth_prior_year,
-    grossMarginCurrent: stockData.gross_margin_current,
-    grossMarginPriorYear: stockData.gross_margin_prior_year,
-    ttmEBITDA: stockData.ttm_ebitda,
-    totalDebt: stockData.total_debt,
-    epsGrowthQoQ: stockData.eps_growth_qoq,
-    epsGrowthPriorQoQ: stockData.eps_growth_prior_qoq,
-    sharesOutstandingChange: stockData.shares_outstanding_change,
-    insiderNetBuying: stockData.insider_net_buying,
+    revenueGrowthYoY: stockData.revenueGrowthYoY,
+    revenueGrowthPriorYoY: stockData.revenueGrowthPriorYoY,
+    grossMarginCurrent: stockData.grossMarginCurrent,
+    grossMarginPriorYear: stockData.grossMarginPriorYear,
+    ttmEBITDA: stockData.ttmEBITDA,
+    totalDebt: stockData.totalDebt,
+    epsGrowthQoQ: stockData.epsGrowthQoQ,
+    epsGrowthPriorQoQ: stockData.epsGrowthPriorQoQ,
+    sharesOutstandingChange: stockData.sharesOutstandingChange,
+    insiderNetBuying: stockData.insiderNetBuying,
   });
 
   // Lynch Classification
   const lynchClass = classifyLynch({
-    epsGrowthYoY: stockData.eps_growth_yoy || 0,
-    epsGrowth5Yr: stockData.eps_growth_5yr || 0,
-    netIncome: stockData.net_income || 0,
-    netIncomePriorYear: stockData.net_income_prior_year || 0,
-    revenueGrowthYoY: stockData.revenue_growth_pct || 0,
+    epsGrowthYoY: stockData.epsGrowthYoY || 0,
+    epsGrowth5Yr: stockData.epsGrowth5Yr || 0,
+    netIncome: stockData.netIncome || 0,
+    netIncomePriorYear: stockData.netIncomePriorYear || 0,
+    revenueGrowthYoY: stockData.revenueGrowthYoY || 0,
     sector: stockData.sector,
   });
 
   // PEG Ratio
-  const epsGrowth = stockData.eps_growth_yoy || stockData.eps_growth_5yr || 0;
-  const peg = (stockData.pe_ratio && epsGrowth > 0)
-    ? Math.round((stockData.pe_ratio / epsGrowth) * 100) / 100
+  const epsGrowth = stockData.epsGrowthYoY || stockData.epsGrowth5Yr || 0;
+  const peg = (stockData.peRatio && epsGrowth > 0)
+    ? Math.round((stockData.peRatio / epsGrowth) * 100) / 100
     : null;
   let pegLabel = null;
   if (peg != null) {
@@ -285,41 +243,41 @@ async function analyzeStock(ticker) {
 
   // Kill Thesis Flags
   const killThesis = checkKillThesis({
-    patentCliffWithin3Years: stockData.patent_cliff || false,
-    regulatoryActionPending: stockData.regulatory_action || false,
-    tariffExposure: stockData.tariff_exposure || 0,
-    debtToEquity: stockData.debt_to_equity || 0,
-    fcfMargin: stockData.fcf_margin || 0,
-    recentDataBreach: stockData.data_breach || false,
-    keyPersonRisk: stockData.key_person_risk || false,
-    accountingAllegations: stockData.accounting_allegations || false,
-    gaapNonGaapDivergence: stockData.gaap_nongaap_divergence || 0,
+    patentCliffWithin3Years: stockData.patentCliff || false,
+    regulatoryActionPending: stockData.regulatoryAction || false,
+    tariffExposure: stockData.tariffExposure || 0,
+    debtToEquity: stockData.debtToEquity || 0,
+    fcfMargin: stockData.fcfMargin || 0,
+    recentDataBreach: stockData.dataBreach || false,
+    keyPersonRisk: stockData.keyPersonRisk || false,
+    accountingAllegations: stockData.accountingAllegations || false,
+    gaapNonGaapDivergence: stockData.gaapNongaapDivergence || 0,
   });
 
   // Multiple Compression
   const compression = detectMultipleCompression({
-    evSales5YrAvg: stockData.ev_sales_5yr_avg || null,
-    currentEVSales: stockData.current_ev_sales || null,
-    revenueGrowthYoY: stockData.revenue_growth_pct || 0,
+    evSales5YrAvg: stockData.evSales5YrAvg || null,
+    currentEVSales: stockData.currentEVSales || null,
+    revenueGrowthYoY: stockData.revenueGrowthYoY || 0,
   });
 
   // Margin of Safety
-  const avgTarget = results.valuation?.valuation?.avgTarget || stockData.avg_price_target;
-  const currentPrice = stockData.current_price;
+  const avgTarget = results.valuation?.valuation?.avgTarget || stockData.avgPriceTarget;
+  const currentPrice = stockData.currentPrice;
   const mos = computeMarginOfSafety(avgTarget, currentPrice);
 
   // Rating Engine
   const moatScore = results.moat?.moat_tier_numeric || results.moat?.score || 0;
   const compositeForRating = {
     compositeUpside: results.valuation?.valuation?.avgUpside || stockData.avg_upside_pct || 0,
-    totalReturn: results.valuation?.valuation?.totalReturn || (stockData.avg_upside_pct || 0) + (stockData.dividend_yield || 0),
+    totalReturn: results.valuation?.valuation?.totalReturn || (stockData.avgUpsidePct || 0) + (stockData.dividendYield || 0),
   };
   const ratingResult = assignRating(
     {
-      revenueGrowthYoY: stockData.revenue_growth_pct || 0,
-      ebitdaGrowthYoY: stockData.ebitda_growth_yoy || 0,
-      debtToEbitda: (stockData.total_debt && stockData.ttm_ebitda && stockData.ttm_ebitda > 0)
-        ? stockData.total_debt / stockData.ttm_ebitda : 0,
+      revenueGrowthYoY: stockData.revenueGrowthYoY || 0,
+      ebitdaGrowthYoY: stockData._raw?.ebitda_growth_yoy || 0,
+      debtToEbitda: (stockData.totalDebt && stockData.ttmEBITDA && stockData.ttmEBITDA > 0)
+        ? stockData.totalDebt / stockData.ttmEBITDA : 0,
       sector: stockData.sector,
     },
     compositeForRating,
@@ -335,8 +293,8 @@ async function analyzeStock(ticker) {
     }
   }
 
-  // Tranche recommendation
-  const tranche = recommendTranche(stockData, wave);
+  // Tranche recommendation — pass raw screener row for snake_case compatibility
+  const tranche = recommendTranche(stockData._raw || stockData, wave);
 
   // ═══════════════════════════════════════════
   // Sprint 10C — Run the v3 scorer live
@@ -347,67 +305,23 @@ async function analyzeStock(ticker) {
     layers_aligned: results.consensus?.layers_aligned || 0,
   } : null;
 
-  // Map snake_case DB columns to camelCase properties expected by v3 scorer
-  // (Reference: stage3_deepscore.js v3Stock builder)
-  const cp = stockData.current_price;
-  const p200wma = stockData.price_200wma;
-  const p200mma = stockData.price_200mma;
-  const w52h = stockData.week_52_high;
-  const w52l = stockData.week_52_low;
-  const ma50 = stockData.ma_50d;
+  // stockData from getStockData is already camelCase — add scorer-specific aliases
+  const cp = stockData.currentPrice;
+  const p200wma = stockData.wma200;
+  const p200mma = stockData.mma200;
+  const w52h = stockData.week52High;
+  const w52l = stockData.week52Low;
+  const ma50 = stockData.sma50;
 
   const stockForScorer = {
-    // Prices & moving averages
-    currentPrice: cp,
+    ...stockData,
+    // Scorer-specific aliases
     price200WMA: p200wma, price200MMA: p200mma,
-    wma200: p200wma, mma200: p200mma,
-    ma50d: ma50, sma50: ma50, sma200: p200mma,
-    week52High: w52h,
-    week52Low: w52l,
+    ma50d: ma50,
     previousLow: w52l,
 
-    // Fundamental growth
-    revenueGrowthYoY: stockData.revenue_growth_pct,
-    revenueGrowthPriorYoY: stockData.revenue_growth_prior_year ?? null,
-    revenueGrowth3YrAvg: stockData.revenue_growth_3yr,
-    grossMarginCurrent: stockData.gross_margin_current,
-    grossMarginPriorYear: stockData.gross_margin_prior_year ?? null,
-    epsGrowthYoY: stockData.eps_growth_yoy ?? null,
-    epsGrowthQoQ: stockData.eps_growth_qoq ?? null,
-    epsGrowthPriorQoQ: stockData.eps_growth_prior_qoq ?? null,
-    epsGrowth5Yr: stockData.eps_growth_5yr ?? null,
-
-    // Balance sheet & debt
-    ttmEBITDA: stockData.ttm_ebitda,
-    totalDebt: stockData.total_debt,
-    debtToEquity: stockData.debt_to_equity,
-    cashAndEquivalents: stockData.cash_and_equivalents,
-
-    // Cash flow & earnings
-    freeCashFlow: stockData.free_cash_flow,
-    fcfMargin: stockData.fcf_margin,
-    fcfGrowthYoY: stockData.fcf_growth_yoy,
-    netIncome: stockData.net_income,
-    operatingMargin: stockData.operating_margin,
-    epsDiluted: stockData.eps_diluted,
-
-    // Valuation
-    peRatio: stockData.pe_ratio,
-    psRatio: stockData.ps_ratio,
-    forwardPE: stockData.forward_pe,
-    marketCap: stockData.market_cap,
-    dividendYield: stockData.dividend_yield,
-
-    // Classification
-    sector: stockData.sector,
-    moatTier: stockData.moat_tier ?? null,
-
-    // Shares & insiders
-    sharesOutstandingChange: stockData.shares_outstanding_change,
-    insiderNetBuying: stockData.insider_net_buying ?? null,
-
     // Technical flags
-    deathCrossActive: stockData.death_cross,
+    deathCrossActive: stockData.deathCross,
     sma50SlopeNegative: ma50 != null && p200wma != null && ma50 < p200wma,
     sma200SlopeNegative: false,
 
@@ -453,7 +367,7 @@ async function analyzeStock(ticker) {
     scoreBreakdown: v3Result.scoreBreakdown,
   } : {
     signal: results.thesis?.signal || stockData.signal,
-    positionAction: stockData.position_action || tranche.type,
+    positionAction: stockData._raw?.position_action || tranche.type,
     badges: stockData.badges || [],
   };
 
@@ -471,17 +385,17 @@ async function analyzeStock(ticker) {
     rating: ratingResult.rating,
 
     screens: {
-      lynch: { score: stockData.lynch_score ?? null, max: 7, pass: (stockData.lynch_score ?? 0) >= 5, badge: stockData.badges?.includes('LYNCH_PERFECT_SCORE') ? 'LYNCH_PERFECT_SCORE' : null },
-      buffett: { score: stockData.buffett_score ?? null, max: 9, pass: (stockData.buffett_score ?? 0) >= 6 },
-      dualScreenPass: stockData.dual_screen_pass || false,
-      healthRedFlags: stockData.health_red_flags ?? null,
-      healthDetails: stockData.score_breakdown?.health?.redFlags || [],
+      lynch: { score: stockData._raw?.lynch_score ?? scoreResult.lynchScreen?.score ?? null, max: 7, pass: (stockData._raw?.lynch_score ?? scoreResult.lynchScreen?.score ?? 0) >= 5, badge: stockData.badges?.includes('LYNCH_PERFECT_SCORE') ? 'LYNCH_PERFECT_SCORE' : null },
+      buffett: { score: stockData._raw?.buffett_score ?? scoreResult.buffettScreen?.score ?? null, max: 9, pass: (stockData._raw?.buffett_score ?? scoreResult.buffettScreen?.score ?? 0) >= 6 },
+      dualScreenPass: stockData._raw?.dual_screen_pass ?? scoreResult.dualScreenPass ?? false,
+      healthRedFlags: stockData._raw?.health_red_flags ?? scoreResult.healthCheck?.redFlagCount ?? null,
+      healthDetails: stockData._raw?.score_breakdown?.health?.redFlags || scoreResult.healthCheck?.redFlags || [],
     },
 
     valuation: {
-      dcf: results.valuation?.valuation?.dcf || { target: stockData.dcf_price_target, upside: null, wacc: null, terminal: null },
-      evSales: results.valuation?.valuation?.evSales || { target: stockData.ev_sales_price_target, upside: null },
-      evEbitda: results.valuation?.valuation?.evEbitda || { target: stockData.ev_ebitda_price_target, upside: null },
+      dcf: results.valuation?.valuation?.dcf || { target: stockData._raw?.dcf_price_target, upside: null, wacc: null, terminal: null },
+      evSales: results.valuation?.valuation?.evSales || { target: stockData._raw?.ev_sales_price_target, upside: null },
+      evEbitda: results.valuation?.valuation?.evEbitda || { target: stockData._raw?.ev_ebitda_price_target, upside: null },
       methodAgreement: results.valuation?.valuation?.methodAgreement || null,
       dcfIncluded: results.valuation?.valuation?.dcfIncluded ?? true,
       dcfExclusionReason: results.valuation?.valuation?.dcfExclusionReason || null,
@@ -520,12 +434,12 @@ async function analyzeStock(ticker) {
     badges: scoreResult.badges,
 
     riskFilters: {
-      supportConfirmed: stockData.support_confirmed || null,
+      supportConfirmed: stockData._raw?.support_confirmed || null,
       chaseFilter: null,
       earningsBlackout: null,
       sentiment: null,
-      allPass: stockData.risk_filters_pass ?? null,
-      overrideReason: stockData.risk_filter_reason || null,
+      allPass: stockData._raw?.risk_filters_pass ?? scoreResult.riskFilters?.allPass ?? null,
+      overrideReason: stockData._raw?.risk_filter_reason || null,
     },
 
     gateResult: {
@@ -534,7 +448,7 @@ async function analyzeStock(ticker) {
       failures: gate.failures,
     },
 
-    nextFundamentalReview: stockData.next_earnings_date || null,
+    nextFundamentalReview: stockData._raw?.next_earnings_date || null,
     thesis: results.thesis || null,
   };
 
@@ -560,7 +474,7 @@ async function analyzeStock(ticker) {
   const analysis = {
     ticker,
     signal: scoreResult.signal,
-    composite_score: scoreResult.totalScore ?? results.thesis?.composite_score ?? stockData.total_score,
+    composite_score: scoreResult.totalScore ?? results.thesis?.composite_score ?? stockData.tliScore,
     thesis_text: results.thesis?.one_liner || null,
     thesis_json: results.thesis || null,
     moat_analysis: results.moat || null,
