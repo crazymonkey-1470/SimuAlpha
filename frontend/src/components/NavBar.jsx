@@ -11,6 +11,7 @@ const links = [
   { to: '/consensus', label: 'SAIN Consensus' },
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/compare', label: 'Compare' },
   { to: '/agent', label: 'Agent' },
 ];
 

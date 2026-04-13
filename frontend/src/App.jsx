@@ -15,6 +15,7 @@ const MarketContext = lazy(() => import('./pages/MarketContext'));
 const IntelligenceFeed = lazy(() => import('./pages/IntelligenceFeed'));
 const ConsensusLeaderboard = lazy(() => import('./pages/ConsensusLeaderboard'));
 const AgentConsole = lazy(() => import('./pages/AgentConsole'));
+const Compare = lazy(() => import('./pages/Compare'));
 const Landing = lazy(() => import('./pages/Landing'));
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="watchlist" element={<Watchlist />} />
             <Route path="intelligence" element={<IntelligenceFeed />} />
             <Route path="consensus" element={<ConsensusLeaderboard />} />
+            <Route path="compare" element={<Compare />} />
             <Route path="agent" element={<AgentConsole />} />
           </Route>
         </Routes>
