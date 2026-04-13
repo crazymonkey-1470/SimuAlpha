@@ -1138,6 +1138,105 @@ app.get('/api/admin/rescore-top', async (req, res) => {
   res.json({ rescored: results.length, results });
 });
 
+// ═══════════════════════════════════════════
+// BATCH ANALYSIS ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.get('/api/admin/analyze-batch', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  const minScore = parseInt(req.query.min_score) || 60;
+
+  try {
+    const { data: stocks, error } = await supabase.from('screener_results')
+      .select('ticker, total_score, signal')
+      .or(`total_score.gte.${minScore}`)
+      .order('total_score', { ascending: false })
+      .limit(limit);
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!stocks?.length) return res.json({ message: 'No stocks found above threshold', minScore });
+
+    // Return immediately, run in background
+    res.json({
+      status: 'started',
+      count: stocks.length,
+      tickers: stocks.map(s => s.ticker),
+      note: 'Check /api/agent/activity for progress',
+    });
+
+    // Process in background
+    const { analyzeStock } = require('./services/orchestrator');
+    const { logActivity } = require('./services/agent_logger');
+
+    await logActivity({
+      type: 'ANALYSIS',
+      title: `Batch analysis started: ${stocks.length} stocks`,
+      description: `Tickers: ${stocks.map(s => s.ticker).join(', ')}`,
+      importance: 'NOTABLE',
+    });
+
+    for (const stock of stocks) {
+      try {
+        await analyzeStock(stock.ticker);
+        await logActivity({
+          type: 'ANALYSIS',
+          title: `Batch: ${stock.ticker} complete`,
+          description: `Score: ${stock.total_score}`,
+          ticker: stock.ticker,
+          importance: 'INFO',
+        });
+      } catch (err) {
+        await logActivity({
+          type: 'ERROR',
+          title: `Batch: ${stock.ticker} failed`,
+          description: err.message,
+          ticker: stock.ticker,
+          importance: 'CRITICAL',
+        });
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    await logActivity({
+      type: 'ANALYSIS',
+      title: `Batch analysis complete: ${stocks.length} stocks`,
+      description: 'All stocks processed',
+      importance: 'IMPORTANT',
+    });
+  } catch (err) {
+    log.error({ err }, 'Batch analysis error');
+  }
+});
+
+app.get('/api/admin/rescore-batch', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+
+  try {
+    const { data: stocks, error } = await supabase.from('screener_results')
+      .select('ticker')
+      .order('updated_at', { ascending: true })
+      .limit(limit);
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!stocks?.length) return res.json({ message: 'No stocks to rescore' });
+
+    res.json({ status: 'started', count: stocks.length });
+
+    const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
+
+    for (const s of stocks) {
+      try {
+        await deepScoreSingle(s.ticker);
+      } catch (err) {
+        log.error({ err, ticker: s.ticker }, 'Rescore failed');
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } catch (err) {
+    log.error({ err }, 'Batch rescore error');
+  }
+});
+
 app.listen(PORT, () => {
   log.info({ port: PORT }, 'The Long Screener backend listening');
 
