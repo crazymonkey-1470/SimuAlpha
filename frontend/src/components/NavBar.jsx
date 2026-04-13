@@ -3,7 +3,7 @@ import { useSAINSignalCount } from '../hooks/useSAIN';
 import SearchBar from './SearchBar';
 
 const links = [
-  { to: '/', label: 'Dashboard' },
+  { to: '/dashboard', label: 'Dashboard' },
   { to: '/screener', label: 'Screener' },
   { to: '/signals', label: 'Signals' },
   { to: '/investors', label: 'Investors' },

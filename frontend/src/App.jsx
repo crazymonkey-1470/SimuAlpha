@@ -15,6 +15,7 @@ const MarketContext = lazy(() => import('./pages/MarketContext'));
 const IntelligenceFeed = lazy(() => import('./pages/IntelligenceFeed'));
 const ConsensusLeaderboard = lazy(() => import('./pages/ConsensusLeaderboard'));
 const AgentConsole = lazy(() => import('./pages/AgentConsole'));
+const Landing = lazy(() => import('./pages/Landing'));
 
 export default function App() {
   return (
@@ -22,7 +23,8 @@ export default function App() {
       <Suspense fallback={<div style={{ paddingTop: '100px' }}><LoadingSpinner /></div>}>
         <Routes>
           <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Landing />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="screener" element={<Screener />} />
             <Route path="ticker/:symbol" element={<DeepDive />} />
             <Route path="signals" element={<Signals />} />
