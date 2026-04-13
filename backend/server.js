@@ -655,6 +655,51 @@ app.get('/api/knowledge/stats', async (_req, res) => {
   }
 });
 
+// List knowledge documents (grouped by source)
+app.get('/api/knowledge/documents', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('knowledge_chunks')
+      .select('id, source_name, source_type, source_date, created_at')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Group by source_name
+    const groups = {};
+    for (const chunk of (data || [])) {
+      if (!groups[chunk.source_name]) {
+        groups[chunk.source_name] = {
+          source_name: chunk.source_name,
+          source_type: chunk.source_type,
+          source_date: chunk.source_date,
+          created_at: chunk.created_at,
+          chunk_count: 0,
+          chunk_ids: [],
+        };
+      }
+      groups[chunk.source_name].chunk_count++;
+      groups[chunk.source_name].chunk_ids.push(chunk.id);
+    }
+    res.json({ documents: Object.values(groups) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a knowledge document (all chunks by source_name)
+app.delete('/api/knowledge/document/:sourceName', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('knowledge_chunks')
+      .delete()
+      .eq('source_name', decodeURIComponent(req.params.sourceName));
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Skills ---
 
 // List all available skills
@@ -1461,6 +1506,419 @@ app.post('/api/admin/telegram-fsc', async (_req, res) => {
     });
 
     res.json({ success: true, sent: fsc.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// WATCHLIST ENDPOINTS
+// ═══════════════════════════════════════════
+
+// Get all watchlist items with joined screener data
+app.get('/api/watchlist', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('watchlist')
+      .select('*, screener_results(ticker, company_name, total_score, signal, sector, current_price, pct_from_200wma, pct_from_200mma, entry_zone, fundamental_score, technical_score)')
+      .order('added_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ watchlist: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add ticker to watchlist
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const { ticker, notes } = req.body;
+    if (!ticker) return res.status(400).json({ error: 'ticker is required' });
+    const { data, error } = await supabase
+      .from('watchlist')
+      .insert({ ticker: ticker.toUpperCase(), notes: notes || '' })
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ item: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove ticker from watchlist
+app.delete('/api/watchlist/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('watchlist')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update watchlist item notes
+app.put('/api/watchlist/:id', async (req, res) => {
+  try {
+    const { notes } = req.body;
+    const { data, error } = await supabase
+      .from('watchlist')
+      .update({ notes: notes ?? '' })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ item: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check if ticker is on watchlist
+app.get('/api/watchlist/check/:ticker', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('watchlist')
+      .select('id')
+      .eq('ticker', req.params.ticker.toUpperCase())
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ watchlisted: !!data, id: data?.id || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// CUSTOM ALERTS ENDPOINTS
+// ═══════════════════════════════════════════
+
+// Get all alerts (optionally filter by ticker)
+app.get('/api/alerts', async (req, res) => {
+  try {
+    let query = supabase.from('custom_alerts').select('*').order('created_at', { ascending: false });
+    if (req.query.ticker) query = query.eq('ticker', req.query.ticker.toUpperCase());
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ alerts: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create alert
+app.post('/api/alerts', async (req, res) => {
+  try {
+    const { ticker, metric, condition, threshold, telegram } = req.body;
+    if (!ticker || !metric || !condition || threshold == null) {
+      return res.status(400).json({ error: 'ticker, metric, condition, threshold required' });
+    }
+    const { data, error } = await supabase.from('custom_alerts').insert({
+      ticker: ticker.toUpperCase(), metric, condition, threshold: String(threshold),
+      telegram: !!telegram,
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ alert: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete alert
+app.delete('/api/alerts/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('custom_alerts').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Toggle alert active/inactive
+app.patch('/api/alerts/:id/toggle', async (req, res) => {
+  try {
+    const { data: existing } = await supabase.from('custom_alerts').select('active').eq('id', req.params.id).single();
+    const { data, error } = await supabase.from('custom_alerts')
+      .update({ active: !existing.active })
+      .eq('id', req.params.id)
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ alert: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check all active alerts (called after pipeline or manually)
+app.post('/api/alerts/check', async (req, res) => {
+  try {
+    const { data: alerts } = await supabase.from('custom_alerts').select('*').eq('active', true);
+    if (!alerts || alerts.length === 0) return res.json({ checked: 0, fired: 0 });
+
+    const tickers = [...new Set(alerts.map(a => a.ticker))];
+    const { data: stocks } = await supabase.from('screener_results').select('*').in('ticker', tickers);
+    const stockMap = {};
+    (stocks || []).forEach(s => { stockMap[s.ticker] = s; });
+
+    let fired = 0;
+    const { logActivity } = require('./services/agent_logger');
+
+    for (const alert of alerts) {
+      const stock = stockMap[alert.ticker];
+      if (!stock) continue;
+
+      const val = stock[alert.metric];
+      const threshold = isNaN(alert.threshold) ? alert.threshold : Number(alert.threshold);
+      let triggered = false;
+
+      if (alert.condition === 'above' && typeof val === 'number' && val > threshold) triggered = true;
+      else if (alert.condition === 'below' && typeof val === 'number' && val < threshold) triggered = true;
+      else if (alert.condition === 'equals' && String(val) === String(threshold)) triggered = true;
+
+      if (triggered) {
+        fired++;
+        await supabase.from('custom_alerts').update({ last_fired: new Date().toISOString() }).eq('id', alert.id);
+
+        if (alert.telegram) {
+          const token = process.env.TELEGRAM_BOT_TOKEN;
+          const chatId = process.env.TELEGRAM_CHAT_ID;
+          if (token && chatId) {
+            const msg = `\u{1F514} <b>Alert: ${alert.ticker}</b>\n${alert.metric} ${alert.condition} ${alert.threshold}\nCurrent: ${val}`;
+            fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' }),
+            }).catch(() => {});
+          }
+        }
+
+        logActivity({
+          type: 'ALERT_FIRED', title: `Alert fired: ${alert.ticker}`,
+          description: `${alert.metric} ${alert.condition} ${alert.threshold} (current: ${val})`,
+          ticker: alert.ticker, importance: 'NOTABLE',
+        });
+      }
+    }
+
+    res.json({ checked: alerts.length, fired });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// EXPORT ENDPOINTS
+// ═══════════════════════════════════════════
+
+// PDF-ready HTML report for a single ticker
+app.get('/api/export/pdf/:ticker', async (req, res) => {
+  try {
+    const ticker = req.params.ticker.toUpperCase();
+    const { data: stock, error } = await supabase
+      .from('screener_results')
+      .select('*')
+      .eq('ticker', ticker)
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!stock) return res.status(404).json({ error: `${ticker} not found` });
+
+    const { data: analysis } = await supabase
+      .from('stock_analysis')
+      .select('bull_case, bear_case, one_liner, thesis_summary')
+      .eq('ticker', ticker)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const signalColor = {
+      'LOAD THE BOAT': '#10b981', 'ACCUMULATE': '#3b82f6', 'WATCH': '#f59e0b',
+      'HOLD': '#8b5cf6', 'CAUTION': '#f97316', 'TRIM': '#ef4444', 'AVOID': '#6b7280'
+    }[stock.signal] || '#888';
+
+    const fmtNum = (v, d = 1) => v != null ? Number(v).toFixed(d) : '\u2014';
+    const fmtPct = (v) => v != null ? `${Number(v).toFixed(1)}%` : '\u2014';
+    const fmtPrice = (v) => v != null ? `$${Number(v).toFixed(2)}` : '\u2014';
+    const now = new Date().toISOString().split('T')[0];
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>${ticker} - TLI Report</title>
+  <style>
+    body { font-family: 'Helvetica Neue', sans-serif; color: #1a1a2e; max-width: 800px; margin: 0 auto; padding: 40px; line-height: 1.6; }
+    h1 { font-size: 36px; font-weight: 300; margin: 0 0 4px; }
+    .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
+    .signal { display: inline-block; padding: 4px 14px; border-radius: 4px; font-size: 12px; font-weight: 600; color: #fff; background: ${signalColor}; }
+    .score-box { display: inline-block; border: 2px solid ${signalColor}; border-radius: 50%; width: 60px; height: 60px; text-align: center; line-height: 56px; font-size: 22px; font-weight: 600; margin-right: 16px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e5e5e5; font-size: 13px; }
+    th { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.08em; }
+    .section { margin: 28px 0; }
+    .section-title { font-size: 20px; font-weight: 400; margin-bottom: 12px; border-bottom: 1px solid #e5e5e5; padding-bottom: 8px; }
+    .green { color: #10b981; } .red { color: #ef4444; } .amber { color: #f59e0b; }
+    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e5e5; font-size: 10px; color: #aaa; }
+    @media print { body { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 12px;">
+    <div class="score-box">${stock.total_score || 0}</div>
+    <div>
+      <h1>${ticker}</h1>
+      <div class="sub">${stock.company_name || ''} ${stock.sector ? '&middot; ' + stock.sector : ''}</div>
+    </div>
+    <div class="signal" style="margin-left: auto;">${stock.signal || 'N/A'}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Score Breakdown</div>
+    <table>
+      <tr><th>Metric</th><th>Value</th></tr>
+      <tr><td>Total Score</td><td><strong>${stock.total_score}/100</strong></td></tr>
+      <tr><td>Fundamental Score</td><td>${stock.fundamental_score}/50</td></tr>
+      <tr><td>Technical Score</td><td>${stock.technical_score}/50</td></tr>
+      <tr><td>Entry Zone</td><td>${stock.entry_zone ? '<span class="green">Yes</span>' : 'No'}</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Price &amp; Technical Data</div>
+    <table>
+      <tr><th>Metric</th><th>Value</th></tr>
+      <tr><td>Current Price</td><td>${fmtPrice(stock.current_price)}</td></tr>
+      <tr><td>200-Week MA</td><td>${fmtPrice(stock.price_200wma)} (${fmtPct(stock.pct_from_200wma)})</td></tr>
+      <tr><td>200-Month MA</td><td>${fmtPrice(stock.price_200mma)} (${fmtPct(stock.pct_from_200mma)})</td></tr>
+      <tr><td>52-Week High</td><td>${fmtPrice(stock.week_52_high)} (${fmtPct(stock.pct_from_52w_high)})</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Fundamentals</div>
+    <table>
+      <tr><th>Metric</th><th>Value</th></tr>
+      <tr><td>Revenue Growth (YoY)</td><td>${fmtPct(stock.revenue_growth_pct)}</td></tr>
+      <tr><td>P/E Ratio</td><td>${fmtNum(stock.pe_ratio)}</td></tr>
+      <tr><td>P/S Ratio</td><td>${fmtNum(stock.ps_ratio)}</td></tr>
+      <tr><td>Gross Margin</td><td>${fmtPct(stock.gross_margin_current)}</td></tr>
+      <tr><td>Operating Margin</td><td>${fmtPct(stock.operating_margin)}</td></tr>
+      <tr><td>FCF Margin</td><td>${fmtPct(stock.fcf_margin)}</td></tr>
+    </table>
+  </div>
+
+  ${analysis ? `
+  <div class="section">
+    <div class="section-title">AI Investment Thesis</div>
+    ${analysis.one_liner ? `<p style="font-style: italic; color: #444;">&ldquo;${analysis.one_liner}&rdquo;</p>` : ''}
+    ${analysis.thesis_summary ? `<p style="font-size: 13px;">${analysis.thesis_summary}</p>` : ''}
+    ${analysis.bull_case ? `<p style="font-size: 12px;"><strong class="green">Bull Case:</strong> ${analysis.bull_case}</p>` : ''}
+    ${analysis.bear_case ? `<p style="font-size: 12px;"><strong class="red">Bear Case:</strong> ${analysis.bear_case}</p>` : ''}
+  </div>` : ''}
+
+  <div class="footer">
+    The Long Screener &mdash; TLI Report for ${ticker} &mdash; Generated ${now}<br/>
+    Not financial advice. AI-generated analysis for educational purposes only.
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Disposition', `inline; filename="${ticker}_TLI_Report_${now}.html"`);
+    res.send(html);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// CSV export for screener results
+app.get('/api/export/screener/csv', async (req, res) => {
+  try {
+    let query = supabase
+      .from('screener_results')
+      .select('ticker, company_name, sector, total_score, fundamental_score, technical_score, signal, entry_zone, current_price, price_200wma, pct_from_200wma, price_200mma, pct_from_200mma, revenue_growth_pct, pe_ratio, ps_ratio, gross_margin_current, operating_margin, fcf_margin, week_52_high, pct_from_52w_high')
+      .order('total_score', { ascending: false });
+
+    if (req.query.signal) query = query.eq('signal', req.query.signal);
+    if (req.query.min_score) query = query.gte('total_score', Number(req.query.min_score));
+    if (req.query.sector) query = query.eq('sector', req.query.sector);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data || data.length === 0) return res.status(404).json({ error: 'No results' });
+
+    const headers = Object.keys(data[0]);
+    const csvRows = [headers.join(',')];
+    for (const row of data) {
+      csvRows.push(headers.map(h => {
+        const v = row[h];
+        if (v == null) return '';
+        if (typeof v === 'string' && (v.includes(',') || v.includes('"'))) return `"${v.replace(/"/g, '""')}"`;
+        return String(v);
+      }).join(','));
+    }
+    const csv = csvRows.join('\n');
+
+    const now = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="screener_export_${now}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// COMPARISON ENDPOINT
+// ═══════════════════════════════════════════
+
+app.get('/api/compare/:ticker1/:ticker2', async (req, res) => {
+  try {
+    const t1 = req.params.ticker1.toUpperCase();
+    const t2 = req.params.ticker2.toUpperCase();
+    const { data, error } = await supabase
+      .from('screener_results')
+      .select('*')
+      .in('ticker', [t1, t2]);
+    if (error) return res.status(500).json({ error: error.message });
+    const s1 = (data || []).find(d => d.ticker === t1) || null;
+    const s2 = (data || []).find(d => d.ticker === t2) || null;
+    if (!s1 && !s2) return res.status(404).json({ error: 'Neither ticker found' });
+
+    // Compute winner summary
+    const metrics = [
+      { label: 'Total Score', key: 'total_score', higher: true },
+      { label: 'Fundamental Score', key: 'fundamental_score', higher: true },
+      { label: 'Technical Score', key: 'technical_score', higher: true },
+      { label: 'Revenue Growth', key: 'revenue_growth_pct', higher: true },
+      { label: '% from 200WMA', key: 'pct_from_200wma', higher: false },
+      { label: '% from 200MMA', key: 'pct_from_200mma', higher: false },
+      { label: 'P/E Ratio', key: 'pe_ratio', higher: false },
+      { label: 'P/S Ratio', key: 'ps_ratio', higher: false },
+      { label: 'Gross Margin', key: 'gross_margin_current', higher: true },
+    ];
+    let wins1 = 0, wins2 = 0;
+    const comparison = metrics.map(m => {
+      const v1 = s1?.[m.key];
+      const v2 = s2?.[m.key];
+      let winner = null;
+      if (v1 != null && v2 != null) {
+        if (m.higher) winner = v1 > v2 ? t1 : v2 > v1 ? t2 : null;
+        else winner = v1 < v2 ? t1 : v2 < v1 ? t2 : null;
+        if (winner === t1) wins1++;
+        else if (winner === t2) wins2++;
+      }
+      return { ...m, v1, v2, winner };
+    });
+
+    res.json({
+      stock1: s1, stock2: s2,
+      comparison, wins: { [t1]: wins1, [t2]: wins2 },
+      overall: wins1 > wins2 ? t1 : wins2 > wins1 ? t2 : 'TIE',
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

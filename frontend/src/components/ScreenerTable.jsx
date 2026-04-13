@@ -6,6 +6,7 @@ import WavePositionIndicator from './WavePositionIndicator';
 import VolumeTrendBadge from './VolumeTrendBadge';
 
 const ALL_COLUMNS = [
+  { key: 'watchlist', label: '\u2606', sortable: false, default: true },
   { key: 'ticker', label: 'Ticker', sortable: true, default: true },
   { key: 'total_score', label: 'Score', sortable: true, default: true },
   { key: 'signal', label: 'Signal', sortable: false, default: true },
@@ -48,6 +49,37 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
   const [visibleCols, setVisibleCols] = useState(loadVisibleColumns);
   const [showColPicker, setShowColPicker] = useState(false);
   const [analyzingTicker, setAnalyzingTicker] = useState(null);
+  const [watchlistMap, setWatchlistMap] = useState({});
+
+  // Fetch watchlist tickers on mount
+  useEffect(() => {
+    fetch('/api/watchlist')
+      .then(r => r.json())
+      .then(({ watchlist }) => {
+        const map = {};
+        (watchlist || []).forEach(w => { map[w.ticker] = w.id; });
+        setWatchlistMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function toggleWatchlist(e, ticker) {
+    e.stopPropagation();
+    if (watchlistMap[ticker]) {
+      await fetch(`/api/watchlist/${watchlistMap[ticker]}`, { method: 'DELETE' });
+      setWatchlistMap(prev => { const next = { ...prev }; delete next[ticker]; return next; });
+    } else {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker }),
+      });
+      if (res.ok) {
+        const { item } = await res.json();
+        setWatchlistMap(prev => ({ ...prev, [ticker]: item.id }));
+      }
+    }
+  }
 
   // Get unique sectors from data
   const sectors = [...new Set(data.map(s => s.sector).filter(Boolean))].sort();
@@ -102,6 +134,25 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
   const renderCell = (stock, colKey) => {
     const wave = waveData[stock.ticker];
     switch (colKey) {
+      case 'watchlist': {
+        const isWl = !!watchlistMap[stock.ticker];
+        return (
+          <td key={colKey} style={{ padding: '12px', width: '36px', textAlign: 'center' }}>
+            <button
+              onClick={(e) => toggleWatchlist(e, stock.ticker)}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: '16px', padding: '2px 4px', lineHeight: 1,
+                color: isWl ? 'var(--signal-amber)' : 'var(--text-dim)',
+                transition: 'color 0.15s ease',
+              }}
+              title={isWl ? 'Remove from watchlist' : 'Add to watchlist'}
+            >
+              {isWl ? '\u2605' : '\u2606'}
+            </button>
+          </td>
+        );
+      }
       case 'ticker':
         return (
           <td key={colKey} style={{ padding: '12px' }}>
