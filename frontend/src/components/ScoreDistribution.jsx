@@ -61,7 +61,7 @@ export default function ScoreDistribution() {
   const maxAvg = Math.max(...sectorAvgs.map(s => s.avg), 1);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
       {/* Signal Distribution */}
       <motion.div
         initial={{ opacity: 0 }}

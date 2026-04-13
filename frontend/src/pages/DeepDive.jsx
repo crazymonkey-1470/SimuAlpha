@@ -17,6 +17,9 @@ import ValuationDisplay from '../components/ValuationDisplay';
 import ThesisDisplay from '../components/ThesisDisplay';
 import SAINConsensusPanel from '../components/sain/SAINConsensusPanel';
 import PositionActionCard from '../components/PositionActionCard';
+import ScoreHistoryChart from '../components/ScoreHistoryChart';
+import PriceChart from '../components/PriceChart';
+import SAINChart from '../components/SAINChart';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -160,6 +163,13 @@ export default function DeepDive() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Charts: Score History, Price vs MAs, SAIN */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+        <ScoreHistoryChart ticker={symbol} />
+        <PriceChart ticker={symbol} />
+        <SAINChart ticker={symbol} />
       </div>
 
       {/* Bull / Bear Line */}
