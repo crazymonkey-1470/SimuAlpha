@@ -3,6 +3,7 @@ import MarketRiskBanner from '../components/MarketRiskBanner';
 import CarryTradeMonitor from '../components/CarryTradeMonitor';
 import { useMacroContext, useMacroHistory } from '../hooks/useMacro';
 import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 export default function MarketContext() {
   const { data: ctx, loading } = useMacroContext();
@@ -184,6 +185,10 @@ export default function MarketContext() {
       </div>
 
       {/* History */}
+      {historyLoading && <LoadingSpinner />}
+      {!historyLoading && history.length === 0 && (
+        <EmptyState message="No historical data" sub="Macro context history will appear once daily snapshots accumulate." />
+      )}
       {!historyLoading && history.length > 1 && (
         <div style={{ marginBottom: '48px' }}>
           <h2 style={{

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import supabase from '../supabaseClient';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 const TABS = ['Activity', 'Suggestions'];
 const FILTERS = ['All', 'ANALYSIS', 'SCAN', 'LEARNING', 'ERROR', 'SUGGESTION'];
@@ -117,9 +119,9 @@ function ActivityLog() {
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono', fontSize: '12px' }}>Loading...</p>
+        <LoadingSpinner />
       ) : activities.length === 0 ? (
-        <p style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono', fontSize: '12px' }}>No activity yet. Run an analysis to see events here.</p>
+        <EmptyState message="No activity yet" sub="Run an analysis to see events here." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {activities.map(a => {
@@ -197,8 +199,8 @@ function SuggestionsPanel() {
     setTimeout(() => setCopied(null), 2000);
   }
 
-  if (loading) return <p style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono', fontSize: '12px' }}>Loading...</p>;
-  if (suggestions.length === 0) return <p style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono', fontSize: '12px' }}>No pending suggestions. The agent generates suggestions weekly.</p>;
+  if (loading) return <LoadingSpinner />;
+  if (suggestions.length === 0) return <EmptyState message="No pending suggestions" sub="The agent generates suggestions weekly during self-improvement analysis." />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

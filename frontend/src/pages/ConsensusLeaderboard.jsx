@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useConsensusLeaderboard } from '../hooks/useSAIN';
 import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 const COLUMNS = [
   { key: 'rank', label: 'Rank', sortable: false },
@@ -117,24 +118,10 @@ export default function ConsensusLeaderboard() {
 
       {/* Empty state */}
       {sorted.length === 0 ? (
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '12px', padding: '48px', textAlign: 'center'
-        }}>
-          <div style={{
-            fontFamily: 'Cormorant Garamond', fontSize: '20px',
-            color: 'var(--text-secondary)', marginBottom: '8px'
-          }}>
-            No consensus data available
-          </div>
-          <div style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px',
-            color: 'var(--text-dim)', lineHeight: 1.7
-          }}>
-            SAIN consensus scores are computed after signals are collected.
-            Check back after the next scan cycle.
-          </div>
-        </div>
+        <EmptyState
+          message="No consensus data available"
+          sub="SAIN consensus scores are computed after signals are collected. Check back after the next scan cycle."
+        />
       ) : (
         <motion.div
           initial={{ opacity: 0 }}

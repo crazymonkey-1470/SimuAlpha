@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import supabase from '../supabaseClient';
 import { useInvestorHoldings, useInvestorSignals } from '../hooks/useInvestors';
 import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 export default function InvestorDetail() {
   const { id } = useParams();
@@ -110,16 +111,7 @@ export default function InvestorDetail() {
         </h2>
 
         {holdingsLoading ? <LoadingSpinner /> : holdings.length === 0 ? (
-          <div style={{
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            color: 'var(--text-dim)',
-            padding: '20px',
-            background: 'var(--bg-card)',
-            borderRadius: '12px',
-          }}>
-            No holdings data available
-          </div>
+          <EmptyState message="No holdings data" sub="Holdings will appear after SEC 13F filings are processed." />
         ) : (
           <div style={{
             background: 'var(--bg-card)',
