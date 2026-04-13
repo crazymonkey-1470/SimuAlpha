@@ -6,6 +6,7 @@
  */
 
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'politician_scraper' });
 
 // Committee → GICS sector mapping for scoring
 // A politician buying a stock in their committee's jurisdiction = +5 (not +2)
@@ -43,7 +44,7 @@ const PRIORITY_POLITICIANS = {
 async function scrapeQuiverQuant() {
   const apiKey = process.env.QUIVERQUANT_API_KEY;
   if (!apiKey) {
-    console.warn('[SAIN] QUIVERQUANT_API_KEY not set, skipping');
+    log.warn('QUIVERQUANT_API_KEY not set, skipping');
     return [];
   }
 
@@ -65,7 +66,7 @@ async function scrapeQuiverQuant() {
       party: t.Party?.[0],
     }));
   } catch (err) {
-    console.error('[SAIN] QuiverQuant error:', err.message);
+    log.error({ err }, 'QuiverQuant error');
     return [];
   }
 }

@@ -7,6 +7,7 @@
 
 const { completeJSON } = require('./llm');
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'x_scanner' });
 
 const X_BEARER = process.env.X_BEARER_TOKEN;
 const X_API_BASE = 'https://api.x.com/2';
@@ -16,7 +17,7 @@ const X_API_BASE = 'https://api.x.com/2';
  */
 async function fetchRecentTweets(handle, sinceId = null) {
   if (!X_BEARER) {
-    console.warn('[SAIN] X_BEARER_TOKEN not set, skipping X scan');
+    log.warn('X_BEARER_TOKEN not set, skipping X scan');
     return [];
   }
 
@@ -35,18 +36,18 @@ async function fetchRecentTweets(handle, sinceId = null) {
     });
 
     if (res.status === 429) {
-      console.warn('[SAIN] X API rate limited, will retry next cycle');
+      log.warn('X API rate limited, will retry next cycle');
       return [];
     }
     if (!res.ok) {
-      console.error(`[SAIN] X API ${res.status} for ${cleanHandle}`);
+      log.error({ status: res.status, handle: cleanHandle }, 'X API request failed');
       return [];
     }
 
     const data = await res.json();
     return data.data || [];
   } catch (err) {
-    console.error(`[SAIN] X fetch error for ${cleanHandle}:`, err.message);
+    log.error({ err, handle: cleanHandle }, 'X fetch error');
     return [];
   }
 }

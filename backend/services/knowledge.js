@@ -6,6 +6,7 @@
  */
 
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'knowledge' });
 
 /**
  * Retrieve relevant knowledge chunks using metadata filters + full-text search.
@@ -40,7 +41,7 @@ async function retrieve({
 
     // If RPC fails (e.g., function doesn't exist yet), fall back to direct query
     if (error) {
-      console.log('[Knowledge] RPC not available, falling back to metadata query:', error.message);
+      log.info({ err: error }, 'RPC not available, falling back to metadata query');
     }
   }
 
@@ -68,7 +69,7 @@ async function retrieve({
   const { data, error } = await q;
 
   if (error) {
-    console.error('[Knowledge] Retrieval error:', error.message);
+    log.error({ err: error }, 'Retrieval error');
     return [];
   }
 

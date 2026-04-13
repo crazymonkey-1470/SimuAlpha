@@ -1,4 +1,5 @@
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'valuation' });
 const { classifyMaturity } = require('./maturity_classifier');
 
 /**
@@ -413,7 +414,7 @@ async function saveValuation(ticker, valuation) {
     .from('stock_valuations')
     .upsert(row, { onConflict: 'ticker,computed_date' });
 
-  if (error) console.error(`[Valuation] Save failed for ${ticker}:`, error.message);
+  if (error) log.error({ err: error, ticker }, 'Save failed');
 }
 
 async function getValuation(ticker) {
@@ -426,7 +427,7 @@ async function getValuation(ticker) {
     .maybeSingle();
 
   if (error) {
-    console.error(`[Valuation] Fetch failed for ${ticker}:`, error.message);
+    log.error({ err: error, ticker }, 'Fetch failed');
     return null;
   }
   return data;
@@ -441,7 +442,7 @@ async function computeAndSaveValuation(ticker) {
     .maybeSingle();
 
   if (error || !stock) {
-    console.error(`[Valuation] No data for ${ticker}`);
+    log.error({ ticker }, 'No data found');
     return null;
   }
 
@@ -485,7 +486,7 @@ async function batchComputeValuations() {
     .order('total_score', { ascending: false });
 
   if (error || !stocks) {
-    console.error('[Valuation] Batch fetch failed:', error?.message);
+    log.error({ err: error }, 'Batch fetch failed');
     return { computed: 0, failed: 0 };
   }
 
@@ -498,12 +499,12 @@ async function batchComputeValuations() {
       if (result) computed++;
       else failed++;
     } catch (err) {
-      console.error(`[Valuation] ${ticker} error:`, err.message);
+      log.error({ err, ticker }, 'Valuation computation error');
       failed++;
     }
   }
 
-  console.log(`[Valuation] Batch complete: ${computed} computed, ${failed} failed`);
+  log.info({ computed, failed }, 'Batch complete');
   return { computed, failed };
 }
 

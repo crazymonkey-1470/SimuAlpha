@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'write_thesis' });
  * Skill: Write Investment Thesis
  *
  * The main thesis writer. Takes ALL analysis outputs and produces a 200-300 word
@@ -117,7 +118,7 @@ async function execute({
       ).join('\n---\n');
     }
   } catch (err) {
-    console.error(`[write_thesis] Knowledge retrieval failed for ${ticker}:`, err.message);
+    log.error(`[write_thesis] Knowledge retrieval failed for ${ticker}:`, err.message);
     // Non-fatal — continue without knowledge context
   }
 
@@ -231,7 +232,7 @@ async function execute({
       maxTokens: 1500,
     });
   } catch (err) {
-    console.error(`[write_thesis] LLM thesis generation failed for ${ticker}:`, err.message);
+    log.error(`[write_thesis] LLM thesis generation failed for ${ticker}:`, err.message);
     throw new Error(`Thesis generation failed for ${ticker}: ${err.message}`);
   }
 

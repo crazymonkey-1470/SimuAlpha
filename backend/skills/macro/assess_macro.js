@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'assess_macro' });
  * Skill: Assess Macro Environment
  *
  * Gets the latest macro_context from Supabase, then calls the LLM to
@@ -41,12 +42,12 @@ async function execute({ ticker, sector }) {
       .maybeSingle();
 
     if (error) {
-      console.error(`[assess_macro] Failed to fetch macro context:`, error.message);
+      log.error(`[assess_macro] Failed to fetch macro context:`, error.message);
     } else {
       macroContext = data;
     }
   } catch (err) {
-    console.error(`[assess_macro] Macro context query error:`, err.message);
+    log.error(`[assess_macro] Macro context query error:`, err.message);
   }
 
   // If no macro data, return a conservative default
@@ -91,7 +92,7 @@ Assess the macro impact on ${ticker} specifically.`;
       maxTokens: 800,
     });
   } catch (err) {
-    console.error(`[assess_macro] LLM assessment failed for ${ticker}:`, err.message);
+    log.error(`[assess_macro] LLM assessment failed for ${ticker}:`, err.message);
   }
 
   // Validate and return

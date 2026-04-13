@@ -7,6 +7,7 @@
 
 const supabase = require('./supabase');
 const { sleep } = require('./fetcher');
+const log = require('./logger').child({ module: 'institutional' });
 
 const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
@@ -18,7 +19,7 @@ async function getInvestors() {
     .from('super_investors')
     .select('*')
     .order('name');
-  if (error) console.error('[Institutional] Failed to fetch investors:', error.message);
+  if (error) log.error({ err: error }, 'Failed to fetch investors');
   return data || [];
 }
 
@@ -31,7 +32,7 @@ async function fetch13F(cik) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    console.error(`[Institutional] 13F fetch failed for CIK ${cik}:`, err.message);
+    log.error({ err, cik }, '13F fetch failed');
     return null;
   }
 }
@@ -41,25 +42,25 @@ async function fetch13F(cik) {
  * Fetches latest 13F, upserts holdings, computes signals.
  */
 async function refreshAllInvestors() {
-  console.log('\n[Institutional] Refreshing super investor data...');
+  log.info('Refreshing super investor data');
   const investors = await getInvestors();
   if (investors.length === 0) {
-    console.log('[Institutional] No investors configured. Run migration_sprint6a.sql first.');
+    log.info('No investors configured. Run migration_sprint6a.sql first.');
     return;
   }
 
   for (const investor of investors) {
     try {
-      console.log(`  ${investor.name} (CIK: ${investor.cik})...`);
+      log.info({ investor: investor.name, cik: investor.cik }, 'Processing investor');
       const filing = await fetch13F(investor.cik);
       if (!filing || !filing.holdings || filing.holdings.length === 0) {
-        console.log(`  ${investor.name}: no holdings found`);
+        log.info({ investor: investor.name }, 'No holdings found');
         await sleep(500);
         continue;
       }
 
       const quarter = filing.quarter;
-      console.log(`  ${investor.name}: ${filing.holdings_count} holdings for ${quarter}`);
+      log.info({ investor: investor.name, holdingsCount: filing.holdings_count, quarter }, 'Holdings fetched');
 
       // Calculate total portfolio value for % calculations
       const totalValue = filing.holdings.reduce((sum, h) => sum + (h.market_value || 0), 0);
@@ -93,7 +94,7 @@ async function refreshAllInvestors() {
         const { error } = await supabase
           .from('investor_holdings')
           .upsert(batch, { onConflict: 'investor_id,quarter,ticker' });
-        if (error) console.error(`  Upsert error:`, error.message);
+        if (error) log.error({ err: error, investor: investor.name }, 'Holdings upsert error');
       }
 
       // Update portfolio value on investor
@@ -125,18 +126,18 @@ async function refreshAllInvestors() {
           const { error } = await supabase
             .from('investor_signals')
             .upsert(batch, { onConflict: 'investor_id,quarter,ticker' });
-          if (error) console.error(`  Signals upsert error:`, error.message);
+          if (error) log.error({ err: error, investor: investor.name }, 'Signals upsert error');
         }
 
         const newBuys = signals.filter(s => s.signal_type === 'NEW_BUY').length;
         const exits = signals.filter(s => s.signal_type === 'EXIT').length;
-        console.log(`  ${investor.name}: ${signals.length} signals (${newBuys} new buys, ${exits} exits)`);
+        log.info({ investor: investor.name, signalCount: signals.length, newBuys, exits }, 'Signals computed');
       } else {
-        console.log(`  ${investor.name}: no prior quarter data for comparison`);
+        log.info({ investor: investor.name }, 'No prior quarter data for comparison');
       }
 
     } catch (err) {
-      console.error(`  ${investor.name}: ERROR -`, err.message);
+      log.error({ err, investor: investor.name }, 'Investor processing error');
     }
     await sleep(2000); // Respect SEC rate limits between investors
   }
@@ -255,7 +256,7 @@ async function getConsecutiveQuarters(investorId, ticker, signalType) {
  * Compute cross-investor consensus for all tickers.
  */
 async function computeConsensus() {
-  console.log('[Institutional] Computing cross-investor consensus...');
+  log.info('Computing cross-investor consensus');
 
   // Get the most recent quarter from signals
   const { data: latestSig } = await supabase
@@ -265,7 +266,7 @@ async function computeConsensus() {
     .limit(1);
 
   if (!latestSig || latestSig.length === 0) {
-    console.log('[Institutional] No signals to compute consensus from');
+    log.info('No signals to compute consensus from');
     return;
   }
 
@@ -323,11 +324,11 @@ async function computeConsensus() {
     const { error } = await supabase
       .from('consensus_signals')
       .upsert(batch, { onConflict: 'ticker,quarter' });
-    if (error) console.error('[Institutional] Consensus upsert error:', error.message);
+    if (error) log.error({ err: error }, 'Consensus upsert error');
   }
 
   const strongBuys = consensusRows.filter(r => r.net_sentiment === 'STRONG_BUY').length;
-  console.log(`[Institutional] Consensus: ${consensusRows.length} tickers, ${strongBuys} strong buys`);
+  log.info({ tickerCount: consensusRows.length, strongBuys }, 'Consensus computed');
 }
 
 /**

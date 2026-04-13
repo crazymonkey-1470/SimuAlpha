@@ -1,4 +1,5 @@
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'macro' });
 
 /**
  * Macro Context Engine — Sprint 6B
@@ -80,7 +81,7 @@ async function getLatestMacroContext() {
     .maybeSingle();
 
   if (error) {
-    console.error('[Macro] Failed to fetch context:', error.message);
+    log.error({ err: error }, 'Failed to fetch context');
     return null;
   }
   return data;
@@ -94,7 +95,7 @@ async function getMacroContextHistory(limit = 30) {
     .limit(limit);
 
   if (error) {
-    console.error('[Macro] Failed to fetch history:', error.message);
+    log.error({ err: error }, 'Failed to fetch history');
     return [];
   }
   return data || [];
@@ -121,7 +122,7 @@ async function upsertMacroContext(input) {
     .maybeSingle();
 
   if (error) {
-    console.error('[Macro] Upsert failed:', error.message);
+    log.error({ err: error }, 'Upsert failed');
     throw error;
   }
 

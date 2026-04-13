@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'adjust_weights' });
  * Skill: Adjust Scoring Weights
  *
  * Analyzes signal outcomes (predictions vs reality) and proposes weight
@@ -252,7 +253,7 @@ async function execute({ signalOutcomes, currentWeights, knowledgeContext }) {
       maxTokens: 2000,
     });
   } catch (err) {
-    console.error(`[adjust_weights] LLM analysis failed:`, err.message);
+    log.error(`[adjust_weights] LLM analysis failed:`, err.message);
     return {
       adjustments: [],
       no_change: SAFETY_RULES.ADJUSTABLE_CATEGORIES,
@@ -316,7 +317,7 @@ async function execute({ signalOutcomes, currentWeights, knowledgeContext }) {
   }
 
   if (violations.length > 0) {
-    console.warn(`[adjust_weights] Safety violations blocked:`, violations);
+    log.warn(`[adjust_weights] Safety violations blocked:`, violations);
   }
 
   // Determine which factors had no change

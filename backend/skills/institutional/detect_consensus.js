@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'detect_consensus' });
  * Skill: Detect Institutional Consensus
  *
  * Queries Supabase for consensus_signals and investor_signals for a ticker,
@@ -35,12 +36,12 @@ async function execute({ ticker }) {
       .maybeSingle();
 
     if (error) {
-      console.error(`[detect_consensus] Consensus query failed for ${ticker}:`, error.message);
+      log.error(`[detect_consensus] Consensus query failed for ${ticker}:`, error.message);
     } else {
       consensus = data;
     }
   } catch (err) {
-    console.error(`[detect_consensus] Consensus query error for ${ticker}:`, err.message);
+    log.error(`[detect_consensus] Consensus query error for ${ticker}:`, err.message);
   }
 
   // Fetch individual investor signals (last 2 quarters for trend)
@@ -54,12 +55,12 @@ async function execute({ ticker }) {
       .limit(30);
 
     if (error) {
-      console.error(`[detect_consensus] Signals query failed for ${ticker}:`, error.message);
+      log.error(`[detect_consensus] Signals query failed for ${ticker}:`, error.message);
     } else {
       signals = data || [];
     }
   } catch (err) {
-    console.error(`[detect_consensus] Signals query error for ${ticker}:`, err.message);
+    log.error(`[detect_consensus] Signals query error for ${ticker}:`, err.message);
   }
 
   // If no data at all, return early with a clear message
@@ -100,7 +101,7 @@ ${signalSummary || '  No individual signals found.'}`;
       maxTokens: 600,
     });
   } catch (err) {
-    console.error(`[detect_consensus] LLM interpretation failed for ${ticker}:`, err.message);
+    log.error(`[detect_consensus] LLM interpretation failed for ${ticker}:`, err.message);
     const sentiment = consensus?.net_sentiment || 'UNKNOWN';
     const holders = consensus?.holders_count || 0;
     interpretation = `Institutional consensus for ${ticker}: ${sentiment} sentiment with ${holders} tracked holders. LLM interpretation unavailable.`;

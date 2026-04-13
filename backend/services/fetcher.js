@@ -1,3 +1,5 @@
+const log = require('./logger').child({ module: 'fetcher' });
+
 const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
 function sleep(ms) {
@@ -38,7 +40,7 @@ async function fetchHistoricalPrices(ticker) {
     const monthlyCloses = monthlyRaw.map((d) => d.close);
     return { weeklyCloses, weeklyVolumes, monthlyCloses, weeklyRaw, monthlyRaw };
   } catch (err) {
-    console.error(`[fetcher] historical failed ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Historical prices fetch failed');
     return { weeklyCloses: [], monthlyCloses: [] };
   }
 }
@@ -105,7 +107,7 @@ async function fetchFundamentals(ticker) {
       sharesOutstanding: data.shares_outstanding ?? null,
     };
   } catch (err) {
-    console.error(`[fetcher] fundamentals failed ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Fundamentals fetch failed');
     return null;
   }
 }

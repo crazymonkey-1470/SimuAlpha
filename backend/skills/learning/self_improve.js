@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'self_improve' });
  * Skill: self_improve — Agent Self-Improvement Engine
  *
  * Runs weekly. Analyzes the knowledge base, scoring outcomes, and error logs
@@ -126,7 +127,7 @@ Identify gaps and write specific Claude Code prompts to fix them.`,
     const suggestions = JSON.parse(cleaned);
 
     if (!Array.isArray(suggestions)) {
-      console.warn('[self_improve] LLM returned non-array, skipping storage');
+      log.warn('[self_improve] LLM returned non-array, skipping storage');
       return { suggestions_generated: 0, raw: result };
     }
 
@@ -142,16 +143,16 @@ Identify gaps and write specific Claude Code prompts to fix them.`,
       });
 
       if (error) {
-        console.error('[self_improve] Insert failed:', error.message);
+        log.error('[self_improve] Insert failed:', error.message);
       } else {
         suggestionsStored++;
-        console.log(`[self_improve] Stored suggestion: ${s.title} (${s.priority})`);
+        log.info(`[self_improve] Stored suggestion: ${s.title} (${s.priority})`);
       }
     }
 
     return { suggestions_generated: suggestionsStored, suggestions };
   } catch (e) {
-    console.error('[self_improve] Failed to parse LLM response:', e.message);
+    log.error('[self_improve] Failed to parse LLM response:', e.message);
     return { suggestions_generated: 0, error: 'Failed to parse suggestions', raw: result };
   }
 }

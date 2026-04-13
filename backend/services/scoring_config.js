@@ -11,6 +11,7 @@
  */
 
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'scoring_config' });
 
 // Hardcoded fallback defaults — mirrors migration_sprint10c.sql seed values
 const DEFAULTS = {
@@ -60,7 +61,7 @@ async function loadConfig() {
       .select('config_key, config_value');
 
     if (error) {
-      console.warn('[scoring_config] DB read failed, using defaults:', error.message);
+      log.warn({ err: error }, 'DB read failed, using defaults');
       return { ...DEFAULTS };
     }
 
@@ -70,7 +71,7 @@ async function loadConfig() {
     }
     return merged;
   } catch (err) {
-    console.warn('[scoring_config] Load failed, using defaults:', err.message);
+    log.warn({ err }, 'Load failed, using defaults');
     return { ...DEFAULTS };
   }
 }

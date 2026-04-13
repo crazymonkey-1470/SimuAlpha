@@ -1,4 +1,5 @@
 /**
+const log = require('../services/logger').child({ module: 'seed_13f' });
  * Seed 13F Data — Sprint 7
  *
  * Seeds holdings for 8 super investors based on
@@ -146,7 +147,7 @@ async function seedInvestor(cik, holdings, quarter = QUARTER) {
     .maybeSingle();
 
   if (invErr || !investor) {
-    console.error(`  Investor CIK ${cik} not found. Run migration_complete.sql first.`);
+    log.error(`  Investor CIK ${cik} not found. Run migration_complete.sql first.`);
     return 0;
   }
 
@@ -154,7 +155,7 @@ async function seedInvestor(cik, holdings, quarter = QUARTER) {
   const activeHoldings = holdings.filter(h => h.signal_type !== 'EXIT');
   const exits = holdings.filter(h => h.signal_type === 'EXIT');
 
-  console.log(`\n  Seeding ${investor.name} (${activeHoldings.length} holdings, ${exits.length} exits, quarter ${quarter})...`);
+  log.info(`\n  Seeding ${investor.name} (${activeHoldings.length} holdings, ${exits.length} exits, quarter ${quarter})...`);
 
   // Calculate total portfolio value from non-null market values
   const totalValue = activeHoldings.reduce((sum, h) => sum + (h.market_value || 0), 0);
@@ -181,7 +182,7 @@ async function seedInvestor(cik, holdings, quarter = QUARTER) {
       .upsert(holdingsRows, { onConflict: 'investor_id,quarter,ticker' });
 
     if (upsertErr) {
-      console.error(`  Holdings upsert error for ${investor.name}:`, upsertErr.message);
+      log.error(`  Holdings upsert error for ${investor.name}:`, upsertErr.message);
       return 0;
     }
   }
@@ -224,21 +225,21 @@ async function seedInvestor(cik, holdings, quarter = QUARTER) {
     const { error: sigErr } = await supabase
       .from('investor_signals')
       .upsert(signals, { onConflict: 'investor_id,quarter,ticker' });
-    if (sigErr) console.error(`  Signals upsert error:`, sigErr.message);
+    if (sigErr) log.error(`  Signals upsert error:`, sigErr.message);
   }
 
   const newBuys = signals.filter(s => s.signal_type === 'NEW_BUY').length;
   const exitCount = signals.filter(s => s.signal_type === 'EXIT').length;
   const adds = signals.filter(s => s.signal_type === 'ADD').length;
   const reduces = signals.filter(s => s.signal_type === 'REDUCE').length;
-  console.log(`  ${investor.name}: ${holdingsRows.length} holdings, ${signals.length} signals (${newBuys} new, ${adds} adds, ${reduces} reduces, ${exitCount} exits)`);
+  log.info(`  ${investor.name}: ${holdingsRows.length} holdings, ${signals.length} signals (${newBuys} new, ${adds} adds, ${reduces} reduces, ${exitCount} exits)`);
   return holdingsRows.length;
 }
 
 async function main() {
-  console.log('═══════════════════════════════════════════');
-  console.log('Seeding 13F Data (8 Super Investors)');
-  console.log('═══════════════════════════════════════════');
+  log.info('═══════════════════════════════════════════');
+  log.info('Seeding 13F Data (8 Super Investors)');
+  log.info('═══════════════════════════════════════════');
 
   let total = 0;
 
@@ -266,18 +267,18 @@ async function main() {
   // Point72 (Steven Cohen) — Q3 2025 PARTIAL
   total += await seedInvestor('0001603466', COHEN_HOLDINGS, '2025Q3');
 
-  console.log(`\nTotal holdings seeded: ${total}`);
+  log.info(`\nTotal holdings seeded: ${total}`);
 
   // Compute consensus across all investors
-  console.log('\nComputing cross-investor consensus...');
+  log.info('\nComputing cross-investor consensus...');
   await computeConsensus();
 
-  console.log('\n13F seed complete.');
+  log.info('\n13F seed complete.');
 }
 
 if (require.main === module) {
   main().catch(err => {
-    console.error('Seed failed:', err);
+    log.error('Seed failed:', err);
     process.exit(1);
   });
 }

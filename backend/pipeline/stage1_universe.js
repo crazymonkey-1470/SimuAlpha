@@ -1,4 +1,5 @@
 const supabase = require('../services/supabase');
+const log = require('../services/logger').child({ module: 'stage1_universe' });
 
 /**
  * S&P 500 Universe
@@ -71,13 +72,13 @@ const SP500 = [
  * Clean, reliable, data-rich — no scraper dependency.
  */
 async function fetchUniverse() {
-  console.log('\n[Stage 1] Seeding S&P 500 universe...');
+  log.info('Seeding S&P 500 universe');
   const startTime = Date.now();
 
   // Filter out tickers with dots (BRK.B, BF.B) — scraper may not handle them
   const tickers = SP500.filter((t) => !/[.]/.test(t));
 
-  console.log(`[Stage 1] ${tickers.length} S&P 500 tickers (${SP500.length - tickers.length} skipped with special chars)`);
+  log.info({ tickerCount: tickers.length, skipped: SP500.length - tickers.length }, 'S&P 500 tickers filtered');
 
   // Remove old tickers that are NOT in S&P 500 list
   // Paginate reads (Supabase defaults to 1000 rows)
@@ -102,7 +103,7 @@ async function fetchUniverse() {
       .filter((t) => !sp500Set.has(t));
 
     if (toDelete.length > 0) {
-      console.log(`[Stage 1] Removing ${toDelete.length} old tickers not in S&P 500...`);
+      log.info({ count: toDelete.length }, 'Removing old tickers not in S&P 500');
       // Delete in batches of 100 (Supabase .in() limit)
       for (let i = 0; i < toDelete.length; i += 100) {
         const batch = toDelete.slice(i, i + 100);
@@ -110,9 +111,9 @@ async function fetchUniverse() {
           .from('universe')
           .delete()
           .in('ticker', batch);
-        if (error) console.error(`[Stage 1] Delete batch error:`, error.message);
+        if (error) log.error({ err: error }, 'Delete batch error');
       }
-      console.log(`[Stage 1] Removed ${toDelete.length} old tickers`);
+      log.info({ count: toDelete.length }, 'Removed old tickers');
     }
   }
 
@@ -133,7 +134,7 @@ async function fetchUniverse() {
       .from('universe')
       .upsert(batch, { onConflict: 'ticker' });
 
-    if (error) console.error(`[Stage 1] Upsert batch error:`, error.message);
+    if (error) log.error({ err: error }, 'Upsert batch error');
   }
 
   // Clean up screener_candidates that are no longer in universe
@@ -148,7 +149,7 @@ async function fetchUniverse() {
       .filter((t) => !sp500SetFinal.has(t));
 
     if (staleCandidates.length > 0) {
-      console.log(`[Stage 1] Removing ${staleCandidates.length} stale candidates not in S&P 500...`);
+      log.info({ count: staleCandidates.length }, 'Removing stale candidates not in S&P 500');
       for (let i = 0; i < staleCandidates.length; i += 100) {
         const batch = staleCandidates.slice(i, i + 100);
         await supabase.from('screener_candidates').delete().in('ticker', batch);
@@ -164,7 +165,7 @@ async function fetchUniverse() {
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[Stage 1] Complete: ${tickers.length} S&P 500 tickers seeded (${elapsed}s)`);
+  log.info({ tickerCount: tickers.length, elapsedSec: elapsed }, 'Stage 1 complete');
   return tickers.length;
 }
 

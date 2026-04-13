@@ -7,6 +7,7 @@
 
 const { completeJSON } = require('./llm');
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'ingest' });
 
 const METADATA_EXTRACTION_PROMPT = `You are a financial document analyzer for SimuAlpha, a stock discovery platform.
 
@@ -36,11 +37,11 @@ async function ingestDocument({ text, sourceName, sourceType, sourceDate }) {
     throw new Error('Cannot ingest empty document');
   }
 
-  console.log(`[Ingest] Processing "${sourceName}" (${sourceType})...`);
+  log.info({ sourceName, sourceType }, 'Processing document');
 
   // Step 1: Chunk the document
   const chunks = chunkText(text, 600, 100);
-  console.log(`[Ingest] Split into ${chunks.length} chunks`);
+  log.info({ sourceName, chunkCount: chunks.length }, 'Split into chunks');
 
   let stored = 0;
 
@@ -68,16 +69,16 @@ async function ingestDocument({ text, sourceName, sourceType, sourceDate }) {
       });
 
       if (error) {
-        console.error(`[Ingest] Chunk ${i} store error:`, error.message);
+        log.error({ err: error, chunkIndex: i }, 'Chunk store error');
       } else {
         stored++;
       }
     } catch (err) {
-      console.error(`[Ingest] Chunk ${i} failed:`, err.message);
+      log.error({ err, chunkIndex: i }, 'Chunk processing failed');
     }
   }
 
-  console.log(`[Ingest] "${sourceName}": ${stored}/${chunks.length} chunks stored`);
+  log.info({ sourceName, stored, total: chunks.length }, 'Ingestion complete');
   return { chunks_total: chunks.length, chunks_stored: stored };
 }
 

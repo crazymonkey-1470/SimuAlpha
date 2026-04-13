@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'compare_to_greats' });
  * Skill: Compare to the Greats
  *
  * For each of 9 legendary investors, determines BUY/HOLD/SELL/AVOID and a
@@ -96,7 +97,7 @@ async function execute({ ticker, stockData, scoreResult }) {
       maxTokens: 2000,
     });
   } catch (err) {
-    console.error(`[compare_to_greats] LLM comparison failed for ${ticker}:`, err.message);
+    log.error(`[compare_to_greats] LLM comparison failed for ${ticker}:`, err.message);
   }
 
   // Validate response structure
@@ -116,7 +117,7 @@ async function execute({ ticker, stockData, scoreResult }) {
   }
 
   // Fallback: return a basic structure indicating failure
-  console.error(`[compare_to_greats] Invalid or empty LLM response for ${ticker}`);
+  log.error(`[compare_to_greats] Invalid or empty LLM response for ${ticker}`);
   const investors = [
     'Buffett/Abel', 'Tepper', 'Druckenmiller', 'Coleman', 'Cohen',
     'Tudor Jones', 'Laffont', 'Marks', 'Graham',

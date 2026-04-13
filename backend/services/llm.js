@@ -7,6 +7,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'llm' });
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -69,7 +70,7 @@ async function completeJSON({ task, systemPrompt, userPrompt, maxTokens = 2000 }
   try {
     return JSON.parse(raw.replace(/```json|```/g, '').trim());
   } catch (e) {
-    console.error(`[LLM] JSON parse failed for task ${task}:`, raw.slice(0, 200));
+    log.error({ task, rawSnippet: raw.slice(0, 200) }, 'JSON parse failed');
     return null;
   }
 }

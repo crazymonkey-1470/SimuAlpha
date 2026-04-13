@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const log = require('./services/logger').child({ module: 'server' });
 const { runFullPipeline, startCron } = require('./cron');
 const supabase = require('./services/supabase');
 const { getInvestors, refreshAllInvestors } = require('./services/institutional');
@@ -135,7 +136,7 @@ app.post('/api/admin/investor-holdings', async (req, res) => {
 app.post('/api/admin/refresh-institutional', async (_req, res) => {
   res.json({ status: 'started' });
   refreshAllInvestors().catch(err =>
-    console.error('[API] Institutional refresh error:', err.message)
+    log.error({ err }, 'Institutional refresh error')
   );
 });
 
@@ -372,7 +373,7 @@ app.post('/api/valuation/compute/:ticker', async (req, res) => {
 app.get('/api/valuation/batch', async (_req, res) => {
   res.json({ status: 'started' });
   batchComputeValuations().catch(err =>
-    console.error('[API] Batch valuation error:', err.message)
+    log.error({ err }, 'Batch valuation error')
   );
 });
 
@@ -471,7 +472,7 @@ app.post('/api/analyze/:ticker', async (req, res) => {
     res.json({ status: 'started', ticker });
     // Run analysis in background (don't block response)
     analyzeStock(ticker).catch(err =>
-      console.error(`[API] Analysis error for ${ticker}:`, err.message)
+      log.error({ err, ticker }, 'Analysis error')
     );
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -579,7 +580,7 @@ app.post('/api/learning/cycle', async (_req, res) => {
   try {
     res.json({ status: 'started' });
     runLearningCycle().catch(err =>
-      console.error('[API] Learning cycle error:', err.message)
+      log.error({ err }, 'Learning cycle error')
     );
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -654,7 +655,7 @@ app.put('/api/learning/adjustments/:id', async (req, res) => {
         modified_by: modifiedBy,
       });
     } catch (applyErr) {
-      console.error('[learning] applyWeightAdjustment failed:', applyErr.message);
+      log.error({ err: applyErr }, 'applyWeightAdjustment failed');
       return res.status(500).json({
         error: `Adjustment approved but apply failed: ${applyErr.message}`,
       });
@@ -712,7 +713,7 @@ app.put('/api/learning/adjustments/:id', async (req, res) => {
         memo: { ingested: ingestResult.chunks_stored },
       });
     } catch (ingestErr) {
-      console.error('[learning] Memo ingest failed:', ingestErr.message);
+      log.error({ err: ingestErr }, 'Memo ingest failed');
       // Approval still counts — the scoring_config has been updated.
       return res.json({
         success: true,
@@ -949,12 +950,12 @@ app.get('/health', async (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[TLI] The Long Screener backend listening on port ${PORT}`);
+  log.info({ port: PORT }, 'The Long Screener backend listening');
 
   // Start cron schedules
   startCron();
 
   // Run full pipeline immediately on startup
-  console.log('[TLI] Running initial pipeline on startup...');
-  runFullPipeline().catch((err) => console.error('[TLI] Initial pipeline error:', err.message));
+  log.info('Running initial pipeline on startup');
+  runFullPipeline().catch((err) => log.error({ err }, 'Initial pipeline error'));
 });

@@ -1,4 +1,5 @@
 /**
+const log = require('../services/logger').child({ module: 'seed_spec_documents' });
  * seed_spec_documents.js — Seeds the knowledge base with full TLI methodology documents
  *
  * Ingests the TLI master specifications into the knowledge base so
@@ -525,7 +526,7 @@ Key Fibonacci levels observed:
 function loadSpec(envVar, fallback) {
   const p = process.env[envVar];
   if (p && fs.existsSync(p)) {
-    console.log(`[seed_specs] Loading ${envVar} from ${p}`);
+    log.info(`[seed_specs] Loading ${envVar} from ${p}`);
     return fs.readFileSync(p, 'utf8');
   }
   return fallback;
@@ -535,41 +536,41 @@ async function seedSpecs() {
   const tliSpec = loadSpec('TLI_SPEC_PATH', TLI_SCORING_SPEC);
   const fundSpec = loadSpec('FUND_SPEC_PATH', FUNDAMENTAL_ANALYSIS_SPEC);
 
-  console.log('[seed_specs] Seeding TLI Scoring Algorithm v1.0...');
+  log.info('[seed_specs] Seeding TLI Scoring Algorithm v1.0...');
   const r1 = await ingestDocument({
     text: tliSpec,
     sourceName: 'TLI Scoring Algorithm v1.0 — Complete Technical Specification',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-01',
   });
-  console.log(`[seed_specs]   stored ${r1?.chunks_stored}/${r1?.chunks_total} chunks`);
+  log.info(`[seed_specs]   stored ${r1?.chunks_stored}/${r1?.chunks_total} chunks`);
 
-  console.log('[seed_specs] Seeding Fundamental Analysis Engine Master Prompt...');
+  log.info('[seed_specs] Seeding Fundamental Analysis Engine Master Prompt...');
   const r2 = await ingestDocument({
     text: fundSpec,
     sourceName: 'SimuAlpha Fundamental Analysis Engine — Master Prompt',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-01',
   });
-  console.log(`[seed_specs]   stored ${r2?.chunks_stored}/${r2?.chunks_total} chunks`);
+  log.info(`[seed_specs]   stored ${r2?.chunks_stored}/${r2?.chunks_total} chunks`);
 
-  console.log('[seed_specs] Seeding NVDA reference chart analysis...');
+  log.info('[seed_specs] Seeding NVDA reference chart analysis...');
   const r3 = await ingestDocument({
     text: NVDA_WAVE_ANALYSIS,
     sourceName: 'NVDA Weekly Chart — Perfect Elliott Wave Reference',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-04',
   });
-  console.log(`[seed_specs]   stored ${r3?.chunks_stored}/${r3?.chunks_total} chunks`);
+  log.info(`[seed_specs]   stored ${r3?.chunks_stored}/${r3?.chunks_total} chunks`);
 
-  console.log('[seed_specs] Spec documents seeded.');
+  log.info('[seed_specs] Spec documents seeded.');
 }
 
 if (require.main === module) {
   seedSpecs()
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('[seed_specs] FAILED:', err.message);
+      log.error('[seed_specs] FAILED:', err.message);
       process.exit(1);
     });
 }

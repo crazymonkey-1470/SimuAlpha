@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'extract_principles' });
  * Skill: Extract Investing Principles
  *
  * Extracts structured investing principles from documents — scoring rules,
@@ -105,7 +106,7 @@ async function execute({ documentText, sourceName, sourceType }) {
         existing.map(c => `- ${c.content?.substring(0, 200)}`).join('\n');
     }
   } catch (err) {
-    console.error(`[extract_principles] Knowledge retrieval failed:`, err.message);
+    log.error(`[extract_principles] Knowledge retrieval failed:`, err.message);
     // Non-fatal
   }
 
@@ -133,7 +134,7 @@ ${truncatedText}${truncationNote}${existingContext}`;
       maxTokens: 3000,
     });
   } catch (err) {
-    console.error(`[extract_principles] LLM extraction failed:`, err.message);
+    log.error(`[extract_principles] LLM extraction failed:`, err.message);
     throw new Error(`Principle extraction failed: ${err.message}`);
   }
 
@@ -165,7 +166,7 @@ ${truncatedText}${truncationNote}${existingContext}`;
 
   const totalExtracted = Object.values(validated).reduce((sum, arr) => sum + arr.length, 0);
   if (totalExtracted === 0) {
-    console.warn(`[extract_principles] No principles extracted from "${sourceName}"`);
+    log.warn(`[extract_principles] No principles extracted from "${sourceName}"`);
   }
 
   return validated;

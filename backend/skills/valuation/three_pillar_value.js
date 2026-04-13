@@ -1,4 +1,5 @@
 /**
+const log = require('../../services/logger').child({ module: 'three_pillar_value' });
  * Skill: Three-Pillar Valuation
  *
  * Runs DCF + EV/Sales + EV/EBITDA valuation via the valuation engine,
@@ -84,7 +85,7 @@ Score Flags: ${score.flags.length > 0 ? score.flags.join(', ') : 'None'}`;
       maxTokens: 500,
     });
   } catch (err) {
-    console.error(`[three_pillar_value] LLM narrative failed for ${ticker}:`, err.message);
+    log.error(`[three_pillar_value] LLM narrative failed for ${ticker}:`, err.message);
     narrative = `Valuation complete for ${ticker}: avg target $${valuation.avgTarget} (${valuation.avgUpside > 0 ? '+' : ''}${valuation.avgUpside}% upside). Rating: ${valuation.rating}. WACC tier: ${valuation.waccTier}.`;
   }
 
