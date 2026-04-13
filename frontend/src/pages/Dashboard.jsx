@@ -5,7 +5,6 @@ import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MarketRiskBanner from '../components/MarketRiskBanner';
-import ExitSignalPanel from '../components/ExitSignalPanel';
 import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
 import SAINStatsWidget from '../components/SAINStatsWidget';
 import ScoreDistribution from '../components/ScoreDistribution';
@@ -36,7 +35,6 @@ export default function Dashboard() {
       {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
       <FullStackConsensusBanner />
       <MarketRiskBanner />
-      <ExitSignalPanel />
 
       <motion.div
         initial={{ opacity: 0, y: 24 }}
