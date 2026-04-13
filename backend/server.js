@@ -214,7 +214,59 @@ app.get('/api/admin/test-insert', async (req, res) => {
 app.get('/api/admin/seed-all', async (req, res) => {
   const results = {};
   const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_3_nvda'];
-  results._version = 'v2-cache-clear';
+  results._version = 'v3-auto-migrate';
+
+  // ── Auto-migrations: ensure tables exist before seeding ──
+  const migrations = [];
+  try {
+    await supabase.rpc('exec_sql', { sql: `
+      CREATE TABLE IF NOT EXISTS agent_activity (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        activity_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        details JSONB,
+        ticker TEXT,
+        importance TEXT DEFAULT 'INFO',
+        created_at TIMESTAMPTZ DEFAULT now()
+      );
+    `});
+    migrations.push('agent_activity: OK');
+  } catch (err) {
+    migrations.push('agent_activity: ' + err.message);
+  }
+
+  try {
+    await supabase.rpc('exec_sql', { sql: `
+      CREATE TABLE IF NOT EXISTS agent_suggestions (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        suggestion_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        evidence JSONB,
+        priority TEXT DEFAULT 'MEDIUM',
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT now(),
+        resolved_at TIMESTAMPTZ
+      );
+    `});
+    migrations.push('agent_suggestions: OK');
+  } catch (err) {
+    migrations.push('agent_suggestions: ' + err.message);
+  }
+
+  try {
+    await supabase.rpc('exec_sql', { sql: `
+      DO $$ BEGIN
+        ALTER TABLE exit_signals ADD COLUMN IF NOT EXISTS acknowledged BOOLEAN DEFAULT false;
+      EXCEPTION WHEN others THEN NULL;
+      END $$;
+    `});
+    migrations.push('exit_signals.acknowledged: OK');
+  } catch (err) {
+    migrations.push('exit_signals.acknowledged: ' + err.message);
+  }
+  results._migrations = migrations;
 
   for (const script of scripts) {
     try {
