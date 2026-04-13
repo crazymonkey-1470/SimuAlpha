@@ -2,15 +2,13 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import supabase from '../supabaseClient';
 
-const SIGNAL_ORDER = ['LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'HOLD', 'CAUTION', 'TRIM', 'AVOID'];
+const SIGNAL_ORDER = ['LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'HOLD', 'CAUTION'];
 const SIGNAL_COLORS = {
   'LOAD THE BOAT': '#10b981',
   'ACCUMULATE': '#3b82f6',
   'WATCH': '#f59e0b',
   'HOLD': '#8b5cf6',
   'CAUTION': '#f97316',
-  'TRIM': '#ef4444',
-  'AVOID': '#6b7280',
 };
 
 export default function ScoreDistribution() {
