@@ -45,7 +45,9 @@ export default function NavBar() {
 
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         {links.map(link => {
-          const active = location.pathname === link.to;
+          const active = link.to === '/'
+            ? location.pathname === '/'
+            : location.pathname === link.to || location.pathname.startsWith(link.to + '/');
           return (
             <Link
               key={link.to}
