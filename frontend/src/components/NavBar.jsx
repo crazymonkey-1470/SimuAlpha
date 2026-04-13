@@ -5,14 +5,10 @@ import SearchBar from './SearchBar';
 const links = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/screener', label: 'Screener' },
-  { to: '/signals', label: 'Signals' },
+  { to: '/signals', label: 'Signals', badge: true },
   { to: '/investors', label: 'Investors' },
-  { to: '/intelligence', label: 'Intelligence', badge: true },
-  { to: '/consensus', label: 'SAIN Consensus' },
+  { to: '/my', label: 'My' },
   { to: '/market', label: 'Market' },
-  { to: '/watchlist', label: 'Watchlist' },
-  { to: '/compare', label: 'Compare' },
-  { to: '/portfolio', label: 'Portfolio' },
   { to: '/backtesting', label: 'Backtest' },
   { to: '/agent', label: 'Agent' },
 ];

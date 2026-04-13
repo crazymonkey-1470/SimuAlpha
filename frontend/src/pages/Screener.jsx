@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useScreenerResults } from '../hooks/useScreener';
 import ScreenerTable from '../components/ScreenerTable';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -51,6 +52,16 @@ export default function Screener() {
           }}>
             All stocks scored by TLI methodology. Click any row for deep analysis.
           </p>
+          <Link
+            to="/compare"
+            style={{
+              fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)',
+              border: '1px solid var(--border)', borderRadius: '4px', padding: '5px 12px',
+              textDecoration: 'none', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
+            }}
+          >
+            Compare
+          </Link>
           <a
             href="/api/export/screener/csv"
             download
