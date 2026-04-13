@@ -19,125 +19,157 @@ const PORT = process.env.PORT || 3000;
 
 // List all 8 tracked super investors
 app.get('/api/investors', async (_req, res) => {
-  const investors = await getInvestors();
-  res.json({ investors });
+  try {
+    const investors = await getInvestors();
+    res.json({ investors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Latest holdings for a specific investor
 app.get('/api/investors/:id/holdings', async (req, res) => {
-  const { data, error } = await supabase
-    .from('investor_holdings')
-    .select('*')
-    .eq('investor_id', req.params.id)
-    .order('portfolio_rank', { ascending: true })
-    .limit(100);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ holdings: data || [] });
+  try {
+    const { data, error } = await supabase
+      .from('investor_holdings')
+      .select('*')
+      .eq('investor_id', req.params.id)
+      .order('portfolio_rank', { ascending: true })
+      .limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ holdings: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Quarterly signals for a specific investor
 app.get('/api/investors/:id/signals', async (req, res) => {
-  const { data, error } = await supabase
-    .from('investor_signals')
-    .select('*')
-    .eq('investor_id', req.params.id)
-    .order('quarter', { ascending: false })
-    .limit(200);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ signals: data || [] });
+  try {
+    const { data, error } = await supabase
+      .from('investor_signals')
+      .select('*')
+      .eq('investor_id', req.params.id)
+      .order('quarter', { ascending: false })
+      .limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ signals: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Cross-investor consensus for a specific ticker
 app.get('/api/consensus/:ticker', async (req, res) => {
-  const ticker = req.params.ticker.toUpperCase();
-  const { data, error } = await supabase
-    .from('consensus_signals')
-    .select('*')
-    .eq('ticker', ticker)
-    .order('quarter', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ticker, consensus: data || [] });
+  try {
+    const ticker = req.params.ticker.toUpperCase();
+    const { data, error } = await supabase
+      .from('consensus_signals')
+      .select('*')
+      .eq('ticker', ticker)
+      .order('quarter', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ticker, consensus: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Sector-level consensus
 app.get('/api/consensus/sectors', async (_req, res) => {
-  const { data, error } = await supabase
-    .from('consensus_signals')
-    .select('*')
-    .order('consensus_score', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
+  try {
+    const { data, error } = await supabase
+      .from('consensus_signals')
+      .select('*')
+      .order('consensus_score', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
 
-  // Group by sector using screener_results
-  const { data: sectorData } = await supabase
-    .from('screener_results')
-    .select('ticker, sector')
-    .not('sector', 'is', null);
-  const sectorMap = {};
-  for (const s of (sectorData || [])) {
-    sectorMap[s.ticker] = s.sector;
-  }
+    // Group by sector using screener_results
+    const { data: sectorData } = await supabase
+      .from('screener_results')
+      .select('ticker, sector')
+      .not('sector', 'is', null);
+    const sectorMap = {};
+    for (const s of (sectorData || [])) {
+      sectorMap[s.ticker] = s.sector;
+    }
 
-  const sectors = {};
-  for (const c of (data || [])) {
-    const sector = sectorMap[c.ticker] || 'Unknown';
-    if (!sectors[sector]) sectors[sector] = { sector, tickers: 0, avgScore: 0, totalScore: 0 };
-    sectors[sector].tickers++;
-    sectors[sector].totalScore += c.consensus_score || 0;
-  }
-  for (const s of Object.values(sectors)) {
-    s.avgScore = s.tickers > 0 ? Math.round(s.totalScore / s.tickers * 10) / 10 : 0;
-    delete s.totalScore;
-  }
+    const sectors = {};
+    for (const c of (data || [])) {
+      const sector = sectorMap[c.ticker] || 'Unknown';
+      if (!sectors[sector]) sectors[sector] = { sector, tickers: 0, avgScore: 0, totalScore: 0 };
+      sectors[sector].tickers++;
+      sectors[sector].totalScore += c.consensus_score || 0;
+    }
+    for (const s of Object.values(sectors)) {
+      s.avgScore = s.tickers > 0 ? Math.round(s.totalScore / s.tickers * 10) / 10 : 0;
+      delete s.totalScore;
+    }
 
-  res.json({ sectors: Object.values(sectors).sort((a, b) => b.avgScore - a.avgScore) });
+    res.json({ sectors: Object.values(sectors).sort((a, b) => b.avgScore - a.avgScore) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Top consensus picks
 app.get('/api/consensus/top-picks', async (_req, res) => {
-  const { data, error } = await supabase
-    .from('consensus_signals')
-    .select('*')
-    .order('consensus_score', { ascending: false })
-    .limit(20);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ topPicks: data || [] });
+  try {
+    const { data, error } = await supabase
+      .from('consensus_signals')
+      .select('*')
+      .order('consensus_score', { ascending: false })
+      .limit(20);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ topPicks: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Manual holdings entry endpoint
 app.post('/api/admin/investor-holdings', async (req, res) => {
-  const { investor_id, quarter, holdings } = req.body;
-  if (!investor_id || !quarter || !holdings?.length) {
-    return res.status(400).json({ error: 'Missing investor_id, quarter, or holdings' });
+  try {
+    const { investor_id, quarter, holdings } = req.body;
+    if (!investor_id || !quarter || !holdings?.length) {
+      return res.status(400).json({ error: 'Missing investor_id, quarter, or holdings' });
+    }
+
+    const rows = holdings.map((h, idx) => ({
+      investor_id,
+      quarter,
+      ticker: h.ticker?.toUpperCase() || 'UNKNOWN',
+      cusip: h.cusip || null,
+      company_name: h.company_name || null,
+      shares: h.shares,
+      market_value: h.market_value,
+      pct_of_portfolio: h.pct_of_portfolio || null,
+      portfolio_rank: idx + 1,
+      has_call_options: h.has_call_options || false,
+      has_put_options: h.has_put_options || false,
+    }));
+
+    const { error } = await supabase
+      .from('investor_holdings')
+      .upsert(rows, { onConflict: 'investor_id,quarter,ticker' });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, holdings_count: rows.length, quarter });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const rows = holdings.map((h, idx) => ({
-    investor_id,
-    quarter,
-    ticker: h.ticker?.toUpperCase() || 'UNKNOWN',
-    cusip: h.cusip || null,
-    company_name: h.company_name || null,
-    shares: h.shares,
-    market_value: h.market_value,
-    pct_of_portfolio: h.pct_of_portfolio || null,
-    portfolio_rank: idx + 1,
-    has_call_options: h.has_call_options || false,
-    has_put_options: h.has_put_options || false,
-  }));
-
-  const { error } = await supabase
-    .from('investor_holdings')
-    .upsert(rows, { onConflict: 'investor_id,quarter,ticker' });
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, holdings_count: rows.length, quarter });
 });
 
 // Trigger institutional data refresh
 app.post('/api/admin/refresh-institutional', async (_req, res) => {
-  res.json({ status: 'started' });
-  refreshAllInvestors().catch(err =>
-    log.error({ err }, 'Institutional refresh error')
-  );
+  try {
+    res.json({ status: 'started' });
+    refreshAllInvestors().catch(err =>
+      log.error({ err }, 'Institutional refresh error')
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Run a seed script by name
@@ -155,12 +187,16 @@ app.post('/api/admin/seed/:script', async (req, res) => {
 
 // Check seed status across key tables
 app.get('/api/admin/seed-status', async (_req, res) => {
-  const counts = {};
-  for (const table of ['knowledge_chunks', 'sain_sources', 'investor_holdings', 'scoring_config']) {
-    const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
-    counts[table] = count || 0;
+  try {
+    const counts = {};
+    for (const table of ['knowledge_chunks', 'sain_sources', 'investor_holdings', 'scoring_config']) {
+      const { count } = await supabase.from(table).select('*', { count: 'exact', head: true });
+      counts[table] = count || 0;
+    }
+    res.json(counts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json(counts);
 });
 
 // Force re-score a single ticker through the full pipeline
@@ -177,41 +213,46 @@ app.get('/api/admin/rescore/:ticker', async (req, res) => {
 
 // Debug endpoint: test direct inserts into sain_sources and knowledge_chunks
 app.get('/api/admin/test-insert', async (req, res) => {
-  // Try inserting one row directly
-  const { data, error } = await supabase.from('sain_sources').insert({
-    name: 'Test Source',
-    platform: 'X',
-    handle: '@test',
-    source_type: 'AI_PORTFOLIO',
-    category: 'AI_MODEL',
-    scrape_method: 'X_API',
-    priority: 'LOW',
-    active: true,
-    scrape_frequency_hours: 24
-  }).select();
+  try {
+    // Try inserting one row directly
+    const { data, error } = await supabase.from('sain_sources').insert({
+      name: 'Test Source',
+      platform: 'X',
+      handle: '@test',
+      source_type: 'AI_PORTFOLIO',
+      category: 'AI_MODEL',
+      scrape_method: 'X_API',
+      priority: 'LOW',
+      active: true,
+      scrape_frequency_hours: 24
+    }).select();
 
-  // Also try knowledge_chunks
-  const { data: data2, error: error2 } = await supabase.from('knowledge_chunks').insert({
-    source_type: 'TEST',
-    source_name: 'Test Doc',
-    chunk_text: 'This is a test chunk',
-    chunk_index: 0,
-    tickers_mentioned: [],
-    topics: []
-  }).select();
+    // Also try knowledge_chunks
+    const { data: data2, error: error2 } = await supabase.from('knowledge_chunks').insert({
+      source_type: 'TEST',
+      source_name: 'Test Doc',
+      chunk_text: 'This is a test chunk',
+      chunk_index: 0,
+      tickers_mentioned: [],
+      topics: []
+    }).select();
 
-  // Clean up test data
-  if (data?.[0]) await supabase.from('sain_sources').delete().eq('name', 'Test Source');
-  if (data2?.[0]) await supabase.from('knowledge_chunks').delete().eq('source_type', 'TEST');
+    // Clean up test data
+    if (data?.[0]) await supabase.from('sain_sources').delete().eq('name', 'Test Source');
+    if (data2?.[0]) await supabase.from('knowledge_chunks').delete().eq('source_type', 'TEST');
 
-  res.json({
-    sain_sources: { success: !!data, error: error?.message, details: error },
-    knowledge_chunks: { success: !!data2, error: error2?.message, details: error2 }
-  });
+    res.json({
+      sain_sources: { success: !!data, error: error?.message, details: error },
+      knowledge_chunks: { success: !!data2, error: error2?.message, details: error2 }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Seed all scripts in one call
 app.get('/api/admin/seed-all', async (req, res) => {
+  try {
   const results = {};
   const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda'];
   results._version = 'v3-auto-migrate';
@@ -293,6 +334,9 @@ app.get('/api/admin/seed-all', async (req, res) => {
   }
 
   res.json({ results, counts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -423,10 +467,14 @@ app.post('/api/valuation/compute/:ticker', async (req, res) => {
 });
 
 app.get('/api/valuation/batch', async (_req, res) => {
-  res.json({ status: 'started' });
-  batchComputeValuations().catch(err =>
-    log.error({ err }, 'Batch valuation error')
-  );
+  try {
+    res.json({ status: 'started' });
+    batchComputeValuations().catch(err =>
+      log.error({ err }, 'Batch valuation error')
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -888,68 +936,104 @@ app.post('/api/compare-greats/:ticker', async (req, res) => {
 // --- SAIN Sources ---
 
 app.get('/api/sain/sources', async (_req, res) => {
-  const { data } = await supabase.from('sain_sources').select('*').eq('active', true);
-  res.json(data);
+  try {
+    const { data } = await supabase.from('sain_sources').select('*').eq('active', true);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/sain/sources', async (req, res) => {
-  const { data, error } = await supabase.from('sain_sources').insert(req.body).select();
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data[0]);
+  try {
+    const { data, error } = await supabase.from('sain_sources').insert(req.body).select();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- SAIN Signals ---
 
 app.get('/api/sain/signals', async (req, res) => {
-  const limit = parseInt(req.query.limit) || 50;
-  const { data } = await supabase.from('sain_signals').select('*')
-    .order('signal_date', { ascending: false }).limit(limit);
-  res.json(data);
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const { data } = await supabase.from('sain_signals').select('*')
+      .order('signal_date', { ascending: false }).limit(limit);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sain/signals/politicians', async (_req, res) => {
-  const { data } = await supabase.from('sain_signals').select('*')
-    .not('politician_name', 'is', null)
-    .order('signal_date', { ascending: false }).limit(50);
-  res.json(data);
+  try {
+    const { data } = await supabase.from('sain_signals').select('*')
+      .not('politician_name', 'is', null)
+      .order('signal_date', { ascending: false }).limit(50);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sain/signals/ai-models', async (_req, res) => {
-  const { data } = await supabase.from('sain_signals').select('*')
-    .not('ai_model_name', 'is', null)
-    .is('politician_name', null)
-    .order('signal_date', { ascending: false }).limit(50);
-  res.json(data);
+  try {
+    const { data } = await supabase.from('sain_signals').select('*')
+      .not('ai_model_name', 'is', null)
+      .is('politician_name', null)
+      .order('signal_date', { ascending: false }).limit(50);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sain/signals/:ticker', async (req, res) => {
-  const { data } = await supabase.from('sain_signals').select('*')
-    .eq('ticker', req.params.ticker.toUpperCase())
-    .order('signal_date', { ascending: false }).limit(20);
-  res.json(data);
+  try {
+    const { data } = await supabase.from('sain_signals').select('*')
+      .eq('ticker', req.params.ticker.toUpperCase())
+      .order('signal_date', { ascending: false }).limit(20);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- SAIN Consensus ---
 
 app.get('/api/sain/consensus/full-stack', async (_req, res) => {
-  const { data } = await supabase.from('sain_consensus').select('*')
-    .eq('is_full_stack_consensus', true)
-    .order('total_sain_score', { ascending: false });
-  res.json(data);
+  try {
+    const { data } = await supabase.from('sain_consensus').select('*')
+      .eq('is_full_stack_consensus', true)
+      .order('total_sain_score', { ascending: false });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sain/consensus/top', async (req, res) => {
-  const limit = parseInt(req.query.limit) || 20;
-  const { data } = await supabase.from('sain_consensus').select('*')
-    .order('total_sain_score', { ascending: false }).limit(limit);
-  res.json(data);
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const { data } = await supabase.from('sain_consensus').select('*')
+      .order('total_sain_score', { ascending: false }).limit(limit);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sain/consensus/:ticker', async (req, res) => {
-  const { data } = await supabase.from('sain_consensus').select('*')
-    .eq('ticker', req.params.ticker.toUpperCase())
-    .order('computed_date', { ascending: false }).limit(1);
-  res.json(data?.[0] || null);
+  try {
+    const { data } = await supabase.from('sain_consensus').select('*')
+      .eq('ticker', req.params.ticker.toUpperCase())
+      .order('computed_date', { ascending: false }).limit(1);
+    res.json(data?.[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Manual SAIN Triggers ---
@@ -979,41 +1063,29 @@ app.post('/api/sain/scan/:category', async (req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/api/agent/activity', async (req, res) => {
-  const limit = parseInt(req.query.limit) || 50;
-  const type = req.query.type;
-  let query = supabase.from('agent_activity').select('*')
-    .order('created_at', { ascending: false }).limit(limit);
-  if (type) query = query.eq('activity_type', type);
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const type = req.query.type;
+    let query = supabase.from('agent_activity').select('*')
+      .order('created_at', { ascending: false }).limit(limit);
+    if (type) query = query.eq('activity_type', type);
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/agent/activity/important', async (req, res) => {
-  const { data } = await supabase.from('agent_activity').select('*')
-    .in('importance', ['IMPORTANT', 'CRITICAL'])
-    .order('created_at', { ascending: false }).limit(20);
-  res.json(data || []);
-});
-
-// ═══════════════════════════════════════════
-// AGENT SUGGESTIONS ENDPOINTS
-// ═══════════════════════════════════════════
-
-app.get('/api/agent/suggestions', async (req, res) => {
-  const status = req.query.status || 'PENDING';
-  const { data } = await supabase.from('agent_suggestions').select('*')
-    .eq('status', status).order('created_at', { ascending: false });
-  res.json(data || []);
-});
-
-app.put('/api/agent/suggestions/:id', async (req, res) => {
-  const { status } = req.body;
-  if (!status) return res.status(400).json({ error: 'status required' });
-  const { error } = await supabase.from('agent_suggestions')
-    .update({ status }).eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+  try {
+    const { data } = await supabase.from('agent_activity').select('*')
+      .in('importance', ['IMPORTANT', 'CRITICAL'])
+      .order('created_at', { ascending: false }).limit(20);
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -1021,64 +1093,68 @@ app.put('/api/agent/suggestions/:id', async (req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
-  const ticker = req.params.ticker.toUpperCase();
-
-  // Check stock_analysis table
-  const { data: analysis, error: aErr } = await supabase
-    .from('stock_analysis')
-    .select('id, ticker, signal, composite_score, analyzed_at')
-    .eq('ticker', ticker);
-
-  // Check screener_results
-  const { data: screener, error: sErr } = await supabase
-    .from('screener_results')
-    .select('ticker, total_score, fundamental_score, technical_score, signal, eps_gaap, net_income, operating_margin, free_cash_flow, revenue_current, revenue_prior_year, current_price, ma_50d, price_200wma, price_200mma, updated_at')
-    .eq('ticker', ticker);
-
-  // Try running analyzeStock synchronously and catch any error
-  let analyzeResult = null;
-  let analyzeError = null;
   try {
-    const { analyzeStock } = require('./services/orchestrator');
-    analyzeResult = await analyzeStock(ticker);
+    const ticker = req.params.ticker.toUpperCase();
+
+    // Check stock_analysis table
+    const { data: analysis, error: aErr } = await supabase
+      .from('stock_analysis')
+      .select('id, ticker, signal, composite_score, analyzed_at')
+      .eq('ticker', ticker);
+
+    // Check screener_results
+    const { data: screener, error: sErr } = await supabase
+      .from('screener_results')
+      .select('ticker, total_score, fundamental_score, technical_score, signal, eps_gaap, net_income, operating_margin, free_cash_flow, revenue_current, revenue_prior_year, current_price, ma_50d, price_200wma, price_200mma, updated_at')
+      .eq('ticker', ticker);
+
+    // Try running analyzeStock synchronously and catch any error
+    let analyzeResult = null;
+    let analyzeError = null;
+    try {
+      const { analyzeStock } = require('./services/orchestrator');
+      analyzeResult = await analyzeStock(ticker);
+    } catch (err) {
+      analyzeError = { message: err.message, stack: err.stack?.split('\n').slice(0, 10) };
+    }
+
+    // Re-read stock_analysis after analyze
+    const { data: analysisAfter } = await supabase
+      .from('stock_analysis')
+      .select('id, ticker, signal, composite_score, analyzed_at')
+      .eq('ticker', ticker);
+
+    // Show key fields from the screener data that the orchestrator will use
+    const sr = screener?.[0] || {};
+    const stockDataSample = {
+      eps_gaap: sr.eps_gaap ?? 'MISSING',
+      net_income: sr.net_income ?? 'MISSING',
+      operating_margin: sr.operating_margin ?? 'MISSING',
+      free_cash_flow: sr.free_cash_flow ?? 'MISSING',
+      current_price: sr.current_price ?? 'MISSING',
+      revenue_growth_pct: sr.revenue_growth_pct ?? 'MISSING',
+      gross_margin_current: sr.gross_margin_current ?? 'MISSING',
+      total_score: sr.total_score ?? 'MISSING',
+      ma_50d: sr.ma_50d ?? 'MISSING',
+      price_200wma: sr.price_200wma ?? 'MISSING',
+      price_200mma: sr.price_200mma ?? 'MISSING',
+    };
+
+    res.json({
+      stock_analysis_before: analysis,
+      stock_analysis_error: aErr?.message,
+      screener_results: screener,
+      screener_error: sErr?.message,
+      stock_data_sample: stockDataSample,
+      analyze_result: analyzeResult ? 'SUCCESS' : 'FAILED',
+      analyze_error: analyzeError,
+      analyze_score: analyzeResult?.composite_score ?? null,
+      analyze_signal: analyzeResult?.signal ?? null,
+      stock_analysis_after: analysisAfter,
+    });
   } catch (err) {
-    analyzeError = { message: err.message, stack: err.stack?.split('\n').slice(0, 10) };
+    res.status(500).json({ error: err.message });
   }
-
-  // Re-read stock_analysis after analyze
-  const { data: analysisAfter } = await supabase
-    .from('stock_analysis')
-    .select('id, ticker, signal, composite_score, analyzed_at')
-    .eq('ticker', ticker);
-
-  // Show key fields from the screener data that the orchestrator will use
-  const sr = screener?.[0] || {};
-  const stockDataSample = {
-    eps_gaap: sr.eps_gaap ?? 'MISSING',
-    net_income: sr.net_income ?? 'MISSING',
-    operating_margin: sr.operating_margin ?? 'MISSING',
-    free_cash_flow: sr.free_cash_flow ?? 'MISSING',
-    current_price: sr.current_price ?? 'MISSING',
-    revenue_growth_pct: sr.revenue_growth_pct ?? 'MISSING',
-    gross_margin_current: sr.gross_margin_current ?? 'MISSING',
-    total_score: sr.total_score ?? 'MISSING',
-    ma_50d: sr.ma_50d ?? 'MISSING',
-    price_200wma: sr.price_200wma ?? 'MISSING',
-    price_200mma: sr.price_200mma ?? 'MISSING',
-  };
-
-  res.json({
-    stock_analysis_before: analysis,
-    stock_analysis_error: aErr?.message,
-    screener_results: screener,
-    screener_error: sErr?.message,
-    stock_data_sample: stockDataSample,
-    analyze_result: analyzeResult ? 'SUCCESS' : 'FAILED',
-    analyze_error: analyzeError,
-    analyze_score: analyzeResult?.composite_score ?? null,
-    analyze_signal: analyzeResult?.signal ?? null,
-    stock_analysis_after: analysisAfter,
-  });
 });
 
 // ═══════════════════════════════════════════
@@ -1178,29 +1254,33 @@ app.get('/api/admin/dashboard', async (_req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/api/admin/rescore-top', async (req, res) => {
-  const limit = parseInt(req.query.limit) || 50;
-  const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const { deepScoreSingle } = require('./pipeline/stage3_deepscore');
 
-  const { data: stocks } = await supabase.from('screener_results')
-    .select('ticker')
-    .order('total_score', { ascending: false })
-    .limit(limit);
+    const { data: stocks } = await supabase.from('screener_results')
+      .select('ticker')
+      .order('total_score', { ascending: false })
+      .limit(limit);
 
-  if (!stocks || stocks.length === 0) return res.json({ error: 'No stocks found' });
+    if (!stocks || stocks.length === 0) return res.json({ error: 'No stocks found' });
 
-  const results = [];
-  for (const s of stocks) {
-    try {
-      await deepScoreSingle(s.ticker);
-      results.push({ ticker: s.ticker, status: 'OK' });
-    } catch (err) {
-      results.push({ ticker: s.ticker, status: 'ERROR', error: err.message });
+    const results = [];
+    for (const s of stocks) {
+      try {
+        await deepScoreSingle(s.ticker);
+        results.push({ ticker: s.ticker, status: 'OK' });
+      } catch (err) {
+        results.push({ ticker: s.ticker, status: 'ERROR', error: err.message });
+      }
+      // Rate limit: 1 per second
+      await new Promise(r => setTimeout(r, 1000));
     }
-    // Rate limit: 1 per second
-    await new Promise(r => setTimeout(r, 1000));
-  }
 
-  res.json({ rescored: results.length, results });
+    res.json({ rescored: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
