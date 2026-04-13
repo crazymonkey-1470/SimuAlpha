@@ -1405,6 +1405,68 @@ app.get('/api/admin/rescore-batch', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// TELEGRAM ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.post('/api/admin/telegram-test', async (_req, res) => {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) {
+      return res.json({ success: false, error: 'TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured' });
+    }
+
+    const message = `\u{1F6A8} <b>SimuAlpha Test Message</b>\n\nTelegram integration is working.\nTimestamp: ${new Date().toISOString()}`;
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      return res.json({ success: false, error: err });
+    }
+
+    res.json({ success: true, message: 'Test message sent' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send FSC alert for tickers with full-stack consensus
+app.post('/api/admin/telegram-fsc', async (_req, res) => {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) {
+      return res.json({ success: false, error: 'Telegram not configured' });
+    }
+
+    const { data: fsc } = await supabase.from('sain_consensus').select('*')
+      .eq('is_full_stack_consensus', true)
+      .order('total_sain_score', { ascending: false });
+
+    if (!fsc || fsc.length === 0) {
+      return res.json({ success: false, message: 'No full-stack consensus tickers' });
+    }
+
+    const lines = fsc.map(f => `  \u2022 <b>${f.ticker}</b> \u2014 Score: ${f.total_sain_score} | Dir: ${f.consensus_direction || 'N/A'} | Layers: ${f.layers_aligned || 0}`);
+    const message = `\u{1F31F} <b>Full-Stack Consensus Alert</b>\n\n${fsc.length} ticker(s) have all 4 SAIN layers aligned:\n\n${lines.join('\n')}\n\n<i>Super Investors + Politicians + AI Models + TLI all agree.</i>`;
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    });
+
+    res.json({ success: true, sent: fsc.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
 // SEARCH ENDPOINT
 // ═══════════════════════════════════════════
 
