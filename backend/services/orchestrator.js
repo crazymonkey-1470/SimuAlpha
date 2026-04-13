@@ -27,6 +27,7 @@ const { fundamentalGate } = require('../pipeline/fundamental_gate');
 // Sprint 10C imports
 const { computeTLIScoreV3 } = require('./scorer_v3');
 const { recordSignal } = require('./signalTracker');
+const { logActivity } = require('./agent_logger');
 
 /**
  * Run a full agentic analysis for a single ticker.
@@ -35,6 +36,7 @@ const { recordSignal } = require('./signalTracker');
 async function analyzeStock(ticker) {
   log.info({ ticker }, 'Starting full analysis');
   const startTime = Date.now();
+  logActivity({ type: 'ANALYSIS', title: `Starting analysis: ${ticker}`, description: `Running full skill chain for ${ticker}`, ticker });
 
   // Step 1: Gather existing data from screener_results
   const { fetchHistoricalPrices, fetchFundamentals } = require('./fetcher');
@@ -596,6 +598,14 @@ async function analyzeStock(ticker) {
   }
 
   log.info({ ticker, elapsedSec: (elapsed / 1000).toFixed(1), score: analysis.composite_score, signal: analysis.signal, rating: ratingResult.rating, lynchCategory: lynchClass.category }, 'Analysis complete');
+  logActivity({
+    type: 'ANALYSIS',
+    title: `${ticker} — ${analysis.signal} (Score: ${analysis.composite_score})`,
+    description: `Analysis complete in ${(elapsed / 1000).toFixed(1)}s. Rating: ${ratingResult.rating}`,
+    ticker,
+    details: { score: analysis.composite_score, signal: analysis.signal, rating: ratingResult.rating },
+    importance: analysis.composite_score >= 70 ? 'IMPORTANT' : 'INFO',
+  });
   return analysis;
 }
 

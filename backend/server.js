@@ -923,6 +923,48 @@ app.post('/api/sain/scan/:category', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// AGENT ACTIVITY ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.get('/api/agent/activity', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const type = req.query.type;
+  let query = supabase.from('agent_activity').select('*')
+    .order('created_at', { ascending: false }).limit(limit);
+  if (type) query = query.eq('activity_type', type);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+app.get('/api/agent/activity/important', async (req, res) => {
+  const { data } = await supabase.from('agent_activity').select('*')
+    .in('importance', ['IMPORTANT', 'CRITICAL'])
+    .order('created_at', { ascending: false }).limit(20);
+  res.json(data || []);
+});
+
+// ═══════════════════════════════════════════
+// AGENT SUGGESTIONS ENDPOINTS
+// ═══════════════════════════════════════════
+
+app.get('/api/agent/suggestions', async (req, res) => {
+  const status = req.query.status || 'PENDING';
+  const { data } = await supabase.from('agent_suggestions').select('*')
+    .eq('status', status).order('created_at', { ascending: false });
+  res.json(data || []);
+});
+
+app.put('/api/agent/suggestions/:id', async (req, res) => {
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ error: 'status required' });
+  const { error } = await supabase.from('agent_suggestions')
+    .update({ status }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════
 // DEBUG ENDPOINT
 // ═══════════════════════════════════════════
 

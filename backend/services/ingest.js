@@ -8,6 +8,7 @@
 const { completeJSON } = require('./llm');
 const supabase = require('./supabase');
 const log = require('./logger').child({ module: 'ingest' });
+const { logActivity } = require('./agent_logger');
 
 const METADATA_EXTRACTION_PROMPT = `You are a financial document analyzer for SimuAlpha, a stock discovery platform.
 
@@ -79,6 +80,12 @@ async function ingestDocument({ text, sourceName, sourceType, sourceDate }) {
   }
 
   log.info({ sourceName, stored, total: chunks.length }, 'Ingestion complete');
+  logActivity({
+    type: 'LEARNING',
+    title: `Ingested: ${sourceName}`,
+    description: `${stored} chunks stored from ${sourceType || 'document'}`,
+    importance: 'NOTABLE',
+  });
   return { chunks_total: chunks.length, chunks_stored: stored };
 }
 
