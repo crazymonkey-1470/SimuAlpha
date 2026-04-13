@@ -8,6 +8,7 @@ import MarketRiskBanner from '../components/MarketRiskBanner';
 import ExitSignalPanel from '../components/ExitSignalPanel';
 import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
 import SAINStatsWidget from '../components/SAINStatsWidget';
+import ScoreDistribution from '../components/ScoreDistribution';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -261,6 +262,19 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Score Distribution + Sector Heatmap */}
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--text-primary)'
+          }}>
+            Market Overview
+          </h2>
+        </div>
+        <ScoreDistribution />
       </div>
 
       {/* SAIN Network Stats */}
