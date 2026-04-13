@@ -16,6 +16,7 @@ import SectorStrength from '../components/SectorStrength';
 import ValuationDisplay from '../components/ValuationDisplay';
 import ThesisDisplay from '../components/ThesisDisplay';
 import SAINConsensusPanel from '../components/sain/SAINConsensusPanel';
+import PositionActionCard from '../components/PositionActionCard';
 import supabase from '../supabaseClient';
 import { useState, useEffect } from 'react';
 
@@ -238,12 +239,15 @@ export default function DeepDive() {
         </div>
       </motion.div>
 
-      {/* AI Investment Thesis */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.17 }}
-        style={{ marginBottom: '32px' }}
-      >
-        <ThesisDisplay ticker={symbol} />
-      </motion.div>
+      {/* Position Action Card + AI Investment Thesis */}
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '24px', marginBottom: '32px', alignItems: 'start' }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.16 }}>
+          <PositionActionCard ticker={symbol} />
+        </motion.div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.17 }}>
+          <ThesisDisplay ticker={symbol} />
+        </motion.div>
+      </div>
 
       {/* SAIN 4-Layer Consensus */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.175 }}
