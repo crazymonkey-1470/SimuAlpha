@@ -1084,28 +1084,93 @@ app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
 // ═══════════════════════════════════════════
 
 app.get('/health', async (_req, res) => {
-  let candidatesCount = 0;
-  let resultsCount = 0;
-  let lastScan = null;
+  const checks = {};
 
+  // Supabase + stock counts
   try {
-    const [{ count: cc }, { count: rc }, { data: hist }] = await Promise.all([
-      supabase.from('screener_candidates').select('*', { count: 'exact', head: true }),
-      supabase.from('screener_results').select('*', { count: 'exact', head: true }),
-      supabase.from('scan_history').select('scanned_at').order('scanned_at', { ascending: false }).limit(1),
-    ]);
-    candidatesCount = cc || 0;
-    resultsCount = rc || 0;
+    const { count } = await supabase.from('screener_results').select('*', { count: 'exact', head: true });
+    checks.supabase = { status: 'ok', stocks_scored: count || 0 };
+  } catch (e) {
+    checks.supabase = { status: 'error', message: e.message };
+  }
+
+  // Scraper
+  try {
+    const resp = await fetch((process.env.SCRAPER_URL || 'http://localhost:8000') + '/health');
+    checks.scraper = { status: resp.ok ? 'ok' : 'error' };
+  } catch (e) {
+    checks.scraper = { status: 'unreachable', message: e.message };
+  }
+
+  // API keys
+  checks.anthropic = { status: process.env.ANTHROPIC_API_KEY ? 'ok' : 'missing' };
+  checks.x_api = { status: process.env.X_BEARER_TOKEN ? 'ok' : 'missing' };
+
+  // Knowledge base
+  try {
+    const { count } = await supabase.from('knowledge_chunks').select('*', { count: 'exact', head: true });
+    checks.knowledge_base = { status: count > 0 ? 'ok' : 'empty', chunks: count || 0 };
+  } catch (e) {
+    checks.knowledge_base = { status: 'error' };
+  }
+
+  // SAIN
+  try {
+    const { count } = await supabase.from('sain_sources').select('*', { count: 'exact', head: true });
+    checks.sain_sources = { status: count > 0 ? 'ok' : 'empty', count: count || 0 };
+  } catch (e) {
+    checks.sain_sources = { status: 'error' };
+  }
+
+  // Last scan
+  let lastScan = null;
+  try {
+    const { data: hist } = await supabase.from('scan_history').select('scanned_at').order('scanned_at', { ascending: false }).limit(1);
     lastScan = hist?.[0]?.scanned_at || null;
-  } catch (_) { /* ignore */ }
+  } catch (_) {}
+
+  const allOk = Object.values(checks).every(c => c.status === 'ok');
 
   res.json({
-    status: 'ok',
+    status: allOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     last_scan: lastScan,
-    candidates_count: candidatesCount,
-    results_count: resultsCount,
+    checks,
   });
+});
+
+// Admin dashboard — system-wide counts
+app.get('/api/admin/dashboard', async (_req, res) => {
+  try {
+    const [
+      { count: totalStocks },
+      { count: loadTheBoat },
+      { count: accumulate },
+      { count: analyses },
+      { count: knowledge },
+      { count: sainSources },
+      { count: sainSignals },
+      { count: agentLogs },
+    ] = await Promise.all([
+      supabase.from('screener_results').select('*', { count: 'exact', head: true }),
+      supabase.from('screener_results').select('*', { count: 'exact', head: true }).eq('signal', 'LOAD THE BOAT'),
+      supabase.from('screener_results').select('*', { count: 'exact', head: true }).eq('signal', 'ACCUMULATE'),
+      supabase.from('stock_analysis').select('*', { count: 'exact', head: true }),
+      supabase.from('knowledge_chunks').select('*', { count: 'exact', head: true }),
+      supabase.from('sain_sources').select('*', { count: 'exact', head: true }).eq('active', true),
+      supabase.from('sain_signals').select('*', { count: 'exact', head: true }),
+      supabase.from('agent_activity').select('*', { count: 'exact', head: true }),
+    ]);
+
+    res.json({
+      scoring: { total: totalStocks, load_the_boat: loadTheBoat, accumulate },
+      intelligence: { analyses, knowledge_chunks: knowledge },
+      sain: { sources: sainSources, signals: sainSignals },
+      agent: { activity_logs: agentLogs },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════
