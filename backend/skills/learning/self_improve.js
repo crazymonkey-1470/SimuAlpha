@@ -9,6 +9,7 @@
 const log = require('../../services/logger').child({ module: 'self_improve' });
 const { complete } = require('../../services/llm');
 const supabase = require('../../services/supabase');
+const { logActivity } = require('../../services/agent_logger');
 
 const SYSTEM_PROMPT = `You are SimuAlpha's self-improvement engine. You analyze
 the gap between what the system knows (knowledge base) and what it actually
@@ -147,6 +148,13 @@ Identify gaps and write specific Claude Code prompts to fix them.`,
       } else {
         suggestionsStored++;
         log.info({ title: s.title, priority: s.priority }, 'Stored suggestion');
+        logActivity({
+          type: 'SUGGESTION',
+          title: s.title,
+          description: s.description,
+          details: { priority: s.priority, type: s.suggestion_type },
+          importance: s.priority === 'HIGH' ? 'IMPORTANT' : 'NOTABLE',
+        });
       }
     }
 
