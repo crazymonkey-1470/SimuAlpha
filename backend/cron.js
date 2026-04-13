@@ -9,6 +9,7 @@ const { batchComputeValuations } = require('./services/valuation');
 const { updateOutcomes } = require('./services/signalTracker');
 const { invoke: invokeSkill } = require('./skills');
 const supabase = require('./services/supabase');
+const { upsertMacroContext, getLatestMacroContext } = require('./services/macro');
 
 /**
  * Run the full pipeline: Stage 1 → 2 → 3 → 4 sequentially.
@@ -157,12 +158,76 @@ function startCron() {
     }
   });
 
+  // Daily macro context refresh — 5am ET
+  // Seeds today's macro context if it doesn't exist, or refreshes it.
+  cron.schedule('0 5 * * *', async () => {
+    log.info('Running daily macro context refresh');
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const existing = await getLatestMacroContext();
+
+      if (existing && existing.date === today) {
+        log.info('Macro context already current for today');
+        return;
+      }
+
+      // Carry forward yesterday's data with today's date
+      const base = existing || {};
+      const refreshed = {
+        date: today,
+        sp500_pe: base.sp500_pe || 24.5,
+        vix: base.vix || 16.5,
+        dxy_index: base.dxy_index || 99.8,
+        dxy_direction: base.dxy_direction || 'STABLE',
+        eur_usd_basis: base.eur_usd_basis || -0.5,
+        boj_rate: base.boj_rate || 0.50,
+        fed_rate: base.fed_rate || 4.25,
+        jpy_usd: base.jpy_usd || 143.5,
+        iran_war_active: base.iran_war_active ?? false,
+        investors_defensive_count: base.investors_defensive_count || 2,
+        berkshire_cash_equity_ratio: base.berkshire_cash_equity_ratio || 0.85,
+        spy_puts_count: base.spy_puts_count || 1,
+      };
+
+      const result = await upsertMacroContext(refreshed);
+      log.info({ date: today, riskLevel: result.market_risk_level }, 'Macro context refreshed');
+    } catch (err) {
+      log.error({ err }, 'Macro context refresh failed');
+    }
+  });
+
+  // Sunday 9am: send weekly digest via Telegram
+  cron.schedule('0 9 * * 0', async () => {
+    log.info('Sending weekly digest');
+    try {
+      const { generateWeeklyDigest } = require('./services/email_digest');
+      const digest = await generateWeeklyDigest();
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_CHAT_ID;
+      if (token && chatId) {
+        let text = '\u{1F4CA} SimuAlpha Weekly Digest\n\n';
+        for (const s of digest.top_opportunities) {
+          text += `${s.ticker} (${s.total_score}) ${s.signal?.replace(/_/g, ' ')}\n`;
+        }
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+        });
+      }
+      log.info('Weekly digest sent');
+    } catch (err) {
+      log.error({ err }, 'Weekly digest failed');
+    }
+  });
+
   log.info({
     schedules: {
       fullPipeline: 'Sunday 6am ET + Wednesday 6am ET',
       outcomeTrack: 'Daily 4am ET',
-      selfImprove: 'Sunday 10am ET',
+      macroRefresh: 'Daily 5am ET',
       weeklyBrief: 'Sunday 8am ET',
+      weeklyDigest: 'Sunday 9am ET',
+      selfImprove: 'Sunday 10am ET',
     },
   }, 'Cron schedules active');
 }

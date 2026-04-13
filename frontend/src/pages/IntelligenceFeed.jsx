@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSAINSignals, usePoliticianSignals, useAIModelSignals, useTopConsensus } from '../hooks/useSAIN';
+import usePageTitle from '../hooks/usePageTitle';
 import SignalCard from '../components/sain/SignalCard';
 import PoliticianTradeDetail from '../components/sain/PoliticianTradeDetail';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 import { useNavigate } from 'react-router-dom';
 
 const TABS = [
@@ -17,6 +20,7 @@ export default function IntelligenceFeed() {
   const [selectedSignal, setSelectedSignal] = useState(null);
 
   const { data: allSignals, loading: allLoading, refetch } = useSAINSignals();
+  usePageTitle('Intelligence Feed');
   const { data: polSignals, loading: polLoading } = usePoliticianSignals();
   const { data: aiSignals, loading: aiLoading } = useAIModelSignals();
   const { data: topConsensus, loading: topLoading } = useTopConsensus();
@@ -150,19 +154,8 @@ function TabPanel({ children, loading }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        style={{ textAlign: 'center', padding: '48px 0' }}
       >
-        <div style={{
-          width: '32px', height: '32px', margin: '0 auto',
-          border: '2px solid var(--border)', borderTop: '2px solid var(--signal-green)',
-          borderRadius: '50%', animation: 'spin 1s linear infinite'
-        }} />
-        <div style={{
-          fontFamily: 'IBM Plex Mono', fontSize: '11px',
-          color: 'var(--text-dim)', marginTop: '12px'
-        }}>
-          Loading intelligence data...
-        </div>
+        <LoadingSpinner />
       </motion.div>
     );
   }
@@ -181,26 +174,7 @@ function TabPanel({ children, loading }) {
 
 function SignalFeed({ signals, onSelect }) {
   if (!signals || signals.length === 0) {
-    return (
-      <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: '12px', padding: '48px', textAlign: 'center'
-      }}>
-        <div style={{
-          fontFamily: 'Cormorant Garamond', fontSize: '20px',
-          color: 'var(--text-secondary)', marginBottom: '8px'
-        }}>
-          No signals yet
-        </div>
-        <div style={{
-          fontFamily: 'IBM Plex Mono', fontSize: '11px',
-          color: 'var(--text-dim)', lineHeight: 1.7
-        }}>
-          Scanning starts automatically. Intelligence signals will appear here
-          as they are detected from politicians, AI models, and insider activity.
-        </div>
-      </div>
-    );
+    return <EmptyState message="No signals yet" sub="Intelligence signals will appear here as they are detected from politicians, AI models, and insider activity." />;
   }
 
   return (
@@ -223,25 +197,7 @@ function ConsensusTable({ data }) {
   const [sortAsc, setSortAsc] = useState(false);
 
   if (!data || data.length === 0) {
-    return (
-      <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: '12px', padding: '48px', textAlign: 'center'
-      }}>
-        <div style={{
-          fontFamily: 'Cormorant Garamond', fontSize: '20px',
-          color: 'var(--text-secondary)', marginBottom: '8px'
-        }}>
-          No consensus data yet
-        </div>
-        <div style={{
-          fontFamily: 'IBM Plex Mono', fontSize: '11px',
-          color: 'var(--text-dim)', lineHeight: 1.7
-        }}>
-          Consensus scores are computed after SAIN signals are collected.
-        </div>
-      </div>
-    );
+    return <EmptyState message="No consensus data yet" sub="Consensus scores are computed after SAIN signals are collected." />;
   }
 
   const sorted = [...data].sort((a, b) => {

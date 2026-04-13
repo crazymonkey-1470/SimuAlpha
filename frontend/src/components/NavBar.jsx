@@ -1,8 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useSAINSignalCount } from '../hooks/useSAIN';
+import SearchBar from './SearchBar';
 
 const links = [
-  { to: '/', label: 'Dashboard' },
+  { to: '/dashboard', label: 'Dashboard' },
   { to: '/screener', label: 'Screener' },
   { to: '/signals', label: 'Signals' },
   { to: '/investors', label: 'Investors' },
@@ -10,6 +11,10 @@ const links = [
   { to: '/consensus', label: 'SAIN Consensus' },
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/compare', label: 'Compare' },
+  { to: '/portfolio', label: 'Portfolio' },
+  { to: '/backtesting', label: 'Backtest' },
+  { to: '/agent', label: 'Agent' },
 ];
 
 export default function NavBar() {
@@ -43,8 +48,11 @@ export default function NavBar() {
       </Link>
 
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <SearchBar />
         {links.map(link => {
-          const active = location.pathname === link.to;
+          const active = link.to === '/'
+            ? location.pathname === '/'
+            : location.pathname === link.to || location.pathname.startsWith(link.to + '/');
           return (
             <Link
               key={link.to}

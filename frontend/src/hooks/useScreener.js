@@ -77,32 +77,63 @@ export function useWatchlist() {
   const [loading, setLoading] = useState(true);
 
   async function fetchWatchlist() {
-    const { data } = await supabase
-      .from('watchlist')
-      .select('*, screener_results(*)')
-      .order('added_at', { ascending: false });
-    setData(data || []);
+    try {
+      const res = await fetch('/api/watchlist');
+      const json = await res.json();
+      setData(json.watchlist || []);
+    } catch (err) {
+      console.error('Failed to fetch watchlist:', err);
+    }
     setLoading(false);
   }
 
   useEffect(() => { fetchWatchlist(); }, []);
 
   async function addTicker(ticker, notes = '') {
-    const { error } = await supabase.from('watchlist').insert({
-      ticker: ticker.toUpperCase(),
-      notes
-    });
-    if (error) console.error('Failed to add to watchlist:', error.message);
-    fetchWatchlist();
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker.toUpperCase(), notes }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('Failed to add to watchlist:', err.error);
+        return false;
+      }
+      await fetchWatchlist();
+      return true;
+    } catch (err) {
+      console.error('Failed to add to watchlist:', err);
+      return false;
+    }
   }
 
   async function removeTicker(id) {
-    const { error } = await supabase.from('watchlist').delete().eq('id', id);
-    if (error) console.error('Failed to remove from watchlist:', error.message);
-    fetchWatchlist();
+    try {
+      await fetch(`/api/watchlist/${id}`, { method: 'DELETE' });
+      await fetchWatchlist();
+      return true;
+    } catch (err) {
+      console.error('Failed to remove from watchlist:', err);
+      return false;
+    }
   }
 
-  return { data, loading, addTicker, removeTicker };
+  async function updateNotes(id, notes) {
+    try {
+      await fetch(`/api/watchlist/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      });
+      await fetchWatchlist();
+    } catch (err) {
+      console.error('Failed to update notes:', err);
+    }
+  }
+
+  return { data, loading, addTicker, removeTicker, updateNotes, refetch: fetchWatchlist };
 }
 
 export function useConfluenceZones() {
@@ -153,7 +184,23 @@ export function useExitSignals(showAll = false) {
     fetchData();
   }
 
-  return { data, loading, acknowledge, refetch: fetchData };
+  async function acknowledgeAll() {
+    const ids = data.map(d => d.id);
+    if (ids.length === 0) return;
+    await supabase
+      .from('exit_signals')
+      .update({ acknowledged: true })
+      .in('id', ids);
+    fetchData();
+  }
+
+  // Sort by severity: HIGH first, then MEDIUM, then LOW
+  const severityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  const sorted = [...data].sort((a, b) =>
+    (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
+  );
+
+  return { data: sorted, loading, acknowledge, acknowledgeAll, refetch: fetchData };
 }
 
 export function useGenerationalBuys() {
@@ -200,4 +247,22 @@ export function useTickerDetail(symbol) {
   }, [symbol]);
 
   return { result, waveCount, backtest, loading };
+}
+
+export function useLastPipelineRun() {
+  const [lastRun, setLastRun] = useState(null);
+
+  useEffect(() => {
+    async function fetch() {
+      const { data } = await supabase
+        .from('screener_results')
+        .select('last_updated')
+        .order('last_updated', { ascending: false })
+        .limit(1);
+      if (data?.[0]?.last_updated) setLastRun(data[0].last_updated);
+    }
+    fetch();
+  }, []);
+
+  return lastRun;
 }

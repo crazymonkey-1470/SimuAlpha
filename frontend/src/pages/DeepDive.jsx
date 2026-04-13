@@ -16,25 +16,52 @@ import SectorStrength from '../components/SectorStrength';
 import ValuationDisplay from '../components/ValuationDisplay';
 import ThesisDisplay from '../components/ThesisDisplay';
 import SAINConsensusPanel from '../components/sain/SAINConsensusPanel';
-import supabase from '../supabaseClient';
+import PositionActionCard from '../components/PositionActionCard';
+import ScoreHistoryChart from '../components/ScoreHistoryChart';
+import PriceChart from '../components/PriceChart';
+import SAINChart from '../components/SAINChart';
+import AlertConfig from '../components/AlertConfig';
+import usePageTitle from '../hooks/usePageTitle';
+import { useToast } from '../components/Toast';
 import { useState, useEffect } from 'react';
 
 export default function DeepDive() {
   const { symbol } = useParams();
   const navigate = useNavigate();
   const { result, waveCount, backtest, loading } = useTickerDetail(symbol);
+  const { success: toastSuccess } = useToast();
+  usePageTitle(symbol ? `${symbol} Deep Dive` : 'Deep Dive');
   const [watchlisted, setWatchlisted] = useState(false);
+  const [watchlistId, setWatchlistId] = useState(null);
 
   // Check if already on watchlist
   useEffect(() => {
     if (!symbol) return;
-    supabase.from('watchlist').select('id').eq('ticker', symbol).maybeSingle()
-      .then(({ data }) => { if (data) setWatchlisted(true); });
+    fetch(`/api/watchlist/check/${symbol}`)
+      .then(r => r.json())
+      .then(({ watchlisted: w, id }) => { setWatchlisted(w); setWatchlistId(id); })
+      .catch(() => {});
   }, [symbol]);
 
-  async function addToWatchlist() {
-    const { error } = await supabase.from('watchlist').insert({ ticker: symbol, notes: '' });
-    if (!error) setWatchlisted(true);
+  async function toggleWatchlist() {
+    if (watchlisted && watchlistId) {
+      await fetch(`/api/watchlist/${watchlistId}`, { method: 'DELETE' });
+      setWatchlisted(false);
+      setWatchlistId(null);
+      toastSuccess(`${symbol} removed from watchlist`);
+    } else {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: symbol, notes: '' }),
+      });
+      if (res.ok) {
+        const { item } = await res.json();
+        setWatchlisted(true);
+        setWatchlistId(item.id);
+        toastSuccess(`${symbol} added to watchlist`);
+      }
+    }
   }
 
   if (loading) return <LoadingSpinner />;
@@ -89,18 +116,34 @@ export default function DeepDive() {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <ScoreRing score={result.total_score} size={100} />
-          <button onClick={addToWatchlist} disabled={watchlisted} style={{
-            background: watchlisted ? 'var(--bg-card)' : 'var(--signal-green-dim)',
-            border: `1px solid ${watchlisted ? 'var(--border)' : 'var(--signal-green)40'}`,
-            borderRadius: '8px', padding: '12px 20px',
-            color: watchlisted ? 'var(--text-secondary)' : 'var(--signal-green)',
-            fontFamily: 'IBM Plex Mono', fontSize: '12px',
-            cursor: watchlisted ? 'default' : 'pointer'
-          }}>
-            {watchlisted ? '\u2713 Watchlisted' : '+ Add to Watchlist'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button onClick={toggleWatchlist} style={{
+              background: watchlisted ? 'var(--bg-card)' : 'var(--signal-green-dim)',
+              border: `1px solid ${watchlisted ? 'var(--border)' : 'var(--signal-green)40'}`,
+              borderRadius: '8px', padding: '10px 18px',
+              color: watchlisted ? 'var(--text-secondary)' : 'var(--signal-green)',
+              fontFamily: 'IBM Plex Mono', fontSize: '12px',
+              cursor: 'pointer', transition: 'all 0.15s ease'
+            }}>
+              {watchlisted ? '\u2713 Watchlisted' : '+ Watchlist'}
+            </button>
+            <a
+              href={`/api/export/pdf/${symbol}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: 'transparent', border: '1px solid var(--border)',
+                borderRadius: '8px', padding: '10px 18px',
+                color: 'var(--text-dim)', fontFamily: 'IBM Plex Mono', fontSize: '12px',
+                textDecoration: 'none', textAlign: 'center',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              PDF Report
+            </a>
+          </div>
         </div>
       </motion.div>
 
@@ -159,6 +202,13 @@ export default function DeepDive() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Charts: Score History, Price vs MAs, SAIN */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+        <ScoreHistoryChart ticker={symbol} />
+        <PriceChart ticker={symbol} />
+        <SAINChart ticker={symbol} />
       </div>
 
       {/* Bull / Bear Line */}
@@ -238,12 +288,15 @@ export default function DeepDive() {
         </div>
       </motion.div>
 
-      {/* AI Investment Thesis */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.17 }}
-        style={{ marginBottom: '32px' }}
-      >
-        <ThesisDisplay ticker={symbol} />
-      </motion.div>
+      {/* Position Action Card + AI Investment Thesis */}
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '24px', marginBottom: '32px', alignItems: 'start' }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.16 }}>
+          <PositionActionCard ticker={symbol} />
+        </motion.div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.17 }}>
+          <ThesisDisplay ticker={symbol} />
+        </motion.div>
+      </div>
 
       {/* SAIN 4-Layer Consensus */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.175 }}
@@ -439,6 +492,13 @@ export default function DeepDive() {
           </div>
         </motion.div>
       )}
+
+      {/* Custom Alerts */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}
+        style={{ marginBottom: '32px' }}
+      >
+        <AlertConfig ticker={symbol} />
+      </motion.div>
 
       <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)', padding: '20px 0', borderTop: '1px solid var(--border)' }}>
         Not financial advice. Educational tool only. Do your own research before investing.

@@ -32,6 +32,17 @@ async function execute({ category = 'ALL' }) {
       const signal = await extractSignal(tweet.text, source.source_type);
       if (!signal) continue;
 
+      // Deduplication: skip if same source + ticker + date already exists
+      const signalDate = tweet.created_at ? tweet.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+      const { data: existing } = await supabase.from('sain_signals')
+        .select('id')
+        .eq('source_id', source.id)
+        .eq('ticker', signal.ticker)
+        .gte('signal_date', signalDate + 'T00:00:00Z')
+        .lte('signal_date', signalDate + 'T23:59:59Z')
+        .limit(1);
+      if (existing && existing.length > 0) continue;
+
       // Store in sain_signals
       await supabase.from('sain_signals').insert({
         source_id: source.id,

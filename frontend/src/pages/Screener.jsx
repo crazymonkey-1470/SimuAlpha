@@ -4,8 +4,10 @@ import ScreenerTable from '../components/ScreenerTable';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import supabase from '../supabaseClient';
+import usePageTitle from '../hooks/usePageTitle';
 
 export default function Screener() {
+  usePageTitle('Screener');
   const { data, loading } = useScreenerResults();
   const [waveData, setWaveData] = useState({});
   const [backtestData, setBacktestData] = useState({});
@@ -43,11 +45,24 @@ export default function Screener() {
         }}>
           Screener
         </h1>
-        <p style={{
-          fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-secondary)'
-        }}>
-          All stocks scored by TLI methodology. Click any row for deep analysis.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <p style={{
+            fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-secondary)', margin: 0
+          }}>
+            All stocks scored by TLI methodology. Click any row for deep analysis.
+          </p>
+          <a
+            href="/api/export/screener/csv"
+            download
+            style={{
+              fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)',
+              border: '1px solid var(--border)', borderRadius: '4px', padding: '5px 12px',
+              textDecoration: 'none', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
+            }}
+          >
+            Export CSV
+          </a>
+        </div>
       </div>
 
       {loading ? (

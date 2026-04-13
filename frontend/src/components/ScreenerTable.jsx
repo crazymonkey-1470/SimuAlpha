@@ -6,6 +6,7 @@ import WavePositionIndicator from './WavePositionIndicator';
 import VolumeTrendBadge from './VolumeTrendBadge';
 
 const ALL_COLUMNS = [
+  { key: 'watchlist', label: '\u2606', sortable: false, default: true },
   { key: 'ticker', label: 'Ticker', sortable: true, default: true },
   { key: 'total_score', label: 'Score', sortable: true, default: true },
   { key: 'signal', label: 'Signal', sortable: false, default: true },
@@ -17,9 +18,14 @@ const ALL_COLUMNS = [
   { key: 'ps_ratio', label: 'P/S', sortable: true, default: true },
   { key: 'sector', label: 'Sector', sortable: false, default: true },
   { key: 'wave', label: 'Wave', sortable: false, default: true },
+  { key: 'lynch_score', label: 'Lynch', sortable: true, default: false },
+  { key: 'buffett_score', label: 'Buffett', sortable: true, default: false },
+  { key: 'operating_margin', label: 'Op Margin', sortable: true, default: false },
+  { key: 'fcf_margin', label: 'FCF Margin', sortable: true, default: false },
   { key: 'volume_trend', label: 'Volume', sortable: false, default: false },
   { key: 'gross_margin_current', label: 'Gross Margin', sortable: true, default: false },
   { key: 'backtest_win', label: 'Backtest Win %', sortable: false, default: false },
+  { key: 'analyze', label: '', sortable: false, default: true },
 ];
 
 const STORAGE_KEY = 'simualpha_screener_columns';
@@ -38,8 +44,56 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
   const [sortDir, setSortDir] = useState('desc');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('ALL');
+  const [sectorFilter, setSectorFilter] = useState('ALL');
+  const [minScore, setMinScore] = useState(0);
   const [visibleCols, setVisibleCols] = useState(loadVisibleColumns);
   const [showColPicker, setShowColPicker] = useState(false);
+  const [analyzingTicker, setAnalyzingTicker] = useState(null);
+  const [watchlistMap, setWatchlistMap] = useState({});
+
+  // Fetch watchlist tickers on mount
+  useEffect(() => {
+    fetch('/api/watchlist')
+      .then(r => r.json())
+      .then(({ watchlist }) => {
+        const map = {};
+        (watchlist || []).forEach(w => { map[w.ticker] = w.id; });
+        setWatchlistMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function toggleWatchlist(e, ticker) {
+    e.stopPropagation();
+    if (watchlistMap[ticker]) {
+      await fetch(`/api/watchlist/${watchlistMap[ticker]}`, { method: 'DELETE' });
+      setWatchlistMap(prev => { const next = { ...prev }; delete next[ticker]; return next; });
+    } else {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker }),
+      });
+      if (res.ok) {
+        const { item } = await res.json();
+        setWatchlistMap(prev => ({ ...prev, [ticker]: item.id }));
+      }
+    }
+  }
+
+  // Get unique sectors from data
+  const sectors = [...new Set(data.map(s => s.sector).filter(Boolean))].sort();
+
+  async function handleAnalyze(e, ticker) {
+    e.stopPropagation();
+    setAnalyzingTicker(ticker);
+    try {
+      await fetch(`/api/analyze/${ticker}`, { method: 'POST' });
+      setTimeout(() => setAnalyzingTicker(null), 3000);
+    } catch {
+      setAnalyzingTicker(null);
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleCols));
@@ -64,6 +118,8 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
       if (filter === 'ENTRY') return s.entry_zone;
       return s.signal === filter;
     })
+    .filter(s => sectorFilter === 'ALL' || s.sector === sectorFilter)
+    .filter(s => (s.total_score || 0) >= minScore)
     .filter(s =>
       !search ||
       s.ticker?.toLowerCase().includes(search.toLowerCase()) ||
@@ -78,6 +134,25 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
   const renderCell = (stock, colKey) => {
     const wave = waveData[stock.ticker];
     switch (colKey) {
+      case 'watchlist': {
+        const isWl = !!watchlistMap[stock.ticker];
+        return (
+          <td key={colKey} style={{ padding: '12px', width: '36px', textAlign: 'center' }}>
+            <button
+              onClick={(e) => toggleWatchlist(e, stock.ticker)}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: '16px', padding: '2px 4px', lineHeight: 1,
+                color: isWl ? 'var(--signal-amber)' : 'var(--text-dim)',
+                transition: 'color 0.15s ease',
+              }}
+              title={isWl ? 'Remove from watchlist' : 'Add to watchlist'}
+            >
+              {isWl ? '\u2605' : '\u2606'}
+            </button>
+          </td>
+        );
+      }
       case 'ticker':
         return (
           <td key={colKey} style={{ padding: '12px' }}>
@@ -147,6 +222,45 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
         const winColor = bt.win_rate_pct > 65 ? 'var(--signal-green)' : bt.win_rate_pct >= 50 ? 'var(--signal-amber)' : 'var(--red, #ef4444)';
         return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', fontWeight: 500, color: winColor }}>{bt.win_rate_pct.toFixed(0)}%</td>;
       }
+      case 'lynch_score': {
+        const ls = stock.lynch_score;
+        const lsColor = ls >= 7 ? 'var(--signal-green)' : ls >= 5 ? 'var(--signal-amber)' : 'var(--text-secondary)';
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: lsColor }}>{ls != null ? `${ls}/7` : '\u2014'}</td>;
+      }
+      case 'buffett_score': {
+        const bs = stock.buffett_score;
+        const bsColor = bs >= 6 ? 'var(--signal-green)' : bs >= 4 ? 'var(--signal-amber)' : 'var(--text-secondary)';
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: bsColor }}>{bs != null ? `${bs}/9` : '\u2014'}</td>;
+      }
+      case 'operating_margin': {
+        const om = stock.operating_margin;
+        const omColor = om == null ? 'var(--text-dim)' : om > 20 ? 'var(--signal-green)' : om >= 10 ? 'var(--signal-amber)' : 'var(--red, #ef4444)';
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: omColor }}>{om != null ? `${om.toFixed(1)}%` : '\u2014'}</td>;
+      }
+      case 'fcf_margin': {
+        const fm = stock.fcf_margin;
+        const fmColor = fm == null ? 'var(--text-dim)' : fm > 15 ? 'var(--signal-green)' : fm >= 5 ? 'var(--signal-amber)' : 'var(--red, #ef4444)';
+        return <td key={colKey} style={{ padding: '12px', fontFamily: 'IBM Plex Mono', fontSize: '13px', color: fmColor }}>{fm != null ? `${fm.toFixed(1)}%` : '\u2014'}</td>;
+      }
+      case 'analyze':
+        return (
+          <td key={colKey} style={{ padding: '12px' }}>
+            <button
+              onClick={(e) => handleAnalyze(e, stock.ticker)}
+              disabled={analyzingTicker === stock.ticker}
+              style={{
+                background: analyzingTicker === stock.ticker ? 'var(--bg-secondary)' : 'var(--signal-green-dim)',
+                border: `1px solid ${analyzingTicker === stock.ticker ? 'var(--border)' : 'var(--signal-green)40'}`,
+                borderRadius: '4px', padding: '3px 8px',
+                color: analyzingTicker === stock.ticker ? 'var(--text-dim)' : 'var(--signal-green)',
+                fontFamily: 'IBM Plex Mono', fontSize: '9px', cursor: analyzingTicker === stock.ticker ? 'wait' : 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {analyzingTicker === stock.ticker ? 'Started' : 'Analyze'}
+            </button>
+          </td>
+        );
       default:
         return <td key={colKey} style={{ padding: '12px' }}>{'\u2014'}</td>;
     }
@@ -168,7 +282,7 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
             fontFamily: 'IBM Plex Mono', fontSize: '12px', outline: 'none', width: '240px'
           }}
         />
-        {['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'ENTRY'].map(f => (
+        {['ALL', 'LOAD THE BOAT', 'ACCUMULATE', 'WATCH', 'HOLD', 'CAUTION', 'ENTRY'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -184,6 +298,34 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
             {f === 'ENTRY' ? 'ENTRY ZONE' : f}
           </button>
         ))}
+
+        <select
+          value={sectorFilter}
+          onChange={e => setSectorFilter(e.target.value)}
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '6px 10px', color: 'var(--text-primary)',
+            fontFamily: 'IBM Plex Mono', fontSize: '11px', outline: 'none',
+          }}
+        >
+          <option value="ALL">All Sectors</option>
+          {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-dim)' }}>Min</span>
+          <input
+            type="number"
+            value={minScore}
+            onChange={e => setMinScore(Number(e.target.value) || 0)}
+            min={0} max={100}
+            style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '6px', padding: '6px 8px', color: 'var(--text-primary)',
+              fontFamily: 'IBM Plex Mono', fontSize: '11px', width: '50px', outline: 'none',
+            }}
+          />
+        </div>
 
         {/* Column selector */}
         <div style={{ position: 'relative', marginLeft: 'auto' }}>

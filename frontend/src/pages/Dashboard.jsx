@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys } from '../hooks/useScreener';
+import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys, useLastPipelineRun } from '../hooks/useScreener';
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -8,13 +8,19 @@ import MarketRiskBanner from '../components/MarketRiskBanner';
 import ExitSignalPanel from '../components/ExitSignalPanel';
 import FullStackConsensusBanner from '../components/FullStackConsensusBanner';
 import SAINStatsWidget from '../components/SAINStatsWidget';
+import ScoreDistribution from '../components/ScoreDistribution';
+import Onboarding, { useOnboarding } from '../components/Onboarding';
+import usePageTitle from '../hooks/usePageTitle';
 
 export default function Dashboard() {
+  usePageTitle('Dashboard');
   const navigate = useNavigate();
   const { data: allStocks, loading } = useScreenerResults();
   const { data: scanHistory } = useScanHistory();
   const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
   const { data: generationalBuys, loading: genLoading } = useGenerationalBuys();
+  const lastPipelineRun = useLastPipelineRun();
+  const { showOnboarding, dismiss: dismissOnboarding } = useOnboarding();
 
   const topOpportunities = allStocks
     .filter(s => s.signal === 'LOAD THE BOAT')
@@ -27,6 +33,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ paddingTop: '48px' }}>
+      {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
       <FullStackConsensusBanner />
       <MarketRiskBanner />
       <ExitSignalPanel />
@@ -95,14 +102,13 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {lastScan && (
-          <div style={{
-            marginTop: '16px', fontFamily: 'IBM Plex Mono',
-            fontSize: '11px', color: 'var(--text-dim)'
-          }}>
-            Last scan: {new Date(lastScan).toLocaleString()}
-          </div>
-        )}
+        <div style={{
+          marginTop: '16px', fontFamily: 'IBM Plex Mono',
+          fontSize: '11px', color: 'var(--text-dim)', display: 'flex', gap: '16px'
+        }}>
+          {lastPipelineRun && <span>Last pipeline: {formatTimeAgo(lastPipelineRun)}</span>}
+          {lastScan && <span>Last scan: {new Date(lastScan).toLocaleString()}</span>}
+        </div>
       </motion.div>
 
       {/* Generational Buy Zones */}
@@ -263,6 +269,19 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Score Distribution + Sector Heatmap */}
+      <div style={{ marginBottom: '48px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <h2 style={{
+            fontFamily: 'Cormorant Garamond', fontSize: '32px',
+            fontWeight: 400, color: 'var(--text-primary)'
+          }}>
+            Market Overview
+          </h2>
+        </div>
+        <ScoreDistribution />
+      </div>
+
       {/* SAIN Network Stats */}
       <div style={{ marginBottom: '48px' }}>
         <div style={{
@@ -325,4 +344,14 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 1) return 'less than 1 hour ago';
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days !== 1 ? 's' : ''} ago`;
 }
