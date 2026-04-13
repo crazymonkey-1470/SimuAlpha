@@ -174,7 +174,7 @@ app.post('/api/admin/refresh-institutional', async (_req, res) => {
 
 // Run a seed script by name
 app.post('/api/admin/seed/:script', async (req, res) => {
-  const allowed = ['seed_13f', 'seed_sain_sources', 'seed_spec_documents', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda'];
+  const allowed = ['seed_13f', 'seed_sain_sources', 'seed_spec_documents', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda', 'seed_macro_context'];
   if (!allowed.includes(req.params.script)) return res.status(400).json({ error: 'Unknown script' });
   try {
     const fn = require('./scripts/' + req.params.script);
@@ -254,7 +254,7 @@ app.get('/api/admin/test-insert', async (req, res) => {
 app.get('/api/admin/seed-all', async (req, res) => {
   try {
   const results = {};
-  const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda'];
+  const scripts = ['seed_sain_sources', 'seed_13f', 'seed_doc_1_scoring', 'seed_doc_2_fundamental', 'seed_doc_3_nvda', 'seed_macro_context'];
   results._version = 'v3-auto-migrate';
 
   // ── Auto-migrations: ensure tables exist before seeding ──
