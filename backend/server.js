@@ -1058,6 +1058,28 @@ app.post('/api/sain/scan/:category', async (req, res) => {
   }
 });
 
+// Admin: Full SAIN scan with activity logging (fire-and-forget)
+app.post('/api/admin/sain-scan', async (_req, res) => {
+  try {
+    res.json({ status: 'started', note: 'Check /api/agent/activity for progress' });
+
+    const { logActivity } = require('./services/agent_logger');
+    await logActivity({ type: 'SAIN', title: 'Full SAIN scan triggered', importance: 'NOTABLE' });
+
+    const social = await invokeSkill('scan_social', { category: 'ALL' });
+    await logActivity({ type: 'SAIN', title: `Social scan: ${social.signals_found} signals from ${social.sources_scanned} sources`, importance: 'INFO' });
+
+    const pol = await invokeSkill('scan_politicians', {});
+    await logActivity({ type: 'SAIN', title: `Politician scan: ${pol.trades_found || 0} trades`, importance: 'INFO' });
+
+    const consensus = await computeAllConsensus();
+    const fsc = consensus.filter(c => c.is_full_stack_consensus);
+    await logActivity({ type: 'SAIN', title: `Consensus computed: ${consensus.length} tickers, ${fsc.length} full-stack`, importance: fsc.length > 0 ? 'IMPORTANT' : 'INFO' });
+  } catch (err) {
+    log.error({ err }, 'Admin SAIN scan error');
+  }
+});
+
 // ═══════════════════════════════════════════
 // AGENT ACTIVITY ENDPOINTS
 // ═══════════════════════════════════════════
