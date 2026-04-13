@@ -938,7 +938,7 @@ app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
   // Check screener_results
   const { data: screener, error: sErr } = await supabase
     .from('screener_results')
-    .select('ticker, tli_score, signal, eps_gaap, net_income, operating_margin, free_cash_flow, ma_50d, price_200wma, updated_at')
+    .select('ticker, total_score, fundamental_score, technical_score, signal, eps_gaap, net_income, operating_margin, free_cash_flow, revenue_current, revenue_prior_year, current_price, ma_50d, price_200wma, price_200mma, updated_at')
     .eq('ticker', ticker);
 
   // Try running analyzeStock synchronously and catch any error
