@@ -8,6 +8,7 @@
 
 const { detectPivots, validateImpulseWave, validateCorrectiveWave, calculateFibTargets } = require('./elliott_wave');
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'backtester' });
 
 /**
  * Backtest a single ticker using its full monthly price history.
@@ -205,7 +206,7 @@ async function backtestTicker(ticker, fullHistory) {
  * Run backtests for all scored tickers and store results.
  */
 async function runBacktestAll(tickers, fetchMonthlyFn) {
-  console.log(`[Backtester] Running backtests for ${tickers.length} tickers...`);
+  log.info({ tickerCount: tickers.length }, 'Running backtests');
 
   // Fetch SPY once for benchmark comparison
   let spyHistory = [];
@@ -254,9 +255,9 @@ async function runBacktestAll(tickers, fetchMonthlyFn) {
         await supabase.from('backtest_summary').upsert(summary, { onConflict: 'ticker' });
       }
 
-      console.log(`  ${ticker}: ${signals.length} signals | ${summary?.win_rate_pct ?? '—'}% win rate | avg ${summary?.avg_return_pct ?? '—'}%`);
+      log.info({ ticker, signalCount: signals.length, winRate: summary?.win_rate_pct, avgReturn: summary?.avg_return_pct }, 'Backtest complete');
     } catch (err) {
-      console.error(`  ${ticker}: backtest error -`, err.message);
+      log.error({ err, ticker }, 'Backtest error');
     }
 
     // Respect rate limits

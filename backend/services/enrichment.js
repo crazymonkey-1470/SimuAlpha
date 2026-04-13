@@ -9,6 +9,7 @@
  */
 
 const { fetchHistoricalPrices } = require('./fetcher');
+const log = require('./logger').child({ module: 'enrichment' });
 
 // ═══════════════════════════════════════════
 // SPY CACHE (fetched once per pipeline run)
@@ -24,10 +25,10 @@ async function getSpyReturns() {
     return _spyWeeklyReturns;
   }
 
-  console.log('[Enrichment] Fetching SPY weekly data for beta calculation...');
+  log.info('Fetching SPY weekly data for beta calculation');
   const spy = await fetchHistoricalPrices('SPY');
   if (!spy || !spy.weeklyCloses || spy.weeklyCloses.length < 52) {
-    console.error('[Enrichment] Insufficient SPY data for beta calculation');
+    log.error('Insufficient SPY data for beta calculation');
     return null;
   }
 
@@ -42,7 +43,7 @@ async function getSpyReturns() {
 
   _spyWeeklyReturns = returns;
   _spyCacheTimestamp = now;
-  console.log(`[Enrichment] SPY returns cached: ${returns.length} weekly returns`);
+  log.info({ count: returns.length }, 'SPY returns cached');
   return returns;
 }
 

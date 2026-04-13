@@ -7,6 +7,7 @@
  * Run: node backend/scripts/seed_doc_1_scoring.js
  */
 require('dotenv').config();
+const log = require('../services/logger').child({ module: 'seed_doc_1_scoring' });
 const supabase = require('../services/supabase');
 const { ingestDocument } = require('../services/ingest');
 
@@ -39,23 +40,23 @@ DOWNTREND FILTER: 8 signals scored. Score >=4 suppresses all buys except GENERAT
 `;
 
 async function main() {
-  console.log('[seed_doc_1] SEED START — TLI Scoring Algorithm Reference');
+  log.info('Seed start — TLI Scoring Algorithm Reference');
 
   // Step 1: Clear existing chunks for this source name
-  console.log(`[seed_doc_1] Deleting existing chunks for "${SOURCE_NAME}"...`);
+  log.info({ sourceName: SOURCE_NAME }, 'Deleting existing chunks');
   const { error: delError, count } = await supabase
     .from('knowledge_chunks')
     .delete()
     .eq('source_name', SOURCE_NAME);
 
   if (delError) {
-    console.error('[seed_doc_1] Delete error:', delError.message, delError);
+    log.error({ err: delError }, 'Delete error');
   } else {
-    console.log(`[seed_doc_1] Delete OK — cleared ${count ?? 'unknown'} existing chunks`);
+    log.info({ count: count ?? 'unknown' }, 'Cleared existing chunks');
   }
 
   // Step 2: Ingest the document
-  console.log(`[seed_doc_1] Calling ingestDocument for "${SOURCE_NAME}"...`);
+  log.info({ sourceName: SOURCE_NAME }, 'Calling ingestDocument');
   const result = await ingestDocument({
     text: TLI_SCORING_DOC,
     sourceName: SOURCE_NAME,
@@ -63,8 +64,8 @@ async function main() {
     sourceDate: SOURCE_DATE,
   });
 
-  console.log(`[seed_doc_1] Ingest result:`, JSON.stringify(result));
-  console.log(`[seed_doc_1] SEED DONE — ${result.chunks_stored}/${result.chunks_total} chunks stored`);
+  log.info({ result }, 'Ingest result');
+  log.info({ chunksStored: result.chunks_stored, chunksTotal: result.chunks_total }, 'Seed done');
   return { chunks_stored: result.chunks_stored, chunks_total: result.chunks_total };
 }
 
@@ -72,7 +73,7 @@ module.exports = main;
 
 if (require.main === module) {
   main().catch(err => {
-    console.error('[seed_doc_1] FAILED:', err.message);
+    log.error({ err }, 'Seed failed');
     process.exit(1);
   });
 }

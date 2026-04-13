@@ -7,6 +7,7 @@
  * execute({ ticker, stock }) -> { valuation, score, narrative }
  */
 
+const log = require('../../services/logger').child({ module: 'three_pillar_value' });
 const { computeThreePillarValuation, scoreValuation } = require('../../services/valuation');
 const { complete } = require('../../services/llm');
 
@@ -84,7 +85,7 @@ Score Flags: ${score.flags.length > 0 ? score.flags.join(', ') : 'None'}`;
       maxTokens: 500,
     });
   } catch (err) {
-    console.error(`[three_pillar_value] LLM narrative failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'LLM narrative failed');
     narrative = `Valuation complete for ${ticker}: avg target $${valuation.avgTarget} (${valuation.avgUpside > 0 ? '+' : ''}${valuation.avgUpside}% upside). Rating: ${valuation.rating}. WACC tier: ${valuation.waccTier}.`;
   }
 

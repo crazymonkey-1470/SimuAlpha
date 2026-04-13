@@ -6,6 +6,7 @@
  * and macro conditions to produce actionable sizing guidance.
  */
 
+const log = require('../../services/logger').child({ module: 'position_sizing' });
 const { completeJSON } = require('../../services/llm');
 const { retrieve } = require('../../services/knowledge');
 
@@ -163,7 +164,7 @@ Based on the wave position, macro environment, and portfolio size, determine:
   });
 
   if (!result) {
-    console.error(`[position_sizing] LLM returned null for ${ticker}`);
+    log.error({ ticker }, 'LLM returned null');
     return null;
   }
 
@@ -172,7 +173,7 @@ Based on the wave position, macro environment, and portfolio size, determine:
   const missing = requiredFields.filter(f => result[f] == null);
 
   if (missing.length > 0) {
-    console.error(`[position_sizing] Missing required fields for ${ticker}:`, missing);
+    log.error({ ticker, missing }, 'Missing required fields');
     return null;
   }
 
@@ -187,7 +188,7 @@ Based on the wave position, macro environment, and portfolio size, determine:
   const cap = maxPctByCycle[cyclePhase] || 6;
 
   if (result.position_size_pct > cap) {
-    console.warn(`[position_sizing] Capping ${ticker} position from ${result.position_size_pct}% to ${cap}% (cycle: ${cyclePhase})`);
+    log.warn({ ticker, from: result.position_size_pct, to: cap, cyclePhase }, 'Capping position size');
     result.position_size_pct = cap;
   }
 

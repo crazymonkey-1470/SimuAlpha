@@ -6,6 +6,7 @@
  * with a comprehensive ruleset encoded in the system prompt.
  */
 
+const log = require('../../services/logger').child({ module: 'interpret_wave' });
 const { complete } = require('../../services/llm');
 const { retrieve } = require('../../services/knowledge');
 
@@ -184,13 +185,13 @@ Determine the current Elliott Wave position. Identify the pattern type, calculat
 
     // Validate required fields
     if (!result.current_wave || !result.pattern_type || result.confidence == null) {
-      console.error(`[interpret_wave] Missing required fields for ${ticker}:`, Object.keys(result));
+      log.error({ ticker, fields: Object.keys(result) }, 'Missing required fields');
       return null;
     }
 
     return result;
   } catch (err) {
-    console.error(`[interpret_wave] JSON parse failed for ${ticker}:`, err.message, raw.slice(0, 300));
+    log.error({ err, ticker, rawPreview: raw.slice(0, 300) }, 'JSON parse failed');
     return null;
   }
 }

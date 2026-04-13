@@ -1,5 +1,6 @@
 const supabase = require('../services/supabase');
 const { sleep } = require('../services/fetcher');
+const log = require('../services/logger').child({ module: 'stage2_prescreen' });
 
 const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
 
@@ -14,7 +15,7 @@ let isRunning = false;
 
 async function runPrescreen() {
   if (isRunning) {
-    console.log('[Stage 2] Already running, skipping duplicate trigger');
+    log.info('Already running, skipping duplicate trigger');
     return 0;
   }
   isRunning = true;
@@ -27,7 +28,7 @@ async function runPrescreen() {
 }
 
 async function _runPrescreen() {
-  console.log('\n[Stage 2] Starting pre-screen of universe...');
+  log.info('Starting pre-screen of universe');
   const startTime = Date.now();
 
   // Read all universe tickers (Supabase defaults to 1000 rows, so paginate)
@@ -40,7 +41,7 @@ async function _runPrescreen() {
       .select('ticker')
       .range(from, from + pageSize - 1);
     if (error) {
-      console.error('[Stage 2] Failed to read universe:', error.message);
+      log.error({ err: error }, 'Failed to read universe');
       return 0;
     }
     if (!data || data.length === 0) break;
@@ -50,11 +51,11 @@ async function _runPrescreen() {
   }
 
   if (universe.length === 0) {
-    console.error('[Stage 2] Universe is empty');
+    log.error('Universe is empty');
     return 0;
   }
 
-  console.log(`[Stage 2] Processing ${universe.length} universe tickers...`);
+  log.info({ count: universe.length }, 'Processing universe tickers');
 
   const candidates = [];
   let processed = 0;
@@ -74,8 +75,7 @@ async function _runPrescreen() {
   for (const { ticker } of universe) {
     processed++;
     if (processed % 100 === 0) {
-      console.log(`[Stage 2] Progress: ${processed}/${universe.length} processed, ${candidates.length} candidates so far`);
-      console.log(`[Stage 2] Filter stats: ${JSON.stringify(filterStats)}`);
+      log.info({ processed, total: universe.length, candidates: candidates.length, filterStats }, 'Progress update');
     }
 
     try {
@@ -86,7 +86,7 @@ async function _runPrescreen() {
       if (!res.ok) {
         consecutiveErrors++;
         if (consecutiveErrors >= 20) {
-          console.error(`[Stage 2] ${consecutiveErrors} consecutive errors — scraper may be down. Stopping.`);
+          log.error({ consecutiveErrors }, 'Too many consecutive errors — scraper may be down, stopping');
           break;
         }
         filterStats.fetchFailed++;
@@ -98,7 +98,7 @@ async function _runPrescreen() {
 
       // Log first 5 tickers for diagnostics
       if (processed <= 5) {
-        console.log(`[Stage 2] Sample ${ticker}: price=${data.current_price}, mcap=${data.market_cap}, rev=${data.revenue_current}, source=${data.source}`);
+        log.info({ ticker, price: data.current_price, mcap: data.market_cap, rev: data.revenue_current, source: data.source }, 'Sample ticker data');
       }
 
       const marketCap = data.market_cap ?? null;
@@ -145,8 +145,8 @@ async function _runPrescreen() {
     }
   }
 
-  console.log(`[Stage 2] Pre-screen done: ${candidates.length} candidates from ${processed} processed`);
-  console.log(`[Stage 2] Final filter stats: ${JSON.stringify(filterStats)}`);
+  log.info({ candidates: candidates.length, processed }, 'Pre-screen done');
+  log.info({ filterStats }, 'Final filter stats');
 
   // Upsert candidates
   if (candidates.length > 0) {
@@ -156,7 +156,7 @@ async function _runPrescreen() {
       const { error } = await supabase
         .from('screener_candidates')
         .upsert(batch, { onConflict: 'ticker' });
-      if (error) console.error(`[Stage 2] Upsert batch error:`, error.message);
+      if (error) log.error({ err: error }, 'Upsert batch error');
     }
   }
 
@@ -168,7 +168,7 @@ async function _runPrescreen() {
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[Stage 2] Complete: ${processed} screened → ${candidates.length} candidates (${elapsed}s)`);
+  log.info({ processed, candidates: candidates.length, elapsedSec: elapsed }, 'Stage 2 complete');
   return candidates.length;
 }
 

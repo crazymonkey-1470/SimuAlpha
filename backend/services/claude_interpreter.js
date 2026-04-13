@@ -1,5 +1,6 @@
 require('dotenv').config();
 const Anthropic = require('@anthropic-ai/sdk');
+const log = require('./logger').child({ module: 'claude_interpreter' });
 
 // Validate model ID — must start with "claude-" to catch garbled env vars
 const envModel = process.env.CLAUDE_MODEL;
@@ -139,7 +140,7 @@ no backticks. Just the raw JSON:
       interpreted_at: new Date().toISOString(),
     };
   } catch (error) {
-    console.error(`Claude interpretation failed for ${ticker}:`, error.message);
+    log.error({ err: error, ticker }, 'Claude interpretation failed');
     return {
       conviction: null,
       summary: 'Interpretation unavailable.',
@@ -195,7 +196,7 @@ Respond with ONLY the narrative text. No JSON. No quotes. Just the sentences.`;
 
     return response.content[0].text.trim();
   } catch (error) {
-    console.error(`Alert narrative failed for ${ticker}:`, error.message);
+    log.error({ err: error, ticker }, 'Alert narrative failed');
     return `${ticker} has entered a TLI buy zone. Score: ${fundamentals.total_score}/100. R/R: ${waveData.reward_risk_ratio}x.`;
   }
 }
@@ -249,7 +250,7 @@ DISCIPLINE REMINDER
 
     return response.content[0].text.trim();
   } catch (error) {
-    console.error('Weekly brief generation failed:', error.message);
+    log.error({ err: error }, 'Weekly brief generation failed');
     return null;
   }
 }

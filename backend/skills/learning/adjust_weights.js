@@ -9,6 +9,7 @@
  * -> { adjustments, no_change, overall_assessment, version }
  */
 
+const log = require('../../services/logger').child({ module: 'adjust_weights' });
 const { completeJSON } = require('../../services/llm');
 
 const SAFETY_RULES = {
@@ -252,7 +253,7 @@ async function execute({ signalOutcomes, currentWeights, knowledgeContext }) {
       maxTokens: 2000,
     });
   } catch (err) {
-    console.error(`[adjust_weights] LLM analysis failed:`, err.message);
+    log.error({ err }, 'LLM analysis failed');
     return {
       adjustments: [],
       no_change: SAFETY_RULES.ADJUSTABLE_CATEGORIES,
@@ -316,7 +317,7 @@ async function execute({ signalOutcomes, currentWeights, knowledgeContext }) {
   }
 
   if (violations.length > 0) {
-    console.warn(`[adjust_weights] Safety violations blocked:`, violations);
+    log.warn({ violations }, 'Safety violations blocked');
   }
 
   // Determine which factors had no change

@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const log = require('./services/logger').child({ module: 'pipeline' });
 const { fetchUniverse } = require('./pipeline/stage1_universe');
 const { runPrescreen } = require('./pipeline/stage2_prescreen');
 const { runDeepScore } = require('./pipeline/stage3_deepscore');
@@ -16,57 +17,55 @@ let pipelineRunning = false;
 
 async function runFullPipeline() {
   if (pipelineRunning) {
-    console.log('[Pipeline] Already running, skipping duplicate trigger');
+    log.warn('Pipeline already running, skipping duplicate trigger');
     return;
   }
   pipelineRunning = true;
 
-  console.log('\n════════════════════════════════════════');
-  console.log('[Pipeline] Starting full pipeline run...');
-  console.log('════════════════════════════════════════');
+  log.info('Starting full pipeline run');
 
   try {
     try {
       await fetchUniverse();
     } catch (err) {
-      console.error('[Pipeline] Stage 1 failed:', err.message);
+      log.error({ err }, 'Stage 1 failed');
     }
 
     try {
       await runPrescreen();
     } catch (err) {
-      console.error('[Pipeline] Stage 2 failed:', err.message);
+      log.error({ err }, 'Stage 2 failed');
     }
 
     try {
       await runDeepScore();
     } catch (err) {
-      console.error('[Pipeline] Stage 3 failed:', err.message);
+      log.error({ err }, 'Stage 3 failed');
     }
 
     // Post-Stage-3: Batch valuation recompute + signal outcome tracking
     try {
-      console.log('\n[Pipeline] Running batch valuations...');
+      log.info('Running batch valuations');
       const valResult = await batchComputeValuations();
-      console.log(`[Pipeline] Valuations: ${valResult.computed} computed, ${valResult.failed} failed`);
+      log.info({ computed: valResult.computed, failed: valResult.failed }, 'Batch valuations complete');
     } catch (err) {
-      console.error('[Pipeline] Batch valuations failed:', err.message);
+      log.error({ err }, 'Batch valuations failed');
     }
 
     try {
-      console.log('[Pipeline] Updating signal outcomes...');
+      log.info('Updating signal outcomes');
       await updateOutcomes();
     } catch (err) {
-      console.error('[Pipeline] Signal outcomes update failed:', err.message);
+      log.error({ err }, 'Signal outcomes update failed');
     }
 
     try {
       await runWaveCount();
     } catch (err) {
-      console.error('[Pipeline] Stage 4 failed:', err.message);
+      log.error({ err }, 'Stage 4 failed');
     }
 
-    console.log('\n[Pipeline] Full pipeline complete.\n');
+    log.info('Full pipeline complete');
   } finally {
     pipelineRunning = false;
   }
@@ -83,44 +82,44 @@ async function runFullPipeline() {
 function startCron() {
   // Full pipeline — Sunday 6am ET
   cron.schedule('0 6 * * 0', () => {
-    console.log('[Cron] Sunday scan — full pipeline');
-    runFullPipeline().catch((err) => console.error('[Cron] Sunday pipeline error:', err.message));
+    log.info('Sunday scan — full pipeline');
+    runFullPipeline().catch((err) => log.error({ err }, 'Sunday pipeline error'));
   });
 
   // Full pipeline — Wednesday 6am ET
   cron.schedule('0 6 * * 3', () => {
-    console.log('[Cron] Wednesday midweek check — full pipeline');
-    runFullPipeline().catch((err) => console.error('[Cron] Wednesday pipeline error:', err.message));
+    log.info('Wednesday midweek check — full pipeline');
+    runFullPipeline().catch((err) => log.error({ err }, 'Wednesday pipeline error'));
   });
 
   // Sprint 10C — Daily outcome tracking at 4am ET
   // Checks every signal for 3/6/12/24-month milestones and records realized returns
   // into signal_outcomes so the agentic learning loop has fresh performance data.
   cron.schedule('0 4 * * *', async () => {
-    console.log('[Cron] Daily signal outcome tracking — 4am');
+    log.info('Daily signal outcome tracking — 4am');
     try {
       await updateOutcomes();
-      console.log('[Cron] Signal outcomes refreshed');
+      log.info('Signal outcomes refreshed');
     } catch (err) {
-      console.error('[Cron] Outcome tracking failed:', err.message);
+      log.error({ err }, 'Outcome tracking failed');
     }
   });
 
   // Agent self-improvement analysis — Sunday 10am ET
   // Analyzes knowledge base, scoring outcomes, and errors to suggest improvements.
   cron.schedule('0 10 * * 0', async () => {
-    console.log('[Cron] Running agent self-improvement analysis...');
+    log.info('Running agent self-improvement analysis');
     try {
       const result = await invokeSkill('self_improve', {});
-      console.log(`[Cron] Self-improvement: generated ${result.suggestions_generated} suggestions`);
+      log.info({ suggestionsGenerated: result.suggestions_generated }, 'Self-improvement complete');
     } catch (err) {
-      console.error('[Cron] Self-improvement analysis failed:', err.message);
+      log.error({ err }, 'Self-improvement analysis failed');
     }
   });
 
   // Weekly brief — Sunday 8am ET (after Sunday pipeline completes)
   cron.schedule('0 8 * * 0', async () => {
-    console.log('[Cron] Generating weekly brief...');
+    log.info('Generating weekly brief');
     try {
       const { data: topOpportunities } = await supabase
         .from('screener_results')
@@ -151,18 +150,21 @@ function startCron() {
             }),
           }
         );
-        console.log('[Cron] Weekly brief sent via Telegram');
+        log.info('Weekly brief sent via Telegram');
       }
-    } catch (error) {
-      console.error('[Cron] Weekly brief failed:', error.message);
+    } catch (err) {
+      log.error({ err }, 'Weekly brief failed');
     }
   });
 
-  console.log('[Cron] Schedules active:');
-  console.log('  Full Pipeline:   Sunday 6am ET + Wednesday 6am ET');
-  console.log('  Outcome Track:   Daily 4am ET');
-  console.log('  Self-Improve:    Sunday 10am ET');
-  console.log('  Weekly Brief:    Sunday 8am ET');
+  log.info({
+    schedules: {
+      fullPipeline: 'Sunday 6am ET + Wednesday 6am ET',
+      outcomeTrack: 'Daily 4am ET',
+      selfImprove: 'Sunday 10am ET',
+      weeklyBrief: 'Sunday 8am ET',
+    },
+  }, 'Cron schedules active');
 }
 
 module.exports = { runFullPipeline, startCron, runDeepScore, runWaveCount };

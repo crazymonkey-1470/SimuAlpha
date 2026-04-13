@@ -4,6 +4,8 @@
  * Never throws — a failed alert must not crash the pipeline.
  */
 
+const log = require('./logger').child({ module: 'alerts' });
+
 const ALERT_EMOJI = {
   LOAD_THE_BOAT: '🟢',
   SIGNAL_UPGRADE: '🟡',
@@ -61,7 +63,7 @@ async function fireAlert(alertData) {
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.log(`[alerts] Telegram not configured — skipping alert for ${alertData.ticker}`);
+    log.info({ ticker: alertData.ticker }, 'Telegram not configured, skipping alert');
     return;
   }
 
@@ -79,12 +81,12 @@ async function fireAlert(alertData) {
 
     if (!res.ok) {
       const err = await res.text();
-      console.error(`[alerts] Telegram API error for ${alertData.ticker}:`, err);
+      log.error({ ticker: alertData.ticker, response: err }, 'Telegram API error');
     } else {
-      console.log(`[alerts] ✓ Alert sent for ${alertData.ticker} (${alertData.alert_type})`);
+      log.info({ ticker: alertData.ticker, alertType: alertData.alert_type }, 'Alert sent');
     }
   } catch (err) {
-    console.error(`[alerts] Failed to send alert for ${alertData.ticker}:`, err.message);
+    log.error({ err, ticker: alertData.ticker }, 'Failed to send alert');
   }
 }
 

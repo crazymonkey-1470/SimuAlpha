@@ -12,6 +12,7 @@
  *   FUND_SPEC_PATH       — file path to Fundamental Analysis Master
  */
 
+const log = require('../services/logger').child({ module: 'seed_spec_documents' });
 const fs = require('fs');
 const path = require('path');
 const { ingestDocument } = require('../services/ingest');
@@ -525,7 +526,7 @@ Key Fibonacci levels observed:
 function loadSpec(envVar, fallback) {
   const p = process.env[envVar];
   if (p && fs.existsSync(p)) {
-    console.log(`[seed_specs] Loading ${envVar} from ${p}`);
+    log.info({ envVar, path: p }, 'Loading spec from file');
     return fs.readFileSync(p, 'utf8');
   }
   return fallback;
@@ -535,41 +536,41 @@ async function seedSpecs() {
   const tliSpec = loadSpec('TLI_SPEC_PATH', TLI_SCORING_SPEC);
   const fundSpec = loadSpec('FUND_SPEC_PATH', FUNDAMENTAL_ANALYSIS_SPEC);
 
-  console.log('[seed_specs] Seeding TLI Scoring Algorithm v1.0...');
+  log.info('Seeding TLI Scoring Algorithm v1.0');
   const r1 = await ingestDocument({
     text: tliSpec,
     sourceName: 'TLI Scoring Algorithm v1.0 — Complete Technical Specification',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-01',
   });
-  console.log(`[seed_specs]   stored ${r1?.chunks_stored}/${r1?.chunks_total} chunks`);
+  log.info({ chunksStored: r1?.chunks_stored, chunksTotal: r1?.chunks_total }, 'TLI spec stored');
 
-  console.log('[seed_specs] Seeding Fundamental Analysis Engine Master Prompt...');
+  log.info('Seeding Fundamental Analysis Engine Master Prompt');
   const r2 = await ingestDocument({
     text: fundSpec,
     sourceName: 'SimuAlpha Fundamental Analysis Engine — Master Prompt',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-01',
   });
-  console.log(`[seed_specs]   stored ${r2?.chunks_stored}/${r2?.chunks_total} chunks`);
+  log.info({ chunksStored: r2?.chunks_stored, chunksTotal: r2?.chunks_total }, 'Fundamental spec stored');
 
-  console.log('[seed_specs] Seeding NVDA reference chart analysis...');
+  log.info('Seeding NVDA reference chart analysis');
   const r3 = await ingestDocument({
     text: NVDA_WAVE_ANALYSIS,
     sourceName: 'NVDA Weekly Chart — Perfect Elliott Wave Reference',
     sourceType: 'TLI_METHODOLOGY',
     sourceDate: '2026-04-04',
   });
-  console.log(`[seed_specs]   stored ${r3?.chunks_stored}/${r3?.chunks_total} chunks`);
+  log.info({ chunksStored: r3?.chunks_stored, chunksTotal: r3?.chunks_total }, 'NVDA reference stored');
 
-  console.log('[seed_specs] Spec documents seeded.');
+  log.info('Spec documents seeded');
 }
 
 if (require.main === module) {
   seedSpecs()
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('[seed_specs] FAILED:', err.message);
+      log.error({ err }, 'Seed failed');
       process.exit(1);
     });
 }

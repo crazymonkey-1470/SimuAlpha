@@ -12,6 +12,7 @@
 const { invoke, listSkills } = require('../skills');
 const supabase = require('./supabase');
 const { retrieve, getStats } = require('./knowledge');
+const log = require('./logger').child({ module: 'orchestrator' });
 
 // Sprint 10B imports
 const { classifyLynch, detectMigration } = require('./lynch_classifier');
@@ -32,7 +33,7 @@ const { recordSignal } = require('./signalTracker');
  * Executes skills in dependency order, stores the result.
  */
 async function analyzeStock(ticker) {
-  console.log(`[Orchestrator] Starting full analysis for ${ticker}...`);
+  log.info({ ticker }, 'Starting full analysis');
   const startTime = Date.now();
 
   // Step 1: Gather existing data from screener_results
@@ -118,7 +119,7 @@ async function analyzeStock(ticker) {
       wma200: stockData.price_200wma || 0,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Wave interpretation failed:`, err.message, err.stack?.split('\n').slice(0, 3));
+    log.error({ err, ticker }, 'Wave interpretation failed');
     results.wave = wave?.wave_count_json || { error: err.message };
   }
 
@@ -132,7 +133,7 @@ async function analyzeStock(ticker) {
       totalScore: stockData.total_score || 0,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Position sizing failed:`, err.message);
+    log.error({ err, ticker }, 'Position sizing failed');
     results.positionSizing = null;
   }
 
@@ -152,7 +153,7 @@ async function analyzeStock(ticker) {
       beta: stockData.beta || 1.0,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Valuation failed:`, err.message);
+    log.error({ err, ticker }, 'Valuation failed');
     results.valuation = valuation || null;
   }
 
@@ -177,7 +178,7 @@ async function analyzeStock(ticker) {
       valueTrap: results.valueTrap,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Thesis generation failed:`, err.message);
+    log.error({ err, ticker }, 'Thesis generation failed');
     results.thesis = null;
   }
 
@@ -200,7 +201,7 @@ async function analyzeStock(ticker) {
       moat: results.moat,
     });
   } catch (err) {
-    console.error(`[Orchestrator] Compare to greats failed:`, err.message);
+    log.error({ err, ticker }, 'Compare to greats failed');
     results.greats = null;
   }
 
@@ -319,7 +320,7 @@ async function analyzeStock(ticker) {
       sainForScorer,
     );
   } catch (err) {
-    console.error(`[Orchestrator] v3 scorer failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'v3 scorer failed');
   }
 
   // Score result — prefer v3 when available, fall back to screener data
@@ -442,7 +443,7 @@ async function analyzeStock(ticker) {
       positionCard,
     );
   } catch (err) {
-    console.error(`[Orchestrator] recordSignal failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'recordSignal failed');
   }
 
   // Step 4: Store the complete analysis
@@ -482,10 +483,10 @@ async function analyzeStock(ticker) {
     .upsert(analysis, { onConflict: 'ticker' });
 
   if (error) {
-    console.error(`[Orchestrator] Storage error:`, error.message);
+    log.error({ err: error, ticker }, 'Storage error');
   }
 
-  console.log(`[Orchestrator] ${ticker} analysis complete in ${(elapsed / 1000).toFixed(1)}s — Rating: ${ratingResult.rating}, Lynch: ${lynchClass.category}`);
+  log.info({ ticker, elapsedSec: (elapsed / 1000).toFixed(1), rating: ratingResult.rating, lynchCategory: lynchClass.category }, 'Analysis complete');
   return analysis;
 }
 
@@ -494,7 +495,7 @@ async function analyzeStock(ticker) {
  * propose weight adjustments for human review.
  */
 async function runLearningCycle() {
-  console.log('[Orchestrator] Starting learning cycle...');
+  log.info('Starting learning cycle');
 
   // Gather signal outcomes
   const { data: outcomes } = await supabase
@@ -533,7 +534,7 @@ async function runLearningCycle() {
       currentWeights: {},
     });
   } catch (err) {
-    console.error('[Orchestrator] Principle extraction failed:', err.message);
+    log.error({ err }, 'Principle extraction failed');
   }
 
   // Store extracted principles
@@ -569,7 +570,7 @@ async function runLearningCycle() {
       },
     });
   } catch (err) {
-    console.error('[Orchestrator] Weight adjustment failed:', err.message);
+    log.error({ err }, 'Weight adjustment failed');
   }
 
   // Store proposed adjustments (pending human approval)
@@ -588,7 +589,7 @@ async function runLearningCycle() {
     }
   }
 
-  console.log('[Orchestrator] Learning cycle complete.');
+  log.info('Learning cycle complete');
   return {
     principles_extracted: principles?.principles?.length || 0,
     adjustments_proposed: adjustments?.proposed_changes?.length || 0,

@@ -8,40 +8,41 @@
  */
 
 const cron = require('node-cron');
+const log = require('../services/logger').child({ module: 'sain_cron' });
 const skills = require('../skills');
 const { computeAllConsensus } = require('../services/sain_consensus');
 
 // Every 6 hours: scan X accounts (AI models + politicians + market)
 cron.schedule('0 */6 * * *', async () => {
-  console.log('[SAIN CRON] Starting social scan...');
+  log.info('Starting social scan');
   try {
     const social = await skills.invoke('scan_social', { category: 'ALL' });
-    console.log(`[SAIN CRON] Social scan: ${social.signals_found} signals from ${social.sources_scanned} sources`);
+    log.info({ signalsFound: social.signals_found, sourcesScanned: social.sources_scanned }, 'Social scan complete');
   } catch (err) {
-    console.error('[SAIN CRON] Social scan error:', err.message);
+    log.error({ err }, 'Social scan error');
   }
 });
 
 // Every 12 hours: scrape politician trades from QuiverQuant API
 cron.schedule('0 */12 * * *', async () => {
-  console.log('[SAIN CRON] Starting politician scan...');
+  log.info('Starting politician scan');
   try {
     const pol = await skills.invoke('scan_politicians', {});
-    console.log(`[SAIN CRON] Politician scan: ${pol.trades_found} trades, ${pol.committee_matches} committee matches`);
+    log.info({ tradesFound: pol.trades_found, committeeMatches: pol.committee_matches }, 'Politician scan complete');
   } catch (err) {
-    console.error('[SAIN CRON] Politician scan error:', err.message);
+    log.error({ err }, 'Politician scan error');
   }
 });
 
 // Every 12 hours (offset by 30 min): recompute all consensus
 cron.schedule('30 */12 * * *', async () => {
-  console.log('[SAIN CRON] Computing consensus...');
+  log.info('Computing consensus');
   try {
     const results = await computeAllConsensus();
     const fsc = results.filter(r => r.is_full_stack_consensus);
-    console.log(`[SAIN CRON] Consensus computed for ${results.length} tickers. Full Stack: ${fsc.length}`);
+    log.info({ tickers: results.length, fullStack: fsc.length }, 'Consensus computed');
   } catch (err) {
-    console.error('[SAIN CRON] Consensus error:', err.message);
+    log.error({ err }, 'Consensus error');
   }
 });
 

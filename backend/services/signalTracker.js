@@ -1,4 +1,5 @@
 const supabase = require('./supabase');
+const log = require('./logger').child({ module: 'signalTracker' });
 
 /**
  * Signal Outcome Tracker — Sprint 6B
@@ -105,7 +106,7 @@ async function recordSignal(stock, scoreResult, positionCard = null) {
     .upsert(row, { onConflict: 'ticker,signal_date' });
 
   if (error) {
-    console.error(`[SignalTracker] Record failed for ${stock.ticker}:`, error.message);
+    log.error({ err: error, ticker: stock.ticker }, 'Record failed');
   }
 }
 
@@ -156,12 +157,12 @@ async function updateOutcomes() {
         .eq('id', sig.id);
 
       if (updateErr) {
-        console.error(`[SignalTracker] Update failed for ${sig.ticker}:`, updateErr.message);
+        log.error({ err: updateErr, ticker: sig.ticker }, 'Update failed');
       }
     }
   }
 
-  console.log('[SignalTracker] Outcome update complete');
+  log.info('Outcome update complete');
 }
 
 async function getSignalHistory(limit = 100) {
@@ -172,7 +173,7 @@ async function getSignalHistory(limit = 100) {
     .limit(limit);
 
   if (error) {
-    console.error('[SignalTracker] History fetch failed:', error.message);
+    log.error({ err: error }, 'History fetch failed');
     return [];
   }
   return data || [];

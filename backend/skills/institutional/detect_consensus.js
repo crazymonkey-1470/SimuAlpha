@@ -7,6 +7,7 @@
  * execute({ ticker }) -> { consensus, signals, interpretation }
  */
 
+const log = require('../../services/logger').child({ module: 'detect_consensus' });
 const supabase = require('../../services/supabase');
 const { complete } = require('../../services/llm');
 
@@ -35,12 +36,12 @@ async function execute({ ticker }) {
       .maybeSingle();
 
     if (error) {
-      console.error(`[detect_consensus] Consensus query failed for ${ticker}:`, error.message);
+      log.error({ err: error, ticker }, 'Consensus query failed');
     } else {
       consensus = data;
     }
   } catch (err) {
-    console.error(`[detect_consensus] Consensus query error for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Consensus query error');
   }
 
   // Fetch individual investor signals (last 2 quarters for trend)
@@ -54,12 +55,12 @@ async function execute({ ticker }) {
       .limit(30);
 
     if (error) {
-      console.error(`[detect_consensus] Signals query failed for ${ticker}:`, error.message);
+      log.error({ err: error, ticker }, 'Signals query failed');
     } else {
       signals = data || [];
     }
   } catch (err) {
-    console.error(`[detect_consensus] Signals query error for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Signals query error');
   }
 
   // If no data at all, return early with a clear message
@@ -100,7 +101,7 @@ ${signalSummary || '  No individual signals found.'}`;
       maxTokens: 600,
     });
   } catch (err) {
-    console.error(`[detect_consensus] LLM interpretation failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'LLM interpretation failed');
     const sentiment = consensus?.net_sentiment || 'UNKNOWN';
     const holders = consensus?.holders_count || 0;
     interpretation = `Institutional consensus for ${ticker}: ${sentiment} sentiment with ${holders} tracked holders. LLM interpretation unavailable.`;

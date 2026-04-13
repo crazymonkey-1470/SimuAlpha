@@ -10,6 +10,7 @@
  * -> { ticker, thesis, generated_at, model_used }
  */
 
+const log = require('../../services/logger').child({ module: 'write_thesis' });
 const { complete, MODEL_CONFIG } = require('../../services/llm');
 const { retrieve } = require('../../services/knowledge');
 
@@ -117,7 +118,7 @@ async function execute({
       ).join('\n---\n');
     }
   } catch (err) {
-    console.error(`[write_thesis] Knowledge retrieval failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'Knowledge retrieval failed');
     // Non-fatal — continue without knowledge context
   }
 
@@ -231,7 +232,7 @@ async function execute({
       maxTokens: 1500,
     });
   } catch (err) {
-    console.error(`[write_thesis] LLM thesis generation failed for ${ticker}:`, err.message);
+    log.error({ err, ticker }, 'LLM thesis generation failed');
     throw new Error(`Thesis generation failed for ${ticker}: ${err.message}`);
   }
 
