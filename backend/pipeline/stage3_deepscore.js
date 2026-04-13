@@ -41,7 +41,7 @@ async function runDeepScore() {
 }
 
 async function _runDeepScore() {
-  log.info('\n[Stage 3] Starting deep scoring of candidates...');
+  log.info('Starting deep scoring of candidates');
   const startTime = Date.now();
 
   const { data: candidates, error: readErr } = await supabase
@@ -49,11 +49,11 @@ async function _runDeepScore() {
     .select('ticker, company_name, sector');
 
   if (readErr || !candidates) {
-    log.error('[Stage 3] Failed to read candidates:', readErr?.message);
+    log.error({ err: readErr }, 'Failed to read candidates');
     return;
   }
 
-  log.info(`[Stage 3] Scoring ${candidates.length} candidates (scorer: ${SCORING_VERSION})...`);
+  log.info({ count: candidates.length, scorer: SCORING_VERSION }, 'Scoring candidates');
 
   const results = [];
   let alertsFired = 0;
@@ -67,7 +67,7 @@ async function _runDeepScore() {
   // Pre-fetch SPY data for beta calculation (cached for 6 hours)
   try {
     await getSpyReturns();
-  } catch (_) { log.info('[Stage 3] SPY data fetch failed, beta will be null'); }
+  } catch (_) { log.info('SPY data fetch failed, beta will be null'); }
 
   // Build sector average P/E from prior run data
   const sectorPEMap = {};
@@ -99,7 +99,7 @@ async function _runDeepScore() {
       const historicals = await fetchHistoricalPrices(ticker);
 
       if (!fund || fund.currentPrice == null) {
-        log.info(`  ${ticker}: no data, skipping`);
+        log.info({ ticker }, 'No data, skipping');
         await sleep(300);
         continue;
       }
@@ -571,7 +571,7 @@ async function _runDeepScore() {
             .limit(1);
           if (!recent || recent.length === 0) {
             await supabase.from('exit_signals').insert(es);
-            log.info(`  ${ticker}: EXIT SIGNAL — ${es.signal_type} (${es.severity})`);
+            log.info({ ticker, signalType: es.signal_type, severity: es.severity }, 'Exit signal detected');
           }
         }
       } catch (_) { /* exit_signals table may not exist yet */ }
@@ -609,14 +609,14 @@ async function _runDeepScore() {
 
       // Only log non-PASS signals to reduce noise
       if (scores.signal !== 'PASS') {
-        log.info(`  ${ticker}: ${scores.totalScore} - ${scores.signal}${scores.entryZone ? ' [ENTRY ZONE]' : ''}${scores.confluenceZone ? ' [CONFLUENCE]' : ''}${alerts.length > 0 ? ` (${alerts.length} alerts)` : ''}`);
+        log.info({ ticker, score: scores.totalScore, signal: scores.signal, entryZone: scores.entryZone || false, confluenceZone: scores.confluenceZone || false, alerts: alerts.length }, 'Scored ticker');
       }
 
       if ((i + 1) % 100 === 0) {
-        log.info(`[Stage 3] Progress: ${i + 1}/${candidates.length} scored, ${results.filter(r => r.signal !== 'PASS').length} non-PASS so far`);
+        log.info({ scored: i + 1, total: candidates.length, nonPass: results.filter(r => r.signal !== 'PASS').length }, 'Progress update');
       }
     } catch (err) {
-      log.error(`  ${ticker}: ERROR -`, err.message);
+      log.error({ err, ticker }, 'Scoring error');
     }
 
     await sleep(300);
@@ -657,7 +657,7 @@ async function _runDeepScore() {
       const { error } = await supabase
         .from('screener_results')
         .upsert(batch, { onConflict: 'ticker' });
-      if (error) log.error('[Stage 3] Upsert error:', error.message);
+      if (error) log.error({ err: error }, 'Upsert error');
     }
   }
 
@@ -680,7 +680,7 @@ async function _runDeepScore() {
   });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  log.info(`[Stage 3] Complete: ${results.length} scored | ${loadCount} LOAD THE BOAT | ${accumCount} ACCUMULATE | ${alertsFired} alerts (${elapsed}s)`);
+  log.info({ scored: results.length, loadTheBoat: loadCount, accumulate: accumCount, alertsFired, elapsedSec: elapsed }, 'Stage 3 complete');
 }
 
 /**
@@ -822,7 +822,7 @@ function detectFundamentalExitSignals({ ticker, currentPrice, signal, previousSi
  */
 async function deepScoreSingle(ticker) {
   ticker = ticker.toUpperCase();
-  log.info(`[deepScoreSingle] Scoring ${ticker} (scorer: ${SCORING_VERSION})...`);
+  log.info({ ticker, scorer: SCORING_VERSION }, 'Scoring single ticker');
 
   // Fetch fresh data
   const fund = await fetchFundamentals(ticker);
@@ -1195,7 +1195,7 @@ async function deepScoreSingle(ticker) {
     .upsert(row, { onConflict: 'ticker' });
 
   if (upsertErr) {
-    log.error(`[deepScoreSingle] Upsert error for ${ticker}:`, upsertErr.message);
+    log.error({ err: upsertErr, ticker }, 'Upsert error');
     return { error: upsertErr.message, row };
   }
 
