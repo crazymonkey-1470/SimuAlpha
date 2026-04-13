@@ -114,7 +114,7 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
 
   const filtered = data
     .filter(s => {
-      if (filter === 'ALL') return true;
+      if (filter === 'ALL') return s.signal !== 'TRIM' && s.signal !== 'AVOID';
       if (filter === 'ENTRY') return s.entry_zone;
       return s.signal === filter;
     })
