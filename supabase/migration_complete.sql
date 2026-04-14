@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS wave_counts (
   tli_signal            TEXT,
   tli_signal_reason     TEXT,
   wave_count_json       JSONB,
+  wave_pattern          TEXT,
+  wave4_type            TEXT,
+  wave1_origin          NUMERIC,
+  correction_type       TEXT,
+  capitulation_detected BOOLEAN     DEFAULT FALSE,
   entry_zone_low        NUMERIC,
   entry_zone_high       NUMERIC,
   stop_loss             NUMERIC,
@@ -224,6 +229,13 @@ CREATE TABLE IF NOT EXISTS wave_counts (
   last_updated          TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ticker, timeframe, wave_degree)
 );
+
+-- Ensure columns exist for pre-existing tables (migration-safe)
+ALTER TABLE wave_counts ADD COLUMN IF NOT EXISTS wave_pattern          TEXT;
+ALTER TABLE wave_counts ADD COLUMN IF NOT EXISTS wave4_type            TEXT;
+ALTER TABLE wave_counts ADD COLUMN IF NOT EXISTS wave1_origin          NUMERIC;
+ALTER TABLE wave_counts ADD COLUMN IF NOT EXISTS correction_type       TEXT;
+ALTER TABLE wave_counts ADD COLUMN IF NOT EXISTS capitulation_detected BOOLEAN DEFAULT FALSE;
 
 
 -- ┌──────────────────────────────────────────────────────────────────┐
