@@ -220,6 +220,46 @@ function startCron() {
     }
   });
 
+  // ═══════════════════════════════════════════
+  // X (Twitter) Posting Schedule
+  // ═══════════════════════════════════════════
+
+  // Daily signal scan — 9am ET (14:00 UTC)
+  cron.schedule('0 14 * * *', async () => {
+    if (!process.env.X_ACCESS_TOKEN) return;
+    log.info('Posting daily signal scan to X');
+    try {
+      const { postDailySignalScan } = require('./services/x_poster');
+      await postDailySignalScan();
+    } catch (err) {
+      log.error({ err }, 'X daily signal scan post failed');
+    }
+  });
+
+  // Spotlight post — 12pm ET (17:00 UTC), Mon/Wed/Fri
+  cron.schedule('0 17 * * 1,3,5', async () => {
+    if (!process.env.X_ACCESS_TOKEN) return;
+    log.info('Posting spotlight to X');
+    try {
+      const { postSpotlight } = require('./services/x_poster');
+      await postSpotlight();
+    } catch (err) {
+      log.error({ err }, 'X spotlight post failed');
+    }
+  });
+
+  // Market context — Tuesday/Thursday 11am ET (16:00 UTC)
+  cron.schedule('0 16 * * 2,4', async () => {
+    if (!process.env.X_ACCESS_TOKEN) return;
+    log.info('Posting market context to X');
+    try {
+      const { postMarketContext } = require('./services/x_poster');
+      await postMarketContext();
+    } catch (err) {
+      log.error({ err }, 'X market context post failed');
+    }
+  });
+
   log.info({
     schedules: {
       fullPipeline: 'Sunday 6am ET + Wednesday 6am ET',
@@ -228,6 +268,9 @@ function startCron() {
       weeklyBrief: 'Sunday 8am ET',
       weeklyDigest: 'Sunday 9am ET',
       selfImprove: 'Sunday 10am ET',
+      xDailyScan: 'Daily 9am ET',
+      xSpotlight: 'Mon/Wed/Fri 12pm ET',
+      xMarketContext: 'Tue/Thu 11am ET',
     },
   }, 'Cron schedules active');
 }

@@ -46,3 +46,16 @@ BEGIN
     CREATE POLICY "Service role only api_rate_limits" ON api_rate_limits FOR ALL USING (false);
   END IF;
 END $$;
+
+-- X Post Log — tracks what's been posted to avoid duplicates
+CREATE TABLE IF NOT EXISTS x_post_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker TEXT,
+  post_type TEXT NOT NULL,  -- 'spotlight', 'daily_scan', 'market_context', 'pipeline_update'
+  tweet_id TEXT,
+  content TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_x_post_log_ticker ON x_post_log(ticker);
+CREATE INDEX IF NOT EXISTS idx_x_post_log_created ON x_post_log(created_at);
