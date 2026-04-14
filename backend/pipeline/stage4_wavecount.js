@@ -87,7 +87,22 @@ async function runWaveCount() {
           const { error: wcErr } = await supabase
             .from('wave_counts')
             .upsert(wc, { onConflict: 'ticker,timeframe,wave_degree' });
-          if (wcErr) log.error({ err: wcErr, ticker }, 'wave_counts upsert error');
+          if (wcErr) {
+            // If the insert failed because a new field in elliott_wave.js is
+            // not yet in the wave_counts schema, fall back to the known-good
+            // subset so the pipeline still persists what it can. The migration
+            // (supabase/migration_wave_counts_fix.sql) must be applied to
+            // capture the full payload.
+            log.error({ err: wcErr, ticker, timeframe: wc.timeframe, fields: Object.keys(wc) }, 'wave_counts upsert failed — retrying with safe field subset');
+            const safeWc = pickWaveCountColumns(wc);
+            const { error: retryErr } = await supabase
+              .from('wave_counts')
+              .upsert(safeWc, { onConflict: 'ticker,timeframe,wave_degree' });
+            if (retryErr) {
+              log.error({ err: retryErr, ticker, timeframe: wc.timeframe }, 'wave_counts retry also failed — skipping');
+              continue;
+            }
+          }
         }
 
         // ── Exit Signal Detection (Part 7) ──
@@ -371,6 +386,31 @@ async function getBacktestSummary(ticker) {
     .eq('ticker', ticker)
     .maybeSingle();
   return data;
+}
+
+/**
+ * Columns currently defined on wave_counts (including migration_wave_counts_fix.sql).
+ * Used as a safe-subset fallback when an upsert rejects unknown columns, so a
+ * schema-drift between elliott_wave.js and Supabase never silently empties
+ * the table again. Keep in sync with supabase/migration_complete.sql.
+ */
+const WAVE_COUNTS_COLUMNS = new Set([
+  'ticker', 'timeframe', 'wave_degree', 'wave_structure', 'current_wave',
+  'confidence_score', 'confidence_label', 'tli_signal', 'tli_signal_reason',
+  'wave_count_json', 'wave_pattern', 'wave4_type', 'wave1_origin',
+  'correction_type', 'capitulation_detected',
+  'entry_zone_low', 'entry_zone_high', 'stop_loss',
+  'target_1', 'target_2', 'target_3', 'reward_risk_ratio',
+  'claude_interpretation', 'claude_model', 'claude_interpreted_at',
+  'last_updated',
+]);
+
+function pickWaveCountColumns(wc) {
+  const out = {};
+  for (const [k, v] of Object.entries(wc)) {
+    if (WAVE_COUNTS_COLUMNS.has(k)) out[k] = v;
+  }
+  return out;
 }
 
 module.exports = { runWaveCount };
