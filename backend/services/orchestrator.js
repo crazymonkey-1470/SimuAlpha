@@ -390,8 +390,14 @@ async function analyzeStock(ticker) {
     log.error({ err, ticker }, 'v3 scorer failed');
   }
 
-  // Score result — prefer v3 when available, fall back to screener data
-  const scoreResult = v3Result ? {
+  // Score result — prefer v3 when available and meaningful, fall back to screener data
+  // If v3 returns score 0 or AVOID/PASS but screener has a real score, use screener as fallback
+  const screenerScore = stockData.tliScore || stockData._raw?.total_score || 0;
+  const screenerSignal = stockData.signal || stockData._raw?.signal || 'UNKNOWN';
+  const v3HasMeaningfulScore = v3Result && v3Result.totalScore > 0 && v3Result.signal !== 'AVOID';
+  const useV3 = v3HasMeaningfulScore || !screenerScore;
+
+  const scoreResult = (useV3 && v3Result) ? {
     signal: v3Result.signal,
     label: v3Result.label,
     totalScore: v3Result.totalScore,
@@ -410,9 +416,18 @@ async function analyzeStock(ticker) {
     flags: v3Result.flags,
     scoreBreakdown: v3Result.scoreBreakdown,
   } : {
-    signal: results.thesis?.signal || stockData.signal,
+    // Fallback: use screener pipeline score when v3 returns nothing meaningful
+    signal: screenerSignal,
+    label: screenerSignal,
+    totalScore: screenerScore,
     positionAction: stockData._raw?.position_action || tranche.type,
-    badges: stockData.badges || [],
+    badges: stockData.badges || stockData._raw?.badges || [],
+    fundamentalScore: stockData.fundamentalScore || stockData._raw?.fundamental_score || null,
+    waveScore: stockData.technicalScore || stockData._raw?.technical_score || null,
+    confluenceScore: null,
+    sainBonus: stockData._raw?.sain_bonus || 0,
+    flags: stockData._raw?.flags || [],
+    scoreBreakdown: stockData._raw?.score_breakdown || null,
   };
 
   // ═══════════════════════════════════════════
