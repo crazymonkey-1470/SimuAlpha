@@ -430,6 +430,17 @@ app.get('/api/macro-context', async (_req, res) => {
   }
 });
 
+// Polymarket macro signals — real-time prediction market intelligence
+app.get('/api/macro-context/polymarket', async (_req, res) => {
+  try {
+    const { getMacroSignals } = require('./services/polymarket');
+    const signals = await getMacroSignals();
+    res.json({ signals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Macro context history
 app.get('/api/macro-context/history', async (req, res) => {
   const limit = parseInt(req.query.limit) || 30;
