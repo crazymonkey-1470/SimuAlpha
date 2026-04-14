@@ -14,28 +14,39 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // ═══════════════════════════════════════════
+// MIDDLEWARE
+// ═══════════════════════════════════════════
+const { envelope } = require('./middleware/envelope');
+app.use(envelope);
+
+// ═══════════════════════════════════════════
 // CORS
 // ═══════════════════════════════════════════
 const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL,
   'https://simualpha.com',
   'https://www.simualpha.com',
-  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+  process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : null,
 ].filter(Boolean);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin || ALLOWED_ORIGINS.includes(origin) || /\.pages\.dev$/.test(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*'); // Permissive for now
+  const isAllowed = !origin || ALLOWED_ORIGINS.includes(origin) || /\.simualpha\.pages\.dev$/.test(origin) || /\.pages\.dev$/.test(origin);
+  if (isAllowed && origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-admin-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-admin-key');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+// ═══════════════════════════════════════════
+// V1 API ROUTES (authenticated)
+// ═══════════════════════════════════════════
+const v1StocksRouter = require('./routes/v1/stocks');
+app.use('/api/v1/stocks', v1StocksRouter);
 
 // ═══════════════════════════════════════════
 // RATE LIMITING
