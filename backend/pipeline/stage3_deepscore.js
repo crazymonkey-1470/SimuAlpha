@@ -924,9 +924,9 @@ async function deepScoreSingle(ticker) {
   let institutionalData = null;
   let macroContext = null;
   let sainConsensus = null;
-  try { institutionalData = await getInstitutionalData(ticker); } catch (_) {}
-  try { macroContext = await getMacroContext(); } catch (_) {}
-  try { sainConsensus = await computeSAINConsensus(ticker); } catch (_) {}
+  try { institutionalData = await getInstitutionalData(ticker); } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
+  try { macroContext = await getMacroContext(); } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
+  try { sainConsensus = await computeSAINConsensus(ticker); } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
 
   // Dividend yield
   const dividendYield = (fund.dividendPerShare != null && currentPrice > 0)
@@ -958,7 +958,7 @@ async function deepScoreSingle(ticker) {
         .from('wave_counts').select('*').eq('ticker', ticker)
         .order('analyzed_at', { ascending: false }).limit(1).maybeSingle();
       waveAnalysis = waveData;
-    } catch (_) {}
+    } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
 
     scores = computeTLIScoreV3({
       currentPrice, price200WMA, price200MMA,
@@ -1144,7 +1144,7 @@ async function deepScoreSingle(ticker) {
       row.maturity_profile = valuation.maturityProfile ?? null;
       await saveValuation(ticker, valuation);
     }
-  } catch (_) {}
+  } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
 
   // Lynch + Kill Thesis + MoS + Rating
   try {
@@ -1187,7 +1187,7 @@ async function deepScoreSingle(ticker) {
       ratingResult.rating = 'NEUTRAL';
     }
     row.tli_rating_v2 = ratingResult.rating;
-  } catch (_) {}
+  } catch (e) { require("./../services/logger").child({module:"stage3"}).warn({err:e.message},"Non-critical error suppressed"); }
 
   // Upsert
   const { error: upsertErr } = await supabase

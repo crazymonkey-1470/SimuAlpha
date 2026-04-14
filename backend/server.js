@@ -1301,6 +1301,37 @@ app.get('/api/admin/debug/analysis/:ticker', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// /api/stock/:ticker — Quick lookup (public, no auth)
+// ═══════════════════════════════════════════
+app.get('/api/stock/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  try {
+    const [{ data: screener }, { data: valuation }, { data: wave }] = await Promise.all([
+      supabase.from('screener_results').select('ticker,company_name,signal,total_score,tli_score,current_price,price_200wma,price_200mma,ma_50d,updated_at').eq('ticker', ticker).single(),
+      supabase.from('stock_valuations').select('avg_price_target,avg_upside_pct,tli_rating').eq('ticker', ticker).order('computed_date', { ascending: false }).limit(1).single(),
+      supabase.from('wave_counts').select('wave_count_json,claude_interpretation').eq('ticker', ticker).order('last_updated', { ascending: false }).limit(1).single(),
+    ]);
+    if (!screener) return res.status(404).json({ error: `${ticker} not found in universe` });
+    res.json({
+      ticker,
+      company_name: screener.company_name,
+      signal: screener.signal,
+      total_score: screener.total_score || screener.tli_score,
+      current_price: screener.current_price,
+      ma_50: screener.ma_50d,
+      ma_200w: screener.price_200wma,
+      ma_200m: screener.price_200mma,
+      valuation: valuation || null,
+      wave: wave?.wave_count_json || null,
+      wave_interpretation: wave?.claude_interpretation || null,
+      last_scored: screener.updated_at,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
 
 app.get('/health', async (_req, res) => {
   const checks = {};
