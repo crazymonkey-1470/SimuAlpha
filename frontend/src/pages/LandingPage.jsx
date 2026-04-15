@@ -43,12 +43,27 @@ export default function LandingPage() {
           <h1 className="text-6xl sm:text-7xl font-bold tracking-tight mb-6">
             Smart Elliott Wave Analysis
           </h1>
-          <p className="text-xl text-slate-300 mb-4">
+          <p className="text-xl text-slate-300 mb-8">
             Institutional-grade signal analysis powered by AI that learns and improves every week
           </p>
-          <p className="text-3xl font-bold text-blue-400 mb-8">
-            $10/month
-          </p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto mb-12">
+            <div className="bg-slate-700/30 border border-slate-600 rounded-lg p-6">
+              <h3 className="text-2xl font-bold mb-2">Free</h3>
+              <p className="text-slate-400 mb-4">Get started with basic analysis</p>
+              <button className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition">
+                Sign Up Free
+              </button>
+            </div>
+            
+            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg p-6">
+              <h3 className="text-2xl font-bold mb-2">$10/month</h3>
+              <p className="text-slate-400 mb-4">Pro features and real-time signals</p>
+              <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition">
+                Start Premium
+              </button>
+            </div>
+          </div>
 
           {/* SIGNUP FORM */}
           <form onSubmit={handleSignup} className="max-w-md mx-auto mb-12 space-y-3">
