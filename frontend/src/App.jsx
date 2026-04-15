@@ -4,7 +4,6 @@ import Layout from './components/Layout';
 import LoadingSpinner from './components/LoadingSpinner';
 
 // Lazy-load pages for code splitting
-const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Screener = lazy(() => import('./pages/Screener'));
 const DeepDive = lazy(() => import('./pages/DeepDive'));
@@ -23,7 +22,6 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={<div style={{ paddingTop: '100px' }}><LoadingSpinner /></div>}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Landing />} />
             <Route path="dashboard" element={<Dashboard />} />
