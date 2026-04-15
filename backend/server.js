@@ -2383,6 +2383,52 @@ app.get('/api/tiers', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════
+// STATIC FRONTEND (monorepo deploy)
+// ═══════════════════════════════════════════
+//
+// When deployed as a single Railway service, the backend serves the built
+// React SPA from ../frontend/dist. Activates only if the directory exists,
+// so backend-only deploys (separate Cloudflare Pages frontend) still work
+// unchanged.
+//
+// Order matters:
+//   - All /api/* routes are registered above — they win over the SPA fallback.
+//   - express.static serves hashed asset files with correct Content-Type.
+//   - The catch-all `/*` sends index.html so client-side routing (e.g. /admin)
+//     works on deep-link / hard-refresh.
+(() => {
+  const fs   = require('fs');
+  const path = require('path');
+  const distDir = path.resolve(__dirname, '..', 'frontend', 'dist');
+  const indexFile = path.join(distDir, 'index.html');
+
+  if (!fs.existsSync(indexFile)) {
+    log.warn({ distDir }, 'frontend/dist not found — not serving SPA');
+    return;
+  }
+
+  // Hashed assets: cache aggressively. index.html: never cache.
+  app.use(express.static(distDir, {
+    index: false,
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  }));
+
+  // SPA fallback — must come after all API routes. Skip /api/* defensively.
+  app.get(/^\/(?!api\/).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(indexFile);
+  });
+
+  log.info({ distDir }, 'serving SPA from frontend/dist');
+})();
+
 /**
  * Startup sequence:
  *   1. Run DB migrations (idempotent; no-op if DATABASE_URL unset).
