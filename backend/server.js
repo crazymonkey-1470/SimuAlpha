@@ -8,6 +8,7 @@ const { getLatestMacroContext, getMacroContextHistory, upsertMacroContext } = re
 const { getValuation, computeAndSaveValuation, batchComputeValuations } = require('./services/valuation');
 const { getSignalHistory, getAccuracyStats } = require('./services/signalTracker');
 const { applyWeightAdjustment, getAllConfig } = require('./services/scoring_config');
+const database = require('./services/database');
 
 const app = express();
 app.use(express.json());
@@ -2382,13 +2383,56 @@ app.get('/api/tiers', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(PORT, () => {
-  log.info({ port: PORT }, 'The Long Screener backend listening');
+/**
+ * Startup sequence:
+ *   1. Run DB migrations (idempotent; no-op if DATABASE_URL unset).
+ *   2. Begin listening.
+ *   3. Start cron.
+ *   4. Kick initial pipeline (non-blocking).
+ *
+ * Migration failure is fatal — we refuse to serve traffic against an
+ * unmigrated schema. Set MIGRATIONS_REQUIRED=false to bypass (dev only).
+ */
+async function startServer() {
+  try {
+    if (database.isEnabled()) {
+      const result = await database.runMigrations();
+      log.info({ applied: result.applied, skipped: result.skipped?.length }, 'migrations ready');
+    } else {
+      log.warn('Database not configured — continuing without migrations');
+    }
+  } catch (err) {
+    const required = process.env.MIGRATIONS_REQUIRED !== 'false';
+    log.error({ err }, 'Migration run failed');
+    if (required) {
+      log.fatal('Refusing to start with failed migrations. Set MIGRATIONS_REQUIRED=false to override.');
+      process.exit(1);
+    }
+    log.warn('MIGRATIONS_REQUIRED=false — starting despite migration failure');
+  }
 
-  // Start cron schedules
-  startCron();
+  const server = app.listen(PORT, () => {
+    log.info({ port: PORT }, 'The Long Screener backend listening');
+    startCron();
+    log.info('Running initial pipeline on startup');
+    runFullPipeline().catch((err) => log.error({ err }, 'Initial pipeline error'));
+  });
 
-  // Run full pipeline immediately on startup
-  log.info('Running initial pipeline on startup');
-  runFullPipeline().catch((err) => log.error({ err }, 'Initial pipeline error'));
+  // Graceful shutdown — close DB pool so no requests die mid-query.
+  const shutdown = async (signal) => {
+    log.info({ signal }, 'shutdown signal received');
+    server.close(async () => {
+      try { await database.close(); } catch (err) { log.error({ err }, 'db close failed'); }
+      process.exit(0);
+    });
+    // Hard-exit after 10s if connections won't drain.
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+}
+
+startServer().catch((err) => {
+  log.fatal({ err }, 'Fatal startup error');
+  process.exit(1);
 });

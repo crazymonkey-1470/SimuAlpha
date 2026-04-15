@@ -1,14 +1,19 @@
 /**
  * learning_cycle_v2.js
- * 
+ *
  * Self-improving system
- * - Tracks signal outcomes
+ * - Tracks signal outcomes (signal_outcomes table)
  * - Calculates factor accuracy
- * - Proposes weight adjustments
+ * - Proposes weight adjustments (weight_adjustment_queue table)
  * - Safety guardrails: ±10% max, 30+ outcomes minimum, human approval required
  */
 
-const log = require('./logger').child({ module: 'learning_cycle_v2' });
+const log      = require('./logger').child({ module: 'learning_cycle_v2' });
+const supabase = require('./supabase');
+
+const OUTCOMES_TABLE   = 'signal_outcomes';
+const QUEUE_TABLE      = 'weight_adjustment_queue';
+const PRINCIPLES_TABLE = 'learned_principles';
 
 class LearningCycleV2 {
   constructor() {
@@ -18,10 +23,10 @@ class LearningCycleV2 {
   }
 
   /**
-   * Track signal outcome
-   * Records: signal_id, tier, entry, exit, return, actual_outcome
+   * Build a signal outcome row (pure — no DB side effect). Preserved for
+   * callers that want the shape without persisting.
    */
-  recordSignalOutcome(signalId, tier, entryPrice, exitPrice, holdDays) {
+  recordSignalOutcome(signalId, tier, entryPrice, exitPrice, holdDays, extra = {}) {
     try {
       const returnPct = ((exitPrice - entryPrice) / entryPrice) * 100;
       const success = returnPct > 0;
@@ -34,11 +39,87 @@ class LearningCycleV2 {
         return_pct: returnPct,
         success,
         hold_days: holdDays,
+        ticker: extra.ticker || null,
+        factor: extra.factor || null,
+        factors: extra.factors || [],
         recorded_at: new Date()
       };
     } catch (err) {
       log.error({ err }, 'Failed to record signal outcome');
       return null;
+    }
+  }
+
+  /**
+   * Persist a signal outcome to `signal_outcomes`. Returns inserted id or null.
+   */
+  async saveSignalOutcome({
+    signal_id   = null,
+    ticker,
+    tier,
+    entry_price,
+    exit_price,
+    hold_days,
+    factor      = null,
+    factors     = [],
+  }) {
+    try {
+      if (!ticker || !tier || entry_price == null || exit_price == null) {
+        log.warn({ ticker, tier }, 'saveSignalOutcome: missing required fields');
+        return null;
+      }
+      const return_pct = ((exit_price - entry_price) / entry_price) * 100;
+      const success    = return_pct > 0;
+
+      const { data, error } = await supabase
+        .from(OUTCOMES_TABLE)
+        .insert({
+          signal_id,
+          ticker,
+          tier,
+          entry_price,
+          exit_price,
+          return_pct,
+          success,
+          hold_days,
+          factor,
+          factors,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        log.error({ err: error, ticker }, 'saveSignalOutcome failed');
+        return null;
+      }
+      return data?.id || null;
+    } catch (err) {
+      log.error({ err }, 'saveSignalOutcome exception');
+      return null;
+    }
+  }
+
+  /**
+   * Fetch recent outcomes, optionally filtered by factor/tier.
+   */
+  async fetchRecentOutcomes({ factor = null, tier = null, limit = 1000 } = {}) {
+    try {
+      let q = supabase
+        .from(OUTCOMES_TABLE)
+        .select('*')
+        .order('recorded_at', { ascending: false })
+        .limit(limit);
+      if (factor) q = q.eq('factor', factor);
+      if (tier)   q = q.eq('tier', tier);
+      const { data, error } = await q;
+      if (error) {
+        log.error({ err: error }, 'fetchRecentOutcomes failed');
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      log.error({ err }, 'fetchRecentOutcomes exception');
+      return [];
     }
   }
 
@@ -171,7 +252,7 @@ class LearningCycleV2 {
   }
 
   /**
-   * Apply approved adjustment
+   * Apply approved adjustment (pure shape — DB side in applyPendingAdjustment).
    */
   applyAdjustment(adjustment, approverKey) {
     try {
@@ -192,8 +273,7 @@ class LearningCycleV2 {
   }
 
   /**
-   * Rollback adjustment
-   * If accuracy drops post-application
+   * Rollback adjustment shape (pure). Use rollbackQueuedAdjustment for DB path.
    */
   rollbackAdjustment(appliedAdjustment) {
     try {
@@ -211,16 +291,233 @@ class LearningCycleV2 {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // Persistence: weight_adjustment_queue
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * Queue a proposed adjustment for human approval.
+   * Maps the in-memory proposal shape onto the DB schema.
+   */
+  async queueAdjustment(proposal) {
+    try {
+      if (!proposal || !proposal.factor) return null;
+
+      const row = {
+        factor:          proposal.factor,
+        current_weight:  proposal.current_weight,
+        proposed_weight: proposal.new_weight,
+        change_pct:      proposal.change_pct,
+        status:          'PENDING_APPROVAL',
+        basis_json:      proposal.basis || {},
+      };
+
+      const { data, error } = await supabase
+        .from(QUEUE_TABLE)
+        .insert(row)
+        .select('id')
+        .single();
+
+      if (error) {
+        log.error({ err: error, factor: proposal.factor }, 'queueAdjustment failed');
+        return null;
+      }
+      return data?.id || null;
+    } catch (err) {
+      log.error({ err }, 'queueAdjustment exception');
+      return null;
+    }
+  }
+
+  /**
+   * Fetch pending adjustments for admin review.
+   */
+  async fetchPendingAdjustments({ limit = 100 } = {}) {
+    try {
+      const { data, error } = await supabase
+        .from(QUEUE_TABLE)
+        .select('*')
+        .eq('status', 'PENDING_APPROVAL')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) {
+        log.error({ err: error }, 'fetchPendingAdjustments failed');
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      log.error({ err }, 'fetchPendingAdjustments exception');
+      return [];
+    }
+  }
+
+  /**
+   * Approve a queued adjustment (sets APPROVED + applied_at/approved_at).
+   */
+  async approveQueuedAdjustment(id, approverKey) {
+    try {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from(QUEUE_TABLE)
+        .update({
+          status:      'APPLIED',
+          approved_by: approverKey,
+          approved_at: now,
+          applied_at:  now,
+        })
+        .eq('id', id)
+        .in('status', ['PENDING_APPROVAL', 'APPROVED'])
+        .select()
+        .single();
+      if (error) {
+        log.error({ err: error, id }, 'approveQueuedAdjustment failed');
+        return null;
+      }
+      return data;
+    } catch (err) {
+      log.error({ err, id }, 'approveQueuedAdjustment exception');
+      return null;
+    }
+  }
+
+  /**
+   * Reject a queued adjustment.
+   */
+  async rejectQueuedAdjustment(id, reason) {
+    try {
+      const { data, error } = await supabase
+        .from(QUEUE_TABLE)
+        .update({
+          status:          'REJECTED',
+          rejected_reason: reason || null,
+          rejected_at:     new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('status', 'PENDING_APPROVAL')
+        .select()
+        .single();
+      if (error) {
+        log.error({ err: error, id }, 'rejectQueuedAdjustment failed');
+        return null;
+      }
+      return data;
+    } catch (err) {
+      log.error({ err, id }, 'rejectQueuedAdjustment exception');
+      return null;
+    }
+  }
+
+  /**
+   * Roll back an applied adjustment. Inserts a reverse row linked via
+   * rolled_back_from_id so the audit trail is preserved.
+   */
+  async rollbackQueuedAdjustment(id) {
+    try {
+      const { data: original, error: fetchErr } = await supabase
+        .from(QUEUE_TABLE)
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (fetchErr || !original) {
+        log.error({ err: fetchErr, id }, 'rollbackQueuedAdjustment: not found');
+        return null;
+      }
+
+      // 1. Mark the original as rolled back.
+      const now = new Date().toISOString();
+      await supabase
+        .from(QUEUE_TABLE)
+        .update({ status: 'ROLLED_BACK', rolled_back_at: now })
+        .eq('id', id);
+
+      // 2. Insert a reverse row (swap current/proposed) for audit.
+      const { data: reverse, error: insErr } = await supabase
+        .from(QUEUE_TABLE)
+        .insert({
+          factor:              original.factor,
+          current_weight:      original.proposed_weight,
+          proposed_weight:     original.current_weight,
+          change_pct:          -Number(original.change_pct),
+          status:              'APPLIED',
+          basis_json:          { reason: 'rollback', original_id: id },
+          rolled_back_from_id: id,
+          applied_at:          now,
+        })
+        .select()
+        .single();
+
+      if (insErr) {
+        log.error({ err: insErr, id }, 'rollbackQueuedAdjustment: reverse insert failed');
+        return null;
+      }
+      return reverse;
+    } catch (err) {
+      log.error({ err, id }, 'rollbackQueuedAdjustment exception');
+      return null;
+    }
+  }
+
+  /**
+   * Approval history (everything that's not PENDING).
+   */
+  async fetchAdjustmentHistory({ limit = 200 } = {}) {
+    try {
+      const { data, error } = await supabase
+        .from(QUEUE_TABLE)
+        .select('*')
+        .neq('status', 'PENDING_APPROVAL')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) {
+        log.error({ err: error }, 'fetchAdjustmentHistory failed');
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      log.error({ err }, 'fetchAdjustmentHistory exception');
+      return [];
+    }
+  }
+
+  /**
+   * Active learned principles for the public /principles endpoint.
+   */
+  async fetchLearnedPrinciples({ limit = 20 } = {}) {
+    try {
+      const { data, error } = await supabase
+        .from(PRINCIPLES_TABLE)
+        .select('principle, sample_count, confidence, discovered_at')
+        .is('superseded_at', null)
+        .order('discovered_at', { ascending: false })
+        .limit(limit);
+      if (error) {
+        log.error({ err: error }, 'fetchLearnedPrinciples failed');
+        return [];
+      }
+      return data || [];
+    } catch (err) {
+      log.error({ err }, 'fetchLearnedPrinciples exception');
+      return [];
+    }
+  }
+
   /**
    * Run full learning cycle
-   * 1. Collect recent outcomes
+   * 1. Collect recent outcomes (from DB if `outcomes` is omitted/empty)
    * 2. Calculate accuracy for each factor
    * 3. Propose adjustments
-   * 4. Return for human approval
+   * 4. Queue valid proposals for human approval
+   * 5. Return summary
    */
   async runLearningCycle(outcomes) {
     try {
+      // If caller didn't supply outcomes, pull from DB.
+      if (!Array.isArray(outcomes) || outcomes.length === 0) {
+        outcomes = await this.fetchRecentOutcomes({ limit: 5000 });
+      }
+
       const proposals = [];
+      const queued    = [];
 
       // Key factors to evaluate
       const factors = [
@@ -242,11 +539,15 @@ class LearningCycleV2 {
           
           if (proposal) {
             const validation = this.validateAdjustment(proposal);
-            
-            proposals.push({
-              ...proposal,
-              validation
-            });
+            const enriched   = { ...proposal, validation };
+            proposals.push(enriched);
+
+            // Only queue the valid ones — invalid proposals stay in the response
+            // for visibility but never enter the approval queue.
+            if (validation.valid) {
+              const queueId = await this.queueAdjustment(proposal);
+              if (queueId) queued.push({ id: queueId, factor: proposal.factor });
+            }
           }
         }
       }
@@ -255,6 +556,7 @@ class LearningCycleV2 {
         cycle_run_at: new Date(),
         total_outcomes_analyzed: outcomes.length,
         proposals,
+        queued,
         awaiting_approval: proposals.filter(p => p.status === 'PENDING_APPROVAL').length,
         summary: this.generateLearningSummary(proposals)
       };

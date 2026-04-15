@@ -8,7 +8,10 @@
  * - Signal alerts for active traders
  */
 
-const log = require('./logger').child({ module: 'email_service' });
+const log      = require('./logger').child({ module: 'email_service' });
+const supabase = require('./supabase');
+
+const EMAIL_LOG_TABLE = 'email_log';
 
 class EmailService {
   constructor() {
@@ -18,21 +21,46 @@ class EmailService {
   }
 
   /**
+   * Log one email attempt to the `email_log` table. Logging failures never
+   * throw — we don't want an audit-table outage to break user signup.
+   */
+  async _logEmail({ email, type, subject, status, error = null, provider_id = null }) {
+    try {
+      const { error: dbErr } = await supabase
+        .from(EMAIL_LOG_TABLE)
+        .insert({
+          email,
+          type,
+          subject,
+          status,
+          provider: this.provider,
+          provider_id,
+          error,
+        });
+      if (dbErr) {
+        log.warn({ err: dbErr, email, type }, 'email_log insert failed (non-fatal)');
+      }
+    } catch (err) {
+      log.warn({ err, email, type }, 'email_log exception (non-fatal)');
+    }
+  }
+
+  /**
    * Send welcome email on signup
    */
   async sendWelcomeEmail(email, userName) {
+    const subject = 'Welcome to SimuAlpha';
     try {
       const template = this.getWelcomeTemplate(userName);
-
-      await this.send({
-        to: email,
-        subject: 'Welcome to SimuAlpha',
-        html: template
-      });
-
+      await this.send({ to: email, subject, html: template });
+      await this._logEmail({ email, type: 'welcome', subject, status: 'sent' });
       log.info({ email }, 'Welcome email sent');
       return true;
     } catch (err) {
+      await this._logEmail({
+        email, type: 'welcome', subject, status: 'failed',
+        error: err?.message || String(err),
+      });
       log.error({ err, email }, 'Failed to send welcome email');
       return false;
     }
@@ -42,19 +70,21 @@ class EmailService {
    * Send launch notification to waitlist
    */
   async sendLaunchNotification(emails) {
+    const subject = 'SimuAlpha is Live - Your Early Access is Ready';
     try {
       const template = this.getLaunchTemplate();
       let sent = 0;
 
       for (const email of emails) {
         try {
-          await this.send({
-            to: email,
-            subject: 'SimuAlpha is Live - Your Early Access is Ready',
-            html: template
-          });
+          await this.send({ to: email, subject, html: template });
+          await this._logEmail({ email, type: 'launch', subject, status: 'sent' });
           sent++;
         } catch (err) {
+          await this._logEmail({
+            email, type: 'launch', subject, status: 'failed',
+            error: err?.message || String(err),
+          });
           log.warn({ email }, 'Failed to send launch email');
         }
       }
@@ -71,18 +101,18 @@ class EmailService {
    * Send weekly digest for premium subscribers
    */
   async sendWeeklyDigest(email, digestData) {
+    const subject = `Your Weekly SimuAlpha Digest - Week of ${digestData.week}`;
     try {
       const template = this.getDigestTemplate(digestData);
-
-      await this.send({
-        to: email,
-        subject: `Your Weekly SimuAlpha Digest - Week of ${digestData.week}`,
-        html: template
-      });
-
+      await this.send({ to: email, subject, html: template });
+      await this._logEmail({ email, type: 'digest', subject, status: 'sent' });
       log.info({ email }, 'Weekly digest sent');
       return true;
     } catch (err) {
+      await this._logEmail({
+        email, type: 'digest', subject, status: 'failed',
+        error: err?.message || String(err),
+      });
       log.error({ err, email }, 'Failed to send digest');
       return false;
     }
@@ -92,18 +122,18 @@ class EmailService {
    * Send signal alert
    */
   async sendSignalAlert(email, signalData) {
+    const subject = `${signalData.tier} Signal: ${signalData.ticker}`;
     try {
       const template = this.getSignalAlertTemplate(signalData);
-
-      await this.send({
-        to: email,
-        subject: `${signalData.tier} Signal: ${signalData.ticker}`,
-        html: template
-      });
-
+      await this.send({ to: email, subject, html: template });
+      await this._logEmail({ email, type: 'alert', subject, status: 'sent' });
       log.info({ email, ticker: signalData.ticker }, 'Signal alert sent');
       return true;
     } catch (err) {
+      await this._logEmail({
+        email, type: 'alert', subject, status: 'failed',
+        error: err?.message || String(err),
+      });
       log.error({ err, email }, 'Failed to send signal alert');
       return false;
     }
@@ -180,16 +210,49 @@ class EmailService {
   }
 
   /**
-   * Log email statistics
+   * Aggregate send counts from `email_log`. Supabase doesn't support
+   * GROUP BY directly from the JS client, so we use `count` with filters.
    */
   async getEmailStats() {
     try {
+      const now = new Date();
+      const dayAgo  = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const weekAgo = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const countSince = async (since, status = 'sent') => {
+        const { count, error } = await supabase
+          .from(EMAIL_LOG_TABLE)
+          .select('*', { count: 'exact', head: true })
+          .gte('sent_at', since)
+          .eq('status', status);
+        if (error) {
+          log.warn({ err: error }, 'getEmailStats count failed');
+          return 0;
+        }
+        return count || 0;
+      };
+
+      const [dayCount, weekCount, weekFailed, weekBounced] = await Promise.all([
+        countSince(dayAgo,  'sent'),
+        countSince(weekAgo, 'sent'),
+        countSince(weekAgo, 'failed'),
+        countSince(weekAgo, 'bounced'),
+      ]);
+
+      const weekTotal = weekCount + weekFailed + weekBounced;
+      const bounceRate = weekTotal > 0
+        ? Math.round((weekBounced / weekTotal) * 10000) / 100
+        : 0;
+
       return {
-        emails_sent_today: 0,
-        emails_sent_week: 0,
-        open_rate: 0,
-        click_rate: 0,
-        bounce_rate: 0
+        emails_sent_today: dayCount,
+        emails_sent_week:  weekCount,
+        emails_failed_week:  weekFailed,
+        emails_bounced_week: weekBounced,
+        bounce_rate: bounceRate,
+        // open_rate / click_rate require provider webhook data not yet wired.
+        open_rate:  null,
+        click_rate: null,
       };
     } catch (err) {
       log.error({ err }, 'Failed to get email stats');
