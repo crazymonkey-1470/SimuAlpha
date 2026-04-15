@@ -1,46 +1,41 @@
 /**
  * tier_routes.js
- * 
- * API routes for TIER 1-4 services
- * Public endpoints for: backtest results, learning principles, waitlist
- * Admin endpoints for: approval workflow, weight adjustments
+ *
+ * API routes for TIER 1-4 services.
+ * Public endpoints:   backtest summary, learning principles, waitlist
+ * Admin  endpoints:   approval workflow, weight adjustments
+ *
+ * All GET endpoints now query real tables via Supabase — no mock data.
  */
 
 const express = require('express');
-const router = express.Router();
-const log = require('../services/logger').child({ module: 'tier_routes' });
+const router  = express.Router();
+const log     = require('../services/logger').child({ module: 'tier_routes' });
+const supabase = require('../services/supabase');
 
-const tierIntegration = require('../services/tier_integration');
-const backtester = require('../services/backtester_v2');
+const backtester    = require('../services/backtester_v2');
 const learningCycle = require('../services/learning_cycle_v2');
-const emailService = require('../services/email_service');
+const emailService  = require('../services/email_service');
+
+// Simple admin auth guard.
+function requireAdmin(req, res, next) {
+  const key = req.headers['x-admin-key'];
+  if (!process.env.ADMIN_API_KEY || key !== process.env.ADMIN_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
 
 // ============== PUBLIC ENDPOINTS ==============
 
 /**
  * GET /api/tier/backtest/summary
- * Latest backtesting accuracy metrics
+ * Aggregate metrics across all stored runs, grouped by tier.
  */
 router.get('/api/tier/backtest/summary', async (req, res) => {
   try {
-    // In production, would fetch from database
-    const summary = {
-      timestamp: new Date(),
-      load_the_boat: {
-        win_rate: 72,
-        avg_return: 8.5,
-        sharpe_ratio: 1.78,
-        signals_tested: 156
-      },
-      strong_buy: {
-        win_rate: 68,
-        avg_return: 6.2,
-        sharpe_ratio: 1.54,
-        signals_tested: 89
-      },
-      vs_spy: '+8.5%'
-    };
-
+    const summary = await backtester.getBacktestSummary({ limit: 2000 });
+    if (!summary) return res.status(500).json({ error: 'Failed to compute summary' });
     res.json(summary);
   } catch (err) {
     log.error({ err }, 'Failed to fetch backtest summary');
@@ -50,20 +45,13 @@ router.get('/api/tier/backtest/summary', async (req, res) => {
 
 /**
  * GET /api/tier/backtest/by-tier/:tier
- * Win rate for specific signal tier
+ * Metrics for a single tier.
  */
 router.get('/api/tier/backtest/by-tier/:tier', async (req, res) => {
   try {
     const { tier } = req.params;
-
-    const result = {
-      tier,
-      win_rate: 70,
-      avg_return: 7.2,
-      total_signals: 145,
-      sharpe_ratio: 1.65
-    };
-
+    const result = await backtester.getBacktestByTier(tier, { limit: 1000 });
+    if (!result) return res.status(500).json({ error: 'Failed to compute tier metrics' });
     res.json(result);
   } catch (err) {
     log.error({ err }, 'Failed to fetch tier backtest');
@@ -73,32 +61,20 @@ router.get('/api/tier/backtest/by-tier/:tier', async (req, res) => {
 
 /**
  * GET /api/tier/learning/principles
- * What has the system learned
+ * Active (non-superseded) learned principles.
  */
 router.get('/api/tier/learning/principles', async (req, res) => {
   try {
-    const principles = {
+    const learned = await learningCycle.fetchLearnedPrinciples({ limit: 20 });
+    res.json({
       timestamp: new Date(),
-      learned: [
-        {
-          principle: 'Wave 3 confluences are 82% accurate vs isolated 60%',
-          samples: 156,
-          confidence: 95
-        },
-        {
-          principle: 'Fibonacci 0.618 retrace more reliable than 0.5',
-          samples: 134,
-          confidence: 88
-        },
-        {
-          principle: 'Moving average 200 crossover increases accuracy 12%',
-          samples: 98,
-          confidence: 81
-        }
-      ]
-    };
-
-    res.json(principles);
+      learned: learned.map((p) => ({
+        principle:  p.principle,
+        samples:    p.sample_count,
+        confidence: Number(p.confidence),
+        discovered_at: p.discovered_at,
+      })),
+    });
   } catch (err) {
     log.error({ err }, 'Failed to fetch learning principles');
     res.status(500).json({ error: 'Failed to fetch principles' });
@@ -107,22 +83,36 @@ router.get('/api/tier/learning/principles', async (req, res) => {
 
 /**
  * POST /api/tier/waitlist/signup
- * Email signup
+ * Persist email + source, send welcome email. Idempotent on duplicate email.
  */
 router.post('/api/tier/waitlist/signup', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, source = 'landing', referrer = null } = req.body || {};
 
-    if (!email || !email.includes('@')) {
+    if (!email || typeof email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return res.status(400).json({ error: 'Invalid email' });
     }
 
-    // In production, would save to database and send welcome email
-    await emailService.sendWelcomeEmail(email, 'Trader');
+    const normalized = email.trim();
+    const { data, error } = await supabase
+      .from('waitlist')
+      .insert({ email: normalized, source, referrer })
+      .select('id')
+      .single();
+
+    // 23505 = unique_violation → already on the waitlist. Treat as success.
+    if (error && error.code !== '23505') {
+      log.error({ err: error, email: normalized }, 'Waitlist insert failed');
+      return res.status(500).json({ error: 'Signup failed' });
+    }
+
+    // Fire welcome email (non-blocking, best effort; logged to email_log).
+    emailService.sendWelcomeEmail(normalized, 'Trader').catch(() => { /* logged inside */ });
 
     res.json({
       success: true,
-      message: 'Welcome! Check your email for confirmation.'
+      message: 'Welcome! Check your email for confirmation.',
+      id: data?.id || null,
     });
   } catch (err) {
     log.error({ err }, 'Waitlist signup failed');
@@ -132,14 +122,23 @@ router.post('/api/tier/waitlist/signup', async (req, res) => {
 
 /**
  * GET /api/tier/waitlist/count
- * How many people on waitlist (social proof)
+ * Real count from the waitlist table (social proof).
  */
 router.get('/api/tier/waitlist/count', async (req, res) => {
   try {
-    // In production, would query database count
+    const { count, error } = await supabase
+      .from('waitlist')
+      .select('*', { count: 'exact', head: true })
+      .is('unsubscribed_at', null);
+
+    if (error) {
+      log.error({ err: error }, 'Waitlist count failed');
+      return res.status(500).json({ error: 'Failed to fetch count' });
+    }
+
     res.json({
-      waitlist_count: 1247,
-      trending: true
+      waitlist_count: count || 0,
+      trending: (count || 0) > 100,
     });
   } catch (err) {
     log.error({ err }, 'Failed to fetch waitlist count');
@@ -151,20 +150,11 @@ router.get('/api/tier/waitlist/count', async (req, res) => {
 
 /**
  * POST /api/tier/learning/run-cycle
- * Admin: Trigger learning cycle manually
+ * Pulls outcomes from DB, generates proposals, queues the valid ones.
  */
-router.post('/api/tier/learning/run-cycle', async (req, res) => {
+router.post('/api/tier/learning/run-cycle', requireAdmin, async (req, res) => {
   try {
-    // Verify admin auth
-    const adminKey = req.headers['x-admin-key'];
-    if (adminKey !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // In production, would fetch real outcomes from DB
-    const mockOutcomes = [];
-    const cycle = await learningCycle.runLearningCycle(mockOutcomes);
-
+    const cycle = await learningCycle.runLearningCycle(); // no arg = fetch from DB
     res.json(cycle);
   } catch (err) {
     log.error({ err }, 'Learning cycle execution failed');
@@ -174,28 +164,11 @@ router.post('/api/tier/learning/run-cycle', async (req, res) => {
 
 /**
  * GET /api/tier/learning/pending
- * Admin: View pending weight adjustments
+ * Adjustments awaiting approval.
  */
-router.get('/api/tier/learning/pending', async (req, res) => {
+router.get('/api/tier/learning/pending', requireAdmin, async (req, res) => {
   try {
-    // Verify admin auth
-    if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // In production, would fetch from DB
-    const pending = [
-      {
-        id: 1,
-        factor: 'wave_3_confluence',
-        current_weight: 0.5,
-        proposed_weight: 0.55,
-        change_pct: 10,
-        accuracy: 82,
-        samples: 156
-      }
-    ];
-
+    const pending = await learningCycle.fetchPendingAdjustments({ limit: 100 });
     res.json(pending);
   } catch (err) {
     log.error({ err }, 'Failed to fetch pending approvals');
@@ -205,22 +178,13 @@ router.get('/api/tier/learning/pending', async (req, res) => {
 
 /**
  * POST /api/tier/learning/approve/:id
- * Admin: Approve weight adjustment
  */
-router.post('/api/tier/learning/approve/:id', async (req, res) => {
+router.post('/api/tier/learning/approve/:id', requireAdmin, async (req, res) => {
   try {
-    if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { id } = req.params;
-
-    // In production, would update DB
-    res.json({
-      id,
-      status: 'APPROVED',
-      applied_at: new Date()
-    });
+    const approver = req.headers['x-admin-key'] ? 'admin' : 'unknown';
+    const row = await learningCycle.approveQueuedAdjustment(req.params.id, approver);
+    if (!row) return res.status(404).json({ error: 'Adjustment not found or not pending' });
+    res.json(row);
   } catch (err) {
     log.error({ err }, 'Approval failed');
     res.status(500).json({ error: 'Approval failed' });
@@ -229,21 +193,13 @@ router.post('/api/tier/learning/approve/:id', async (req, res) => {
 
 /**
  * POST /api/tier/learning/reject/:id
- * Admin: Reject weight adjustment
  */
-router.post('/api/tier/learning/reject/:id', async (req, res) => {
+router.post('/api/tier/learning/reject/:id', requireAdmin, async (req, res) => {
   try {
-    if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { id } = req.params;
-
-    res.json({
-      id,
-      status: 'REJECTED',
-      reason: req.body.reason || 'No reason provided'
-    });
+    const reason = req.body?.reason || 'No reason provided';
+    const row = await learningCycle.rejectQueuedAdjustment(req.params.id, reason);
+    if (!row) return res.status(404).json({ error: 'Adjustment not found or not pending' });
+    res.json(row);
   } catch (err) {
     log.error({ err }, 'Rejection failed');
     res.status(500).json({ error: 'Rejection failed' });
@@ -252,21 +208,13 @@ router.post('/api/tier/learning/reject/:id', async (req, res) => {
 
 /**
  * POST /api/tier/learning/rollback/:id
- * Admin: Rollback applied adjustment
+ * Reverses an applied adjustment; preserves audit trail via rolled_back_from_id.
  */
-router.post('/api/tier/learning/rollback/:id', async (req, res) => {
+router.post('/api/tier/learning/rollback/:id', requireAdmin, async (req, res) => {
   try {
-    if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { id } = req.params;
-
-    res.json({
-      id,
-      status: 'ROLLED_BACK',
-      rolled_back_at: new Date()
-    });
+    const row = await learningCycle.rollbackQueuedAdjustment(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Adjustment not found' });
+    res.json(row);
   } catch (err) {
     log.error({ err }, 'Rollback failed');
     res.status(500).json({ error: 'Rollback failed' });
@@ -275,15 +223,11 @@ router.post('/api/tier/learning/rollback/:id', async (req, res) => {
 
 /**
  * GET /api/tier/learning/history
- * Admin: View approval history
+ * All non-pending adjustments (applied, rejected, rolled back).
  */
-router.get('/api/tier/learning/history', async (req, res) => {
+router.get('/api/tier/learning/history', requireAdmin, async (req, res) => {
   try {
-    if (req.headers['x-admin-key'] !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const history = [];
+    const history = await learningCycle.fetchAdjustmentHistory({ limit: 200 });
     res.json(history);
   } catch (err) {
     log.error({ err }, 'Failed to fetch history');
