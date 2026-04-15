@@ -4,7 +4,7 @@
 
 ## What SimuAlpha Does
 
-SimuAlpha autonomously scans **8,500+ US stocks** twice per week, filtering them through a multi-layered scoring algorithm that combines fundamental analysis (revenue growth, FCF, moat classification, balance sheet strength), technical analysis (200 Weekly/Monthly Moving Averages, Elliott Wave detection, Fibonacci confluence zones), and institutional intelligence from 8 tracked super investors. Every candidate that passes gets a TLI score from 0-100 with a clear signal: LOAD THE BOAT, ACCUMULATE, WATCH, or PASS.
+SimuAlpha autonomously scans the **S&P 500** (the 500 largest US companies) twice per week, filtering them through a multi-layered scoring algorithm that combines fundamental analysis (revenue growth, FCF, moat classification, balance sheet strength), technical analysis (200 Weekly/Monthly Moving Averages, Elliott Wave detection, Fibonacci confluence zones), and institutional intelligence from 8 tracked super investors. Every candidate that passes gets a TLI score from 0-100 with a clear signal: LOAD THE BOAT, ACCUMULATE, WATCH, or PASS.
 
 On top of the core scoring engine sits an **Agentic Intelligence System** powered by Claude. A library of 14 AI skills generates full investment theses, classifies moats, detects value traps, interprets Elliott Wave patterns, and compares stock profiles against the frameworks of Buffett, Cohen, and Laffont. The system learns from its own outcomes — extracting principles from signal accuracy data and proposing weight adjustments with safety guardrails.
 
@@ -60,7 +60,7 @@ The **SAIN (Social & Alternative Intelligence Network)** layer monitors 19+ real
 
 The core pipeline runs in stages:
 
-1. **Universe Fetch** — Pulls ~8,500 NYSE + NASDAQ tickers
+1. **Universe Fetch** — Seeds ~500 S&P 500 constituents (full US market — 8,500+ tickers — planned for a future release)
 2. **Fundamental Prescreen** — Filters to 200-400 candidates (revenue growth >0%, 20%+ drawdown, market cap >$1B)
 3. **Deep Score** — Full TLI v2 algorithm with fundamental sub-scores (revenue, FCF, moat, valuation, balance sheet), technical scoring (200WMA/MMA distance), and a comprehensive bonus/penalty system
 4. **Elliott Wave Detection** — Identifies wave structures, Claude interprets confluence zones

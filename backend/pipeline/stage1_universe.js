@@ -6,6 +6,7 @@ const log = require('../services/logger').child({ module: 'stage1_universe' });
  * Curated list — reliable data, large-cap, fundamentally sound.
  * Expand later: Russell 2000, commodities, international, etc.
  */
+// Currently S&P 500 only. Expand to full US market (8,500+) in future release.
 // Removed delisted/acquired tickers:
 // ATVI (acquired by MSFT 2023), SIVB (collapsed 2023), FRC (collapsed 2023),
 // SBNY (collapsed 2023), DISH (merged w/ EchoStar), LUMN (removed from S&P),
