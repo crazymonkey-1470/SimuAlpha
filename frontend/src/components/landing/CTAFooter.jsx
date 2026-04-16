@@ -20,8 +20,8 @@ const tiers = [
   },
   {
     name: 'Institutional',
-    price: '$79',
-    period: '/mo',
+    price: 'Pro Rata',
+    period: '',
     features: ['Everything in Pro', 'API access', 'Backtesting dashboard', 'Priority agent analysis', 'PDF report export'],
     cta: 'Contact Us',
     highlight: false,
@@ -82,7 +82,7 @@ export default function CTAFooter() {
                 )}
                 <div style={{ fontFamily: 'Cormorant Garamond', fontSize: 20, color: 'var(--text-primary)', marginBottom: 6 }}>{tier.name}</div>
                 <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: 'Cormorant Garamond', fontSize: 40, fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
+                  <span style={{ fontFamily: 'Cormorant Garamond', fontSize: tier.price.length > 6 ? 26 : 40, fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
                   {tier.period && <span style={{ fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--text-dim)' }}>{tier.period}</span>}
                 </div>
                 <div style={{ flex: 1, marginBottom: 20 }}>
