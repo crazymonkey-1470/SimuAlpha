@@ -1,6 +1,7 @@
 import { useExitSignals } from '../hooks/useScreener';
 
 const SEVERITY_COLORS = {
+  CRITICAL: { bg: 'rgba(127, 29, 29, 0.35)', border: 'rgba(252, 165, 165, 0.55)', text: '#fca5a5', badge: '#7f1d1d' },
   HIGH: { bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171', badge: '#dc2626' },
   MEDIUM: { bg: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24', badge: '#d97706' },
   LOW: { bg: 'rgba(34, 197, 94, 0.06)', border: 'rgba(34, 197, 94, 0.2)', text: '#4ade80', badge: '#16a34a' },
