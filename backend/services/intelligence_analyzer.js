@@ -6,13 +6,8 @@
  * Queries Supabase + aggregates data for ALPHA
  */
 
-const { createClient } = require('@supabase/supabase-js');
+const supabase = require('./supabase');
 const log = require('./logger').child({ module: 'intelligence_analyzer' });
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // ────────────────────────────────────────────────────
 // 1. CURRENT MARKET STATE
@@ -135,7 +130,7 @@ async function getSignalOutcomes() {
       total_signals: totalSignals,
       win_count: wonSignals,
       loss_count: lostSignals,
-      overall_win_rate: ((wonSignals / totalSignals) * 100).toFixed(1),
+      overall_win_rate: totalSignals > 0 ? ((wonSignals / totalSignals) * 100).toFixed(1) : '0.0',
       by_tier: byTier,
       by_timeframe: Object.keys(timeframes).reduce((acc, tf) => {
         acc[tf] = timeframes[tf] > 0 ? ((timeframeWins[tf] / timeframes[tf]) * 100).toFixed(1) : 0;
@@ -420,7 +415,7 @@ async function getRiskAssessment(ticker) {
       kelly_fraction: kellyFraction.toFixed(3),
       max_position_pct: positionPercent.toFixed(2),
       max_position_dollars: maxPositionSize,
-      shares_at_max_position: Math.floor(maxPositionSize / price),
+      shares_at_max_position: price > 0 ? Math.floor(maxPositionSize / price) : 0,
       dca_tranches: tranches
     };
   } catch (err) {
