@@ -11,7 +11,7 @@ const rows = [
   { label: 'Elliott Wave auto-detection',      vals: ['—', '—', '—', '✓'] },
   { label: 'Position sizing + DCA plan',       vals: ['—', '—', '—', '5-tranche'] },
 ];
-const costs = ['$2,000+/mo', '$25/mo', 'Your time', '$29/mo'];
+const costs = ['$2,000+/mo', '$25/mo', 'Your time', '$10/mo'];
 
 export default function CompareTable() {
   return (
