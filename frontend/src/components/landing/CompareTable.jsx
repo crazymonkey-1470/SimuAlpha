@@ -4,7 +4,7 @@ const cols = ['Bloomberg', 'Seeking Alpha', 'DIY Research', 'SimuAlpha'];
 const rows = [
   { label: 'Full S&P 500 scored daily',       vals: ['✓', '—', '—', '✓'] },
   { label: 'Proprietary 0–100 score',          vals: ['—', 'Analyst ratings', '—', '✓'] },
-  { label: 'Super Investors tracked',           vals: ['Manual', '—', 'Manual', 'Automated'] },
+  { label: 'Super Investors tracked',          vals: ['Manual', '—', 'Manual', 'Automated'] },
   { label: 'Congressional trade monitoring',   vals: ['—', '—', '—', 'Committee-weighted'] },
   { label: 'AI-written investment theses',     vals: ['—', 'Human opinions', '—', 'Per stock'] },
   { label: 'Multi-layer consensus signal',     vals: ['—', '—', '—', '4-layer'] },
