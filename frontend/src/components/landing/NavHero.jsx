@@ -100,8 +100,8 @@ export default function NavHero() {
           </div>
 
           <h1 style={s.headline}>
-            The Long<br />
-            <span style={s.accent}>Investor's Edge</span>
+            Democratizing<br />
+            <span style={s.accent}>Alpha</span>
           </h1>
 
           <p style={s.sub}>
