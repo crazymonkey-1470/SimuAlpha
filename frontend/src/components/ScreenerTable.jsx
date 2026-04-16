@@ -344,7 +344,7 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
             <div style={{
               position: 'absolute', right: 0, top: '100%', marginTop: '4px', zIndex: 50,
               background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px',
-              padding: '8px', minWidth: '180px', boxShadow: '0 8px 24px rgba(0,0,0,0.3)'
+              padding: '8px', minWidth: '180px', maxWidth: 'calc(100vw - 32px)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)'
             }}>
               {ALL_COLUMNS.map(col => (
                 <label key={col.key} style={{
@@ -370,8 +370,8 @@ export default function ScreenerTable({ data, waveData = {}, backtestData = {} }
         </span>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="table-wrap" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)' }}>
               {columns.map(col => (

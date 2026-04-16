@@ -29,7 +29,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
+  font-size: clamp(13px, 2.2vw, 14px);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -81,9 +81,98 @@ body::before {
   to { transform: rotate(360deg); }
 }
 
-/* SAIN consensus cards: 2x2 grid on mobile */
+/* ── Mobile / iPhone overrides ── */
 @media (max-width: 768px) {
+  /* SAIN consensus cards: 2x2 on mobile */
   .sain-consensus-grid {
     grid-template-columns: repeat(2, 1fr) !important;
   }
+
+  /* Hide items that shouldn't show on mobile */
+  .hide-mobile { display: none !important; }
+
+  /* Show items only on mobile */
+  .show-mobile { display: flex !important; }
+
+  /* Landing page nav links hidden on mobile — hamburger used instead */
+  .landing-nav-links { display: none !important; }
+
+  /* Landing hero: reduce top padding so headline isn't shoved down */
+  .landing-hero {
+    padding: 80px 20px 48px !important;
+    min-height: auto !important;
+  }
+
+  /* Responsive layout padding */
+  .app-main {
+    padding: 0 16px 64px !important;
+  }
+
+  /* Search bar: full width on mobile */
+  .search-input {
+    width: 100% !important;
+    max-width: 160px;
+  }
+
+  /* Search dropdown: pin to viewport edges */
+  .search-dropdown {
+    left: 0 !important;
+    right: auto !important;
+    min-width: min(320px, calc(100vw - 32px)) !important;
+    max-width: calc(100vw - 32px) !important;
+  }
+
+  /* Mobile hamburger menu overlay */
+  .mobile-menu {
+    display: flex !important;
+    flex-direction: column;
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: rgba(12, 12, 14, 0.98);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0;
+    z-index: 99;
+  }
+
+  .mobile-menu a {
+    padding: 14px 24px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+  }
+
+  .mobile-menu a:last-child { border-bottom: none; }
+  .mobile-menu a.active { color: var(--text-primary); }
+
+  /* Cards: full-width single column on mobile */
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Tables: allow horizontal scroll with touch momentum */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Screener filter buttons: smaller on mobile */
+  .filter-btn {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Ensure hamburger is hidden on desktop */
+@media (min-width: 769px) {
+  .show-mobile { display: none !important; }
+  .mobile-menu { display: none !important; }
 }
