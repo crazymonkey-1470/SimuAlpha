@@ -1,6 +1,7 @@
 const log = require('./logger').child({ module: 'fetcher' });
 
 const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
+const FETCH_TIMEOUT_MS = parseInt(process.env.SCRAPER_TIMEOUT_MS || '15000', 10);
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -11,6 +12,7 @@ function sleep(ms) {
 async function fetchStockList() {
   const res = await fetch(`${SCRAPER_URL}/universe/`, {
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Scraper universe failed: ${res.status}`);
   const data = await res.json();
@@ -30,7 +32,7 @@ async function fetchStockList() {
 
 async function fetchHistoricalPrices(ticker) {
   try {
-    const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`);
+    const res = await fetch(`${SCRAPER_URL}/historical/${ticker}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const weeklyRaw = (data.weekly || []).filter((d) => d.close != null);
@@ -69,7 +71,7 @@ function calculate200MMA(closes) {
 
 async function fetchFundamentals(ticker) {
   try {
-    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`);
+    const res = await fetch(`${SCRAPER_URL}/fundamentals/${ticker}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return {
