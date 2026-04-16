@@ -52,7 +52,9 @@ app.use('/api/v1/stocks', v1StocksRouter);
 // TIER 1-4 ROUTES (public + admin)
 // ═══════════════════════════════════════════
 const tierRoutes = require('./routes/tier_routes');
+const intelligenceRoutes = require('./routes/intelligence_routes');
 app.use('/', tierRoutes);
+app.use('/', intelligenceRoutes);
 
 // ═══════════════════════════════════════════
 // RATE LIMITING
