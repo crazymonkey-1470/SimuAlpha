@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 
 const stats = [
   { value: '500+', label: 'Stocks Scored Daily' },
-  { value: '8', label: 'Super Investors Tracked' },
+  { value: '10+', label: 'Super Investors Tracked' },
   { value: '4-Layer', label: 'Consensus Engine' },
   { value: '30+', label: 'Intelligence Sources' },
   { value: '72%', label: 'Backtest Win Rate' },
