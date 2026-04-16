@@ -53,7 +53,32 @@ export default function ScoreDistribution() {
     fetchData();
   }, []);
 
-  if (loading || distribution.length === 0) return null;
+  if (loading) return null;
+
+  if (distribution.length === 0) {
+    return (
+      <div style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: '12px',
+        padding: '32px',
+        textAlign: 'center'
+      }}>
+        <div style={{
+          fontFamily: 'Cormorant Garamond', fontSize: '20px',
+          fontWeight: 400, color: 'var(--text-secondary)', marginBottom: '8px'
+        }}>
+          No score distribution data yet
+        </div>
+        <div style={{
+          fontFamily: 'IBM Plex Mono', fontSize: '11px',
+          color: 'var(--text-dim)', lineHeight: 1.7
+        }}>
+          Once the pipeline finishes its first scan, signal distribution and sector averages will appear here.
+        </div>
+      </div>
+    );
+  }
 
   const maxCount = Math.max(...distribution.map(d => d.count));
   const maxAvg = Math.max(...sectorAvgs.map(s => s.avg), 1);
