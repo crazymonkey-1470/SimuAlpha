@@ -105,9 +105,9 @@ export default function NavHero() {
           </h1>
 
           <p style={s.sub}>
-            SimuAlpha scans the S&amp;P 500 daily — scoring every stock on 50pts of fundamentals
-            and 50pts of technical position, then cross-referencing 8 super investors,
-            congressional trades, and AI consensus to surface what actually deserves attention.
+            An autonomous system powered by cutting-edge AI — built on decades of investing wisdom
+            from history's greatest investors and combined with multiple layers of market
+            intelligence to find the opportunities worth your attention.
           </p>
 
           <div style={s.btns}>
