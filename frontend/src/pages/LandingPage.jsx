@@ -1,693 +1,748 @@
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Check, X, Brain, Users, Activity,
+  ChevronDown, ChevronUp, ArrowRight, Trophy, Target,
+  FileText, Layers
+} from 'lucide-react';
 
-const STATS = [
-  { value: '72%', label: 'LOAD THE BOAT win rate', sub: '156 signals · 3+ years' },
-  { value: '+8.5%', label: 'vs S&P 500', sub: 'annualised alpha' },
-  { value: '1.78', label: 'Sharpe ratio', sub: 'risk-adjusted returns' },
-  { value: '8,500', label: 'stocks screened', sub: 'updated 2× per week' },
-];
+const PATREON_URL = import.meta.env.VITE_PATREON_URL || 'https://www.patreon.com/simualpha';
 
-const HOW_IT_WORKS = [
-  {
-    step: '01',
-    title: 'Universe Screening',
-    desc: '8,500 stocks filtered through fundamental gates: earnings growth, debt/equity, P/E ratios, and business quality. Most are eliminated here.',
-  },
-  {
-    step: '02',
-    title: 'Elliott Wave Position',
-    desc: 'Survivors are wave-counted on weekly and monthly charts. Only stocks in Wave 2, Wave 4, or Wave C correction are eligible — optimal re-entry zones only.',
-  },
-  {
-    step: '03',
-    title: 'Fibonacci Confluence',
-    desc: 'Price must be at or near a 0.5–0.786 Fibonacci retracement coinciding with the 200-week or monthly moving average. Institutional gridlock zones.',
-  },
-  {
-    step: '04',
-    title: 'SAIN Consensus',
-    desc: 'Super investors (13F), politician trades, AI sentiment, and TLI score must agree. Full-stack alignment is the highest-conviction signal.',
-  },
-  {
-    step: '05',
-    title: 'Signal Fires',
-    desc: 'LOAD THE BOAT, GENERATIONAL BUY, or CONFLUENCE ZONE signal is issued. Entry price, Fibonacci targets, and risk levels are calculated.',
-  },
-  {
-    step: '06',
-    title: 'System Learns',
-    desc: 'Outcomes are tracked. Every week, the AI analyses what worked and why, then proposes weight adjustments. The system gets smarter automatically.',
-  },
-];
+// ────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────
+const fadeUp = {
+  initial: { opacity: 0, y: 28 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: '-80px' },
+  transition: { duration: 0.6, ease: 'easeOut' },
+};
 
-const SIGNAL_TIERS = [
-  { name: 'GENERATIONAL BUY', color: '#10b981', dot: '#10b981', desc: '0.786 Fib + Wave 1 origin + 200MMA within 15%. Rarest signal. Maximum conviction.' },
-  { name: 'CONFLUENCE ZONE', color: '#3b82f6', dot: '#3b82f6', desc: '200WMA AND 0.618 Fib simultaneously. Institutional gridlock. +15pt bonus applied.' },
-  { name: 'LOAD THE BOAT', color: '#a78bfa', dot: '#a78bfa', desc: 'All four SAIN layers agree. 72% win rate. Primary signal for portfolio sizing.' },
-  { name: 'STRONG BUY', color: '#f59e0b', dot: '#f59e0b', desc: 'Single strong technical setup with fundamental qualification.' },
-  { name: 'BUY', color: '#94a3b8', dot: '#94a3b8', desc: 'Standard entry signal. Wave position valid, Fib level respected.' },
-  { name: 'WATCH', color: '#64748b', dot: '#64748b', desc: 'Developing pattern. Fundamentals qualify but price not yet at entry zone.' },
-];
-
-const COMPARISON = [
-  { feature: 'Price', sa: '$10/mo', tv: '$15/mo', bloom: '$2,000/mo', finviz: '$40/mo' },
-  { feature: 'Elliott Wave Analysis', sa: true, tv: false, bloom: false, finviz: false },
-  { feature: 'Fibonacci Confluence Detection', sa: true, tv: false, bloom: false, finviz: false },
-  { feature: 'Self-Improving AI', sa: true, tv: false, bloom: false, finviz: false },
-  { feature: '13F Super Investor Tracking', sa: true, tv: true, bloom: true, finviz: true },
-  { feature: 'Wave 2/4/C Entry Timing', sa: true, tv: false, bloom: false, finviz: false },
-  { feature: 'Macro Risk Engine', sa: true, tv: false, bloom: true, finviz: false },
-  { feature: 'Portfolio Position Sizing', sa: true, tv: false, bloom: true, finviz: false },
-];
-
-const FAQS = [
-  {
-    q: 'What is Elliott Wave Theory?',
-    a: 'Elliott Wave is a framework for understanding market cycles based on human psychology. Markets move in predictable 5-wave impulse patterns (the trend) followed by 3-wave corrections. The best buying opportunities arise in Wave 2, Wave 4, and Wave C — the correction phases where retail traders sell in fear and institutions quietly accumulate.',
-  },
-  {
-    q: 'How does the 72% win rate work?',
-    a: 'We ran backtests across 156 LOAD THE BOAT signals over 3+ years (2021–2024). A signal "wins" when the stock reaches the Wave 3 Fibonacci target (1.618× Wave 1) within 180 days. Our 72% rate is conservative — we count partial moves and stalled positions as neutral, not wins.',
-  },
-  {
-    q: 'What makes SimuAlpha different from TradingView?',
-    a: 'TradingView gives you tools. SimuAlpha gives you decisions. We do the Elliott Wave counting, Fibonacci mapping, institutional overlap checks, and signal scoring for you — across 8,500 stocks every week. TradingView won\'t tell you which of those stocks is at a GENERATIONAL BUY confluence. We do.',
-  },
-  {
-    q: 'Is this financial advice?',
-    a: 'No. SimuAlpha provides analytical signals based on technical methodology. We identify patterns and probabilities — we do not know your risk tolerance, tax situation, or financial goals. Always do your own due diligence before making investment decisions.',
-  },
-  {
-    q: 'How often does the system update?',
-    a: 'The full pipeline runs Sunday 6am ET and Wednesday 6am ET. Macro context and institutional flow updates daily. The self-improving AI reviews signal outcomes weekly and proposes weight adjustments every Monday at 6am ET.',
-  },
-  {
-    q: 'What is Patreon access?',
-    a: 'Patreon members get early access to the full dashboard, live signal feed, institutional tracker, and portfolio analysis tools. We\'re in early access — founding members lock in the lowest price we\'ll ever offer.',
-  },
-];
-
-function Tick() {
+function CTAButton({ children, variant = 'primary', className = '', href = PATREON_URL, ...rest }) {
+  const base = 'inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-200 px-6 py-3 text-sm sm:text-base';
+  const styles = variant === 'primary'
+    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5'
+    : 'border border-slate-600 text-slate-200 hover:border-slate-400 hover:bg-slate-800/40';
+  // In-page anchor links shouldn't open a new tab.
+  const isExternal = href && !href.startsWith('#');
+  const externalProps = isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {};
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <circle cx="8" cy="8" r="8" fill="#10b981" fillOpacity="0.15" />
-      <path d="M4.5 8L7 10.5L11.5 6" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <a
+      href={href}
+      {...externalProps}
+      className={`${base} ${styles} ${className}`}
+      {...rest}
+    >
+      {children}
+    </a>
   );
 }
 
-function Cross() {
+// ────────────────────────────────────────────────────────────────
+// Section 1 — Top Nav + Hero
+// ────────────────────────────────────────────────────────────────
+function TopNav() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M5 5L11 11M11 5L5 11" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export default function LandingPage() {
-  const PATREON_URL = 'https://patreon.com/SimuAlpha';
-
-  return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'var(--bg-primary, #0c0c0e)',
-      color: 'var(--text-primary, #f1f5f9)',
-      fontFamily: 'IBM Plex Mono, monospace',
-    }}>
-
-      {/* ── HEADER ── */}
-      <header style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        borderBottom: '1px solid var(--border, #1e2533)',
-        background: 'rgba(12,12,14,0.85)',
-        backdropFilter: 'blur(12px)',
-        padding: '0 40px',
-        height: '52px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span style={{ fontFamily: 'Cormorant Garamond', fontSize: '22px', fontWeight: 400, letterSpacing: '0.02em' }}>
-          Simu<span style={{ color: 'var(--signal-green, #10b981)' }}>Alpha</span>
-        </span>
-        <a
-          href={PATREON_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600,
-            letterSpacing: '0.08em', textTransform: 'uppercase',
-            color: '#0c0c0e', background: 'var(--signal-green, #10b981)',
-            border: 'none', borderRadius: '6px', padding: '7px 18px',
-            cursor: 'pointer', textDecoration: 'none',
-          }}
-        >
-          Join Patreon
+    <nav className="fixed top-0 inset-x-0 z-50 backdrop-blur-md bg-[#0a0e1a]/80 border-b border-slate-800/60">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <a href="#top" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-sm">
+            S
+          </div>
+          <span className="font-semibold text-white tracking-tight">SimuAlpha</span>
         </a>
-      </header>
-
-      {/* ── HERO ── */}
-      <section style={{ paddingTop: '120px', paddingBottom: '80px', textAlign: 'center', padding: '140px 40px 80px' }}>
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          <div style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600,
-            letterSpacing: '0.15em', color: 'var(--signal-green, #10b981)',
-            textTransform: 'uppercase', marginBottom: '24px',
-          }}>
-            Elliott Wave · Fibonacci Confluence · Institutional Intelligence
-          </div>
-
-          <h1 style={{
-            fontFamily: 'Cormorant Garamond',
-            fontSize: 'clamp(52px, 9vw, 112px)',
-            fontWeight: 300,
-            lineHeight: 0.9,
-            color: 'var(--text-primary, #f1f5f9)',
-            margin: '0 auto 32px',
-            maxWidth: '900px',
-          }}>
-            Find the stocks<br />
-            <span style={{ color: 'var(--signal-green, #10b981)', fontStyle: 'italic' }}>
-              before they move.
-            </span>
-          </h1>
-
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '13px', lineHeight: 1.9,
-            color: 'var(--text-secondary, #94a3b8)',
-            maxWidth: '580px', margin: '0 auto 48px',
-          }}>
-            SimuAlpha screens 8,500 stocks for Elliott Wave re-entry points at Fibonacci
-            confluence zones — the exact levels where institutions reload. 72% win rate
-            on LOAD THE BOAT signals. Self-improving AI that gets smarter every week.
-          </p>
-
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a
-              href={PATREON_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: 'var(--signal-green, #10b981)', color: '#0c0c0e',
-                border: 'none', borderRadius: '8px', padding: '14px 36px',
-                fontFamily: 'IBM Plex Mono', fontSize: '12px', fontWeight: 700,
-                letterSpacing: '0.06em', cursor: 'pointer', textDecoration: 'none',
-                display: 'inline-block',
-              }}
-            >
-              Get Early Access on Patreon
-            </a>
-            <a
-              href="#how-it-works"
-              style={{
-                background: 'transparent', color: 'var(--text-secondary, #94a3b8)',
-                border: '1px solid var(--border, #1e2533)', borderRadius: '8px',
-                padding: '14px 36px', fontFamily: 'IBM Plex Mono', fontSize: '12px',
-                cursor: 'pointer', textDecoration: 'none', display: 'inline-block',
-              }}
-            >
-              How It Works ↓
-            </a>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ── STATS BAR ── */}
-      <motion.section
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        style={{
-          borderTop: '1px solid var(--border, #1e2533)',
-          borderBottom: '1px solid var(--border, #1e2533)',
-          padding: '40px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '32px',
-          maxWidth: '900px',
-          margin: '0 auto',
-        }}
-      >
-        {STATS.map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 + i * 0.1 }}
-            style={{ textAlign: 'center' }}
-          >
-            <div style={{
-              fontFamily: 'Cormorant Garamond', fontSize: '52px', fontWeight: 300,
-              color: 'var(--signal-green, #10b981)', lineHeight: 1,
-            }}>
-              {s.value}
-            </div>
-            <div style={{
-              fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600,
-              color: 'var(--text-primary, #f1f5f9)', margin: '6px 0 4px',
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>
-              {s.label}
-            </div>
-            <div style={{
-              fontFamily: 'IBM Plex Mono', fontSize: '10px',
-              color: 'var(--text-dim, #475569)',
-            }}>
-              {s.sub}
-            </div>
-          </motion.div>
-        ))}
-      </motion.section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" style={{ padding: '100px 40px', maxWidth: '860px', margin: '0 auto' }}>
-        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-          <h2 style={{
-            fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-            color: 'var(--text-primary, #f1f5f9)', marginBottom: '12px', textAlign: 'center',
-          }}>
-            How It Works
-          </h2>
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px',
-            color: 'var(--text-dim, #475569)', textAlign: 'center', marginBottom: '60px',
-          }}>
-            Six stages. Every signal earns its place.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-            {HOW_IT_WORKS.map((step, i) => (
-              <motion.div
-                key={step.step}
-                initial={{ opacity: 0, x: -16 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                style={{
-                  display: 'flex', gap: '32px', alignItems: 'flex-start',
-                  padding: '28px 0',
-                  borderBottom: i < HOW_IT_WORKS.length - 1 ? '1px solid var(--border, #1e2533)' : 'none',
-                }}
-              >
-                <div style={{
-                  fontFamily: 'Cormorant Garamond', fontSize: '32px', fontWeight: 300,
-                  color: 'var(--signal-green, #10b981)', lineHeight: 1, flexShrink: 0, width: '48px',
-                  opacity: 0.7,
-                }}>
-                  {step.step}
-                </div>
-                <div>
-                  <div style={{
-                    fontFamily: 'IBM Plex Mono', fontSize: '12px', fontWeight: 600,
-                    color: 'var(--text-primary, #f1f5f9)', marginBottom: '8px',
-                    letterSpacing: '0.04em', textTransform: 'uppercase',
-                  }}>
-                    {step.title}
-                  </div>
-                  <div style={{
-                    fontFamily: 'IBM Plex Mono', fontSize: '11px',
-                    color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.8,
-                  }}>
-                    {step.desc}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* ── SIGNAL TIERS ── */}
-      <section style={{
-        padding: '80px 40px',
-        borderTop: '1px solid var(--border, #1e2533)',
-        borderBottom: '1px solid var(--border, #1e2533)',
-        background: 'var(--bg-card, #0f1117)',
-      }}>
-        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            <h2 style={{
-              fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-              color: 'var(--text-primary, #f1f5f9)', marginBottom: '12px', textAlign: 'center',
-            }}>
-              Signal Tiers
-            </h2>
-            <p style={{
-              fontFamily: 'IBM Plex Mono', fontSize: '11px',
-              color: 'var(--text-dim, #475569)', textAlign: 'center', marginBottom: '48px',
-            }}>
-              Every stock receives one signal. Only the top tiers are actionable.
-            </p>
-
-            <div style={{
-              border: '1px solid var(--border, #1e2533)',
-              borderRadius: '12px', overflow: 'hidden',
-            }}>
-              {SIGNAL_TIERS.map((sig, i) => (
-                <div
-                  key={sig.name}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', gap: '16px',
-                    padding: '18px 24px',
-                    borderBottom: i < SIGNAL_TIERS.length - 1 ? '1px solid var(--border, #1e2533)' : 'none',
-                  }}
-                >
-                  <div style={{
-                    width: '8px', height: '8px', borderRadius: '50%',
-                    background: sig.dot, flexShrink: 0, marginTop: '4px',
-                  }} />
-                  <div style={{
-                    fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 700,
-                    color: sig.color, width: '180px', flexShrink: 0,
-                    letterSpacing: '0.04em',
-                  }}>
-                    {sig.name}
-                  </div>
-                  <div style={{
-                    fontFamily: 'IBM Plex Mono', fontSize: '10px',
-                    color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.7,
-                  }}>
-                    {sig.desc}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
+        <div className="hidden md:flex items-center gap-7 text-sm text-slate-300">
+          <a href="#features" className="hover:text-white transition-colors">Features</a>
+          <a href="#compare" className="hover:text-white transition-colors">Compare</a>
+          <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
         </div>
-      </section>
+        <CTAButton className="!py-2 !px-4 text-sm">
+          Get Access
+        </CTAButton>
+      </div>
+    </nav>
+  );
+}
 
-      {/* ── COMPARISON ── */}
-      <section style={{ padding: '100px 40px', maxWidth: '900px', margin: '0 auto', overflowX: 'auto' }}>
-        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-          <h2 style={{
-            fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-            color: 'var(--text-primary, #f1f5f9)', marginBottom: '12px', textAlign: 'center',
-          }}>
-            How We Compare
+function Hero() {
+  return (
+    <section id="top" className="relative pt-32 pb-20 sm:pt-40 sm:pb-28 px-4 sm:px-6 overflow-hidden">
+      {/* Background grid + glow */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.15),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
+      </div>
+
+      <div className="max-w-5xl mx-auto text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-xs sm:text-sm text-blue-300 mb-7"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          AI-Powered Stock Discovery Platform
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7 }}
+          className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05]"
+        >
+          The Intelligence That Hedge Funds<br className="hidden sm:block" />
+          <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            Keep Private — Now In Your Hands
+          </span>
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.1 }}
+          className="mt-8 text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed"
+        >
+          SimuAlpha scans the S&amp;P 500 daily using an AI system that combines
+          institutional investor tracking, proprietary scoring, and real-time social
+          intelligence — then tells you exactly what deserves attention and why.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.2 }}
+          className="mt-10 flex flex-col sm:flex-row gap-3 justify-center items-center"
+        >
+          <CTAButton>
+            Join on Patreon <ArrowRight size={16} />
+          </CTAButton>
+          <CTAButton href="#features" variant="outline">
+            See How It Works
+          </CTAButton>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-6 inline-flex items-center gap-2 text-xs text-slate-400"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+          </span>
+          Scanning market now
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 2 — Social proof bar
+// ────────────────────────────────────────────────────────────────
+function SocialProofBar() {
+  const items = [
+    'S&P 500 Stocks Scored Daily',
+    '8 Super Investors Tracked',
+    '30+ Intelligence Sources',
+    '15 AI Analysis Skills',
+    '24/7 Autonomous Scanning',
+  ];
+  return (
+    <section className="py-6 sm:py-8 px-4 sm:px-6 border-y border-slate-800/60 bg-slate-900/30">
+      <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-10 text-xs sm:text-sm text-slate-400">
+        {items.map((item, i) => (
+          <React.Fragment key={item}>
+            <span className="font-medium tracking-wide">{item}</span>
+            {i < items.length - 1 && (
+              <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-600" />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 3 — Four Feature Cards
+// ────────────────────────────────────────────────────────────────
+function Features() {
+  const cards = [
+    {
+      icon: <Users size={22} />,
+      iconBg: 'from-blue-500/20 to-blue-600/10',
+      iconColor: 'text-blue-400',
+      title: 'Institutional Intelligence',
+      body: 'Track what Berkshire, Druckenmiller, Tepper, Tiger Global, and 4 more are buying or selling quarterly. See when 3+ funds converge on the same stock.',
+    },
+    {
+      icon: <Activity size={22} />,
+      iconBg: 'from-indigo-500/20 to-indigo-600/10',
+      iconColor: 'text-indigo-400',
+      title: 'Proprietary Scoring Engine',
+      body: 'Every stock gets a 0-100 score combining fundamental quality, technical positioning, and multi-signal confluence. The algorithm filters hundreds of stocks down to the handful worth your attention.',
+    },
+    {
+      icon: <Brain size={22} />,
+      iconBg: 'from-purple-500/20 to-purple-600/10',
+      iconColor: 'text-purple-400',
+      title: 'Social Intelligence Network',
+      body: 'Monitors congressional stock trades (committee-weighted), AI investment portfolios, corporate insider buys, and 30+ real-time sources. When all layers agree — that\u2019s our highest conviction signal.',
+    },
+    {
+      icon: <FileText size={22} />,
+      iconBg: 'from-cyan-500/20 to-cyan-600/10',
+      iconColor: 'text-cyan-400',
+      title: 'AI-Written Research',
+      body: 'Every high-scoring stock gets an institutional-grade investment thesis analyzing it from 9 different legendary investor perspectives. Not generic. Specific price targets, risk assessment, and position sizing.',
+    },
+  ];
+
+  return (
+    <section id="features" className="py-20 sm:py-28 px-4 sm:px-6">
+      <div className="max-w-6xl mx-auto">
+        <motion.div {...fadeUp} className="text-center mb-14">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            Four Layers of Intelligence.<br />
+            <span className="text-slate-400">One Clear Answer.</span>
           </h2>
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px',
-            color: 'var(--text-dim, #475569)', textAlign: 'center', marginBottom: '48px',
-          }}>
-            Institutional-grade analysis at 1/200th the cost.
+          <p className="mt-4 text-slate-400 max-w-2xl mx-auto">
+            Most platforms give you data. SimuAlpha gives you a verdict — built from signals
+            that institutions pay millions to access.
           </p>
+        </motion.div>
 
-          <table style={{
-            width: '100%', borderCollapse: 'collapse',
-            fontFamily: 'IBM Plex Mono', fontSize: '11px',
-            border: '1px solid var(--border, #1e2533)', borderRadius: '12px', overflow: 'hidden',
-          }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border, #1e2533)', background: 'var(--bg-card, #0f1117)' }}>
-                <th style={{ textAlign: 'left', padding: '14px 20px', color: 'var(--text-dim, #475569)', fontWeight: 400 }}>Feature</th>
-                <th style={{ textAlign: 'center', padding: '14px 20px', color: 'var(--signal-green, #10b981)', fontWeight: 700 }}>SimuAlpha</th>
-                <th style={{ textAlign: 'center', padding: '14px 20px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>TradingView</th>
-                <th style={{ textAlign: 'center', padding: '14px 20px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Bloomberg</th>
-                <th style={{ textAlign: 'center', padding: '14px 20px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Finviz</th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON.map((row, i) => (
-                <tr
-                  key={row.feature}
-                  style={{
-                    borderBottom: i < COMPARISON.length - 1 ? '1px solid var(--border, #1e2533)' : 'none',
-                    background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                  }}
-                >
-                  <td style={{ padding: '13px 20px', color: 'var(--text-secondary, #94a3b8)' }}>{row.feature}</td>
-                  <td style={{ padding: '13px 20px', textAlign: 'center' }}>
-                    {typeof row.sa === 'boolean' ? (row.sa ? <Tick /> : <Cross />) : (
-                      <span style={{ color: 'var(--signal-green, #10b981)', fontWeight: 700 }}>{row.sa}</span>
-                    )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+          {cards.map((c, i) => (
+            <motion.div
+              key={c.title}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-60px' }}
+              transition={{ duration: 0.5, delay: i * 0.08 }}
+              className="group relative rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-900/40 p-6 sm:p-7 hover:border-slate-700 transition-colors"
+            >
+              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br ${c.iconBg} ${c.iconColor} mb-5 ring-1 ring-inset ring-white/5`}>
+                {c.icon}
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">{c.title}</h3>
+              <p className="text-sm sm:text-base text-slate-400 leading-relaxed">{c.body}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <motion.div {...fadeUp} className="mt-12 text-center">
+          <CTAButton>
+            Get the Full Stack <ArrowRight size={16} />
+          </CTAButton>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 4 — Signal Hierarchy
+// ────────────────────────────────────────────────────────────────
+function SignalHierarchy() {
+  const tiers = [
+    { icon: '\u{1F3C6}', name: 'FULL STACK CONSENSUS', desc: 'All 4 intelligence layers agree', color: 'from-amber-400 to-yellow-500', text: 'text-amber-300' },
+    { icon: '\u{1F3AF}', name: 'CONFLUENCE ZONE', desc: 'Multiple technical supports converge', color: 'from-cyan-400 to-blue-500', text: 'text-cyan-300' },
+    { icon: '\u{1F7E2}', name: 'LOAD THE BOAT', desc: 'Score 85-100, maximum conviction', color: 'from-emerald-500 to-green-600', text: 'text-emerald-300' },
+    { icon: '\u{1F7E2}', name: 'ACCUMULATE', desc: 'Score 70-84, scale in', color: 'from-emerald-600 to-emerald-700', text: 'text-emerald-200' },
+    { icon: '\u{1F7E1}', name: 'WATCHLIST', desc: 'Score 55-69, setup forming', color: 'from-yellow-500 to-amber-600', text: 'text-yellow-300' },
+    { icon: '\u{1F535}', name: 'HOLD', desc: 'Score 40-54, maintain position', color: 'from-blue-500 to-indigo-600', text: 'text-blue-300' },
+    { icon: '\u{1F534}', name: 'AVOID', desc: 'Below 40, does not meet criteria', color: 'from-rose-500 to-red-600', text: 'text-rose-300' },
+  ];
+
+  return (
+    <section className="py-20 sm:py-28 px-4 sm:px-6 bg-gradient-to-b from-transparent via-slate-900/40 to-transparent">
+      <div className="max-w-4xl mx-auto">
+        <motion.div {...fadeUp} className="text-center mb-12">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            Seven Signals. Zero Ambiguity.
+          </h2>
+          <p className="mt-4 text-slate-400 max-w-xl mx-auto">
+            Every stock in the universe lands in one of seven tiers. You always know what to do.
+          </p>
+        </motion.div>
+
+        <div className="space-y-2 sm:space-y-3">
+          {tiers.map((t, i) => (
+            <motion.div
+              key={t.name}
+              initial={{ opacity: 0, x: -16 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: i * 0.05 }}
+              className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-900/40 px-4 sm:px-6 py-4 hover:border-slate-700 transition-colors"
+            >
+              <span className="text-2xl sm:text-3xl flex-shrink-0">{t.icon}</span>
+              <div className={`hidden sm:block w-1 h-10 rounded-full bg-gradient-to-b ${t.color} flex-shrink-0`} />
+              <div className="flex-1 min-w-0">
+                <div className={`font-bold text-sm sm:text-base ${t.text} tracking-wider`}>
+                  {t.name}
+                </div>
+                <div className="text-xs sm:text-sm text-slate-400 mt-0.5">{t.desc}</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 5 — Comparison Table
+// ────────────────────────────────────────────────────────────────
+function CompareTable() {
+  const rows = [
+    { label: 'Full S&P 500 screening', vals: ['yes', 'no', 'partial', 'yes'] },
+    { label: 'Custom 100-point scoring', vals: ['no', 'no', 'Quant ratings', 'yes'] },
+    { label: '8 super investor tracking', vals: ['Manual', 'no', 'no', 'Automated'] },
+    { label: 'Congressional trade monitoring', vals: ['no', 'yes', 'no', 'Committee-weighted'] },
+    { label: 'AI-written investment theses', vals: ['no', 'no', 'no', 'Per stock'] },
+    { label: 'Multi-layer consensus signals', vals: ['no', 'no', 'no', '4-layer'] },
+    { label: 'Self-improving algorithm', vals: ['no', 'no', 'no', 'Learns from outcomes'] },
+    { label: 'Entry zones + position sizing', vals: ['Charts only', 'no', 'no', '5-tranche system'] },
+  ];
+
+  const cols = ['Bloomberg', 'Unusual Whales', 'Seeking Alpha', 'SimuAlpha'];
+
+  const renderCell = (val, isUs, isCost = false) => {
+    if (val === 'yes') {
+      return <Check size={18} className={isUs ? 'inline text-emerald-400' : 'inline text-slate-400'} />;
+    }
+    if (val === 'no') {
+      return <X size={18} className="inline text-slate-600" />;
+    }
+    return (
+      <span className={`text-xs sm:text-sm ${isUs ? 'text-emerald-300 font-medium' : 'text-slate-400'}`}>
+        {val}
+      </span>
+    );
+  };
+
+  return (
+    <section id="compare" className="py-20 sm:py-28 px-4 sm:px-6">
+      <div className="max-w-6xl mx-auto">
+        <motion.div {...fadeUp} className="text-center mb-12">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            Compare The Stack
+          </h2>
+          <p className="mt-4 text-slate-400 max-w-xl mx-auto">
+            Side-by-side with the platforms hedge funds and retail investors actually use.
+          </p>
+        </motion.div>
+
+        <motion.div {...fadeUp} className="overflow-x-auto -mx-4 sm:mx-0">
+          <div className="min-w-[720px] mx-4 sm:mx-0 rounded-2xl border border-slate-800 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-900/80 border-b border-slate-800">
+                  <th className="px-4 sm:px-6 py-4 text-xs sm:text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                    Capability
+                  </th>
+                  {cols.map((c, i) => (
+                    <th
+                      key={c}
+                      className={`px-3 sm:px-5 py-4 text-center text-xs sm:text-sm font-semibold uppercase tracking-wider ${
+                        i === 3
+                          ? 'text-blue-300 bg-gradient-to-b from-blue-500/15 to-indigo-500/10 border-x border-blue-500/40'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={row.label} className={ri % 2 === 0 ? 'bg-slate-950/40' : 'bg-slate-900/20'}>
+                    <td className="px-4 sm:px-6 py-3 text-sm sm:text-base text-slate-200 font-medium">
+                      {row.label}
+                    </td>
+                    {row.vals.map((v, vi) => (
+                      <td
+                        key={vi}
+                        className={`px-3 sm:px-5 py-3 text-center ${
+                          vi === 3
+                            ? 'bg-blue-500/5 border-x border-blue-500/30'
+                            : ''
+                        }`}
+                      >
+                        {renderCell(v, vi === 3)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                <tr className="bg-slate-900/80 border-t-2 border-slate-700">
+                  <td className="px-4 sm:px-6 py-5 text-sm sm:text-base font-bold text-white uppercase tracking-wider">
+                    Monthly Cost
                   </td>
-                  <td style={{ padding: '13px 20px', textAlign: 'center', color: 'var(--text-dim, #475569)' }}>
-                    {typeof row.tv === 'boolean' ? (row.tv ? <Tick /> : <Cross />) : row.tv}
-                  </td>
-                  <td style={{ padding: '13px 20px', textAlign: 'center', color: 'var(--text-dim, #475569)' }}>
-                    {typeof row.bloom === 'boolean' ? (row.bloom ? <Tick /> : <Cross />) : row.bloom}
-                  </td>
-                  <td style={{ padding: '13px 20px', textAlign: 'center', color: 'var(--text-dim, #475569)' }}>
-                    {typeof row.finviz === 'boolean' ? (row.finviz ? <Tick /> : <Cross />) : row.finviz}
+                  <td className="px-3 sm:px-5 py-5 text-center text-base sm:text-lg font-bold text-slate-300">$2,000+</td>
+                  <td className="px-3 sm:px-5 py-5 text-center text-base sm:text-lg font-bold text-slate-300">$50</td>
+                  <td className="px-3 sm:px-5 py-5 text-center text-base sm:text-lg font-bold text-slate-300">$25</td>
+                  <td className="px-3 sm:px-5 py-5 text-center bg-gradient-to-b from-blue-500/15 to-indigo-500/10 border-x border-b border-blue-500/40">
+                    <div className="text-xl sm:text-2xl font-bold text-blue-300">$29</div>
+                    <div className="text-[10px] sm:text-xs text-blue-400/80 mt-1 font-medium">10x the intelligence</div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </motion.div>
-      </section>
 
-      {/* ── SELF-IMPROVING AI ── */}
-      <section style={{
-        padding: '80px 40px',
-        borderTop: '1px solid var(--border, #1e2533)',
-        background: 'var(--bg-card, #0f1117)',
-      }}>
-        <div style={{ maxWidth: '760px', margin: '0 auto' }}>
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            <h2 style={{
-              fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-              color: 'var(--text-primary, #f1f5f9)', marginBottom: '12px', textAlign: 'center',
-            }}>
-              The system learns.
-            </h2>
-            <p style={{
-              fontFamily: 'IBM Plex Mono', fontSize: '11px',
-              color: 'var(--text-dim, #475569)', textAlign: 'center', marginBottom: '48px',
-            }}>
-              Every signal outcome is measured. Every week, the AI improves.
-            </p>
+        <motion.div {...fadeUp} className="mt-10 text-center">
+          <CTAButton>
+            Get SimuAlpha for $29 <ArrowRight size={16} />
+          </CTAButton>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
 
-            <div style={{
-              border: '1px solid var(--border, #1e2533)',
-              borderRadius: '12px', overflow: 'hidden',
-            }}>
-              {[
-                { n: '01', title: 'Signal fires', body: 'LOAD THE BOAT on NVDA at $106. Wave C completion at 0.5 Fib + 200WMA confluence.' },
-                { n: '02', title: 'Outcome tracked', body: 'Price at $141.20 after 90 days. Return: +33.2%. Signal outcome: WON. Fibonacci target reached.' },
-                { n: '03', title: 'AI analyses', body: 'Confluence factor: +0.82 accuracy. Volume confirmation factor: +0.71. 13F overlap: +0.68. Macro context: -0.44 (headwind).' },
-                { n: '04', title: 'Weights updated', body: 'Confluence detection weight +3%. Volume confirmation weight +2%. Changes require admin approval before deployment.' },
-              ].map((item, i, arr) => (
-                <div key={item.n} style={{
-                  display: 'flex', gap: '24px', padding: '24px',
-                  borderBottom: i < arr.length - 1 ? '1px solid var(--border, #1e2533)' : 'none',
-                  alignItems: 'flex-start',
-                }}>
-                  <div style={{
-                    fontFamily: 'Cormorant Garamond', fontSize: '28px', fontWeight: 300,
-                    color: 'var(--signal-green, #10b981)', flexShrink: 0, width: '40px',
-                    lineHeight: 1, opacity: 0.6,
-                  }}>
-                    {item.n}
-                  </div>
-                  <div>
-                    <div style={{
-                      fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 700,
-                      color: 'var(--text-primary, #f1f5f9)', marginBottom: '6px',
-                      textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}>
-                      {item.title}
+// ────────────────────────────────────────────────────────────────
+// Section 6 — How It Works
+// ────────────────────────────────────────────────────────────────
+function HowItWorks() {
+  const steps = [
+    {
+      icon: <Layers size={22} />,
+      title: 'We Scan Everything',
+      body: 'S&P 500 scored daily. 30+ intelligence sources. 8 super investors tracked.',
+    },
+    {
+      icon: <Brain size={22} />,
+      title: 'AI Does The Analysis',
+      body: 'Full research note per opportunity. Fundamentals, technicals, institutional positioning, risk.',
+    },
+    {
+      icon: <Target size={22} />,
+      title: 'You Get Clear Signals',
+      body: 'Specific stocks, specific entry zones, specific conviction levels. Position sizing and profit targets included.',
+    },
+  ];
+
+  return (
+    <section className="py-20 sm:py-28 px-4 sm:px-6 bg-gradient-to-b from-transparent via-slate-900/40 to-transparent">
+      <div className="max-w-6xl mx-auto">
+        <motion.div {...fadeUp} className="text-center mb-14">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            How It Works
+          </h2>
+          <p className="mt-4 text-slate-400 max-w-xl mx-auto">
+            Three steps from market noise to your morning game plan.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {steps.map((s, i) => (
+            <motion.div
+              key={s.title}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
+              className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-6 sm:p-8"
+            >
+              <div className="absolute -top-3 -left-3 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/40">
+                {i + 1}
+              </div>
+              <div className="inline-flex w-12 h-12 rounded-xl bg-slate-800/80 text-blue-400 items-center justify-center mb-5 ring-1 ring-inset ring-white/5">
+                {s.icon}
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">{s.title}</h3>
+              <p className="text-sm sm:text-base text-slate-400 leading-relaxed">{s.body}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 7 — Pricing
+// ────────────────────────────────────────────────────────────────
+function Pricing() {
+  const plans = [
+    {
+      name: 'Free',
+      price: '$0',
+      tagline: 'Get a feel for the platform',
+      features: ['Top 10 stocks visible', 'Limited screener', 'Daily market summary'],
+      cta: 'Start Free',
+      highlight: false,
+    },
+    {
+      name: 'Pro',
+      price: '$29',
+      tagline: 'For serious investors',
+      features: [
+        'Full screener + theses',
+        'SAIN intelligence network',
+        'Portfolio tracker',
+        'Custom alerts',
+        'All signal tiers',
+      ],
+      cta: 'Get Pro Access',
+      highlight: true,
+    },
+    {
+      name: 'Institutional',
+      price: '$79',
+      tagline: 'Power users + teams',
+      features: [
+        'Everything in Pro',
+        'AI chat assistant',
+        'API access',
+        'Priority analysis',
+        'Backtesting dashboard',
+      ],
+      cta: 'Get Institutional',
+      highlight: false,
+    },
+  ];
+
+  return (
+    <section id="pricing" className="py-20 sm:py-28 px-4 sm:px-6">
+      <div className="max-w-6xl mx-auto">
+        <motion.div {...fadeUp} className="relative rounded-3xl p-[1.5px] bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600">
+          <div className="rounded-3xl bg-[#0a0e1a] px-5 sm:px-10 py-12 sm:py-16">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+                Stop Paying for Data.<br />
+                <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                  Start Getting Answers.
+                </span>
+              </h2>
+              <p className="mt-5 text-slate-400 max-w-2xl mx-auto text-sm sm:text-base">
+                Bloomberg charges $24,000/year. Hedge funds charge 2% + 20%. SimuAlpha gives you
+                the same caliber of intelligence for less than a dinner out.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+              {plans.map((p) => (
+                <div
+                  key={p.name}
+                  className={`relative rounded-2xl p-6 sm:p-7 flex flex-col ${
+                    p.highlight
+                      ? 'bg-gradient-to-b from-blue-600/30 to-indigo-700/20 border-2 border-blue-400/60 shadow-xl shadow-blue-500/20 scale-[1.02]'
+                      : 'bg-slate-900/60 border border-slate-800'
+                  }`}
+                >
+                  {p.highlight && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 text-white text-xs font-bold tracking-wider shadow-lg">
+                      MOST POPULAR
                     </div>
-                    <div style={{
-                      fontFamily: 'IBM Plex Mono', fontSize: '10px',
-                      color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.8,
-                    }}>
-                      {item.body}
-                    </div>
+                  )}
+                  <div className="text-sm font-medium text-slate-400 mb-1">{p.name}</div>
+                  <div className="flex items-baseline gap-1 mb-2">
+                    <span className="text-4xl sm:text-5xl font-bold text-white">{p.price}</span>
+                    {p.price !== '$0' && <span className="text-slate-400 text-sm">/mo</span>}
                   </div>
+                  <div className="text-xs text-slate-500 mb-6">{p.tagline}</div>
+                  <ul className="space-y-3 mb-7 flex-1">
+                    {p.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5 text-sm text-slate-300">
+                        <Check size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <CTAButton variant={p.highlight ? 'primary' : 'outline'} className="w-full">
+                    {p.cta}
+                  </CTAButton>
                 </div>
               ))}
             </div>
 
-            <p style={{
-              fontFamily: 'IBM Plex Mono', fontSize: '10px',
-              color: 'var(--text-dim, #475569)', textAlign: 'center',
-              marginTop: '20px', lineHeight: 1.8,
-            }}>
-              Safety guardrails: ±10% max weight change · 30+ outcomes minimum before any adjustment ·
-              human approval required · auto-rollback if accuracy degrades
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── TRANSPARENCY ── */}
-      <section style={{ padding: '100px 40px', maxWidth: '760px', margin: '0 auto' }}>
-        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-          <h2 style={{
-            fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-            color: 'var(--text-primary, #f1f5f9)', marginBottom: '12px', textAlign: 'center',
-          }}>
-            Full transparency.
-          </h2>
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px',
-            color: 'var(--text-dim, #475569)', textAlign: 'center', marginBottom: '48px',
-          }}>
-            No black box. No cherry-picked results. No personal trade record marketing.
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {[
-              { title: 'What we show you', items: ['Backtest win rate by tier', 'SPY comparison (alpha)', 'Sharpe ratio', 'Sample size (156 signals)', 'Learned principles', 'Pipeline run schedule'] },
-              { title: 'What we don\'t claim', items: ['Personal trading returns', 'Guaranteed profits', 'Real-time execution', 'Perfect accuracy', '"Our model predicted XYZ"', 'Individual stock price targets'] },
-            ].map((col) => (
-              <div key={col.title} style={{
-                background: 'var(--bg-card, #0f1117)',
-                border: '1px solid var(--border, #1e2533)',
-                borderRadius: '12px', padding: '24px',
-              }}>
-                <div style={{
-                  fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 700,
-                  color: 'var(--text-primary, #f1f5f9)', marginBottom: '16px',
-                  textTransform: 'uppercase', letterSpacing: '0.06em',
-                }}>
-                  {col.title}
-                </div>
-                {col.items.map(item => (
-                  <div key={item} style={{
-                    fontFamily: 'IBM Plex Mono', fontSize: '10px',
-                    color: 'var(--text-secondary, #94a3b8)',
-                    padding: '5px 0',
-                    display: 'flex', gap: '8px', alignItems: 'baseline',
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                  }}>
-                    <span style={{ color: 'var(--signal-green, #10b981)', flexShrink: 0 }}>·</span>
-                    {item}
-                  </div>
-                ))}
-              </div>
-            ))}
+            <div className="mt-10 text-center">
+              <CTAButton className="!px-10 !py-4 text-base">
+                Get Access on Patreon <ArrowRight size={18} />
+              </CTAButton>
+              <p className="mt-4 text-xs text-slate-500">
+                Cancel anytime. No contracts.
+              </p>
+            </div>
           </div>
         </motion.div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── FAQ ── */}
-      <section style={{
-        padding: '80px 40px',
-        borderTop: '1px solid var(--border, #1e2533)',
-        background: 'var(--bg-card, #0f1117)',
-      }}>
-        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-            <h2 style={{
-              fontFamily: 'Cormorant Garamond', fontSize: '42px', fontWeight: 300,
-              color: 'var(--text-primary, #f1f5f9)', marginBottom: '48px', textAlign: 'center',
-            }}>
-              Common Questions
-            </h2>
+// ────────────────────────────────────────────────────────────────
+// Section 8 — FAQ
+// ────────────────────────────────────────────────────────────────
+function FAQ() {
+  const items = [
+    {
+      q: 'How is this different from Seeking Alpha or Motley Fool?',
+      a: 'They give you opinions. We give you a system. Every stock gets a quantitative score — not one analyst\u2019s gut feeling. And our system gets smarter by tracking its own accuracy.',
+    },
+    {
+      q: 'Do I need to know technical analysis?',
+      a: 'No. SimuAlpha does the analysis and tells you in plain English what it found, why it matters, and what to do about it.',
+    },
+    {
+      q: 'How do you track politician trades?',
+      a: 'Congress members must disclose trades within 45 days. We monitor filings in real-time and weight them by committee jurisdiction — a Health Committee senator buying pharma is a stronger signal.',
+    },
+    {
+      q: 'What makes your scoring better than a stock screener?',
+      a: 'Screeners filter by static metrics. SimuAlpha combines fundamental quality, technical positioning, institutional consensus, politician activity, AI model signals, and multi-signal confluence into one number.',
+    },
+    {
+      q: 'Can I cancel anytime?',
+      a: 'Yes. Cancel on Patreon anytime with no penalty.',
+    },
+  ];
 
-            {FAQS.map((faq, i) => (
+  const [open, setOpen] = useState(0);
+
+  return (
+    <section className="py-20 sm:py-28 px-4 sm:px-6 bg-gradient-to-b from-transparent via-slate-900/40 to-transparent">
+      <div className="max-w-3xl mx-auto">
+        <motion.div {...fadeUp} className="text-center mb-12">
+          <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+            Frequently Asked
+          </h2>
+        </motion.div>
+
+        <div className="space-y-3">
+          {items.map((item, i) => {
+            const isOpen = open === i;
+            return (
               <motion.div
-                key={faq.q}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
+                key={item.q}
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                style={{
-                  padding: '24px 0',
-                  borderBottom: i < FAQS.length - 1 ? '1px solid var(--border, #1e2533)' : 'none',
-                }}
+                transition={{ duration: 0.3, delay: i * 0.05 }}
+                className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden"
               >
-                <div style={{
-                  fontFamily: 'IBM Plex Mono', fontSize: '12px', fontWeight: 600,
-                  color: 'var(--text-primary, #f1f5f9)', marginBottom: '10px',
-                }}>
-                  {faq.q}
-                </div>
-                <div style={{
-                  fontFamily: 'IBM Plex Mono', fontSize: '11px',
-                  color: 'var(--text-secondary, #94a3b8)', lineHeight: 1.8,
-                }}>
-                  {faq.a}
-                </div>
+                <button
+                  onClick={() => setOpen(isOpen ? -1 : i)}
+                  className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-5 text-left hover:bg-slate-900/60 transition-colors"
+                >
+                  <span className="text-sm sm:text-base font-medium text-white">{item.q}</span>
+                  {isOpen
+                    ? <ChevronUp size={18} className="text-slate-400 flex-shrink-0" />
+                    : <ChevronDown size={18} className="text-slate-400 flex-shrink-0" />}
+                </button>
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-5 sm:px-6 pb-5 text-sm sm:text-base text-slate-400 leading-relaxed">
+                        {item.a}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
-            ))}
-          </motion.div>
+            );
+          })}
         </div>
-      </section>
 
-      {/* ── FINAL CTA ── */}
-      <section style={{ padding: '120px 40px', textAlign: 'center' }}>
-        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
-          <div style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600,
-            letterSpacing: '0.15em', color: 'var(--signal-green, #10b981)',
-            textTransform: 'uppercase', marginBottom: '24px',
-          }}>
-            Early Access · Founding Member Pricing
-          </div>
-
-          <h2 style={{
-            fontFamily: 'Cormorant Garamond',
-            fontSize: 'clamp(40px, 6vw, 80px)',
-            fontWeight: 300, lineHeight: 0.95,
-            color: 'var(--text-primary, #f1f5f9)',
-            marginBottom: '28px',
-          }}>
-            Ready to find your<br />
-            <span style={{ color: 'var(--signal-green, #10b981)', fontStyle: 'italic' }}>next opportunity?</span>
-          </h2>
-
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '12px', lineHeight: 1.9,
-            color: 'var(--text-secondary, #94a3b8)',
-            maxWidth: '480px', margin: '0 auto 44px',
-          }}>
-            Join SimuAlpha on Patreon. Get access to the full signal feed,
-            Elliott Wave dashboard, institutional tracker, and weekly learning reports.
-            Founding members lock in the lowest price permanently.
-          </p>
-
-          <a
-            href={PATREON_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-block',
-              background: 'var(--signal-green, #10b981)', color: '#0c0c0e',
-              border: 'none', borderRadius: '8px', padding: '16px 48px',
-              fontFamily: 'IBM Plex Mono', fontSize: '13px', fontWeight: 700,
-              letterSpacing: '0.06em', cursor: 'pointer', textDecoration: 'none',
-            }}
-          >
-            Join on Patreon
-          </a>
-
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: '10px',
-            color: 'var(--text-dim, #475569)', marginTop: '20px',
-          }}>
-            Cancel anytime. No hidden fees.
-          </p>
+        <motion.div {...fadeUp} className="mt-12 text-center">
+          <CTAButton>
+            Join on Patreon <ArrowRight size={16} />
+          </CTAButton>
         </motion.div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── FOOTER ── */}
-      <footer style={{
-        padding: '32px 40px',
-        borderTop: '1px solid var(--border, #1e2533)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        flexWrap: 'wrap', gap: '12px',
-      }}>
-        <span style={{
-          fontFamily: 'Cormorant Garamond', fontSize: '18px', fontWeight: 400,
-          color: 'var(--text-dim, #475569)',
-        }}>
-          SimuAlpha © 2026
-        </span>
-        <p style={{
-          fontFamily: 'IBM Plex Mono', fontSize: '10px',
-          color: 'var(--text-dim, #475569)', margin: 0, lineHeight: 1.6, maxWidth: '560px',
-          textAlign: 'right',
-        }}>
-          Not financial advice. SimuAlpha provides analytical signals based on technical methodology.
-          Always do your own due diligence before making investment decisions.
-        </p>
-      </footer>
+// ────────────────────────────────────────────────────────────────
+// Section 9 — Transparency
+// ────────────────────────────────────────────────────────────────
+function Transparency() {
+  return (
+    <section className="py-20 sm:py-24 px-4 sm:px-6">
+      <div className="max-w-4xl mx-auto">
+        <motion.div
+          {...fadeUp}
+          className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/80 to-slate-900/40 px-6 sm:px-10 py-10 sm:py-12 text-center"
+        >
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-400 mb-5 ring-1 ring-inset ring-emerald-500/20">
+            <Trophy size={26} />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+            Results Speak Louder Than Promises.
+          </h2>
+          <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+            We publish our signal accuracy dashboard — every signal, every outcome, no
+            cherry-picking. Current tracked accuracy: <span className="text-emerald-300 font-semibold">backtested 72% win rate</span> on
+            highest-conviction signals.
+          </p>
+          <div className="mt-7">
+            <CTAButton>
+              See The Receipts <ArrowRight size={16} />
+            </CTAButton>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
 
+// ────────────────────────────────────────────────────────────────
+// Section 10 — Footer
+// ────────────────────────────────────────────────────────────────
+function Footer() {
+  return (
+    <footer className="border-t border-slate-800/70 px-4 sm:px-6 py-10 mt-8">
+      <div className="max-w-5xl mx-auto text-center text-xs sm:text-sm text-slate-500 leading-relaxed">
+        <div className="mb-2">
+          Built by <span className="text-slate-300 font-medium">Hephzibah Technologies LLC</span> | Powered by <span className="text-slate-300 font-medium">Claude AI</span>
+        </div>
+        <div>
+          This is not financial advice. Past performance does not guarantee future results.
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Page
+// ────────────────────────────────────────────────────────────────
+export default function LandingPage() {
+  // Inject SimuAlpha title for the standalone landing
+  useEffect(() => {
+    const prev = document.title;
+    document.title = 'SimuAlpha — Stock Discovery Built On Institutional Intelligence';
+    return () => { document.title = prev; };
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[#0a0e1a] text-slate-100 antialiased">
+      <TopNav />
+      <Hero />
+      <SocialProofBar />
+      <Features />
+      <SignalHierarchy />
+      <CompareTable />
+      <HowItWorks />
+      <Pricing />
+      <FAQ />
+      <Transparency />
+      <Footer />
     </div>
   );
 }
