@@ -12,7 +12,7 @@ const tiers = [
   },
   {
     name: 'Pro',
-    price: '$29',
+    price: '$10',
     period: '/mo',
     features: ['Full screener — 500+ stocks', 'SAIN 4-layer consensus', 'Super investor tracking', 'AI-written theses', 'Unlimited watchlist', 'Custom alerts'],
     cta: 'Join on Patreon',
@@ -20,8 +20,8 @@ const tiers = [
   },
   {
     name: 'Institutional',
-    price: '$79',
-    period: '/mo',
+    price: 'Pro Rata',
+    period: '',
     features: ['Everything in Pro', 'API access', 'Backtesting dashboard', 'Priority agent analysis', 'PDF report export'],
     cta: 'Contact Us',
     highlight: false,
@@ -51,7 +51,7 @@ export default function CTAFooter() {
               fontFamily: 'IBM Plex Mono', fontSize: 11,
               color: 'var(--text-dim)', letterSpacing: '0.04em',
             }}>
-              Bloomberg charges $2,000/mo. You don't have to.
+              Bloomberg charges $2,000/mo. SimuAlpha is $10.
             </p>
           </motion.div>
 
@@ -82,7 +82,7 @@ export default function CTAFooter() {
                 )}
                 <div style={{ fontFamily: 'Cormorant Garamond', fontSize: 20, color: 'var(--text-primary)', marginBottom: 6 }}>{tier.name}</div>
                 <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: 'Cormorant Garamond', fontSize: 40, fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
+                  <span style={{ fontFamily: 'Cormorant Garamond', fontSize: tier.price.length > 6 ? 26 : 40, fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
                   {tier.period && <span style={{ fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--text-dim)' }}>{tier.period}</span>}
                 </div>
                 <div style={{ flex: 1, marginBottom: 20 }}>
@@ -149,7 +149,7 @@ export default function CTAFooter() {
         color: 'var(--text-dim)', letterSpacing: '0.04em',
         lineHeight: 1.8,
       }}>
-        <div>Built by <span style={{ color: 'var(--text-secondary)' }}>Hephzibah Technologies LLC</span> · Powered by Claude AI</div>
+        <div>Built by <span style={{ color: 'var(--text-secondary)' }}>TheSmallBusinessAI</span> · Powered by Claude AI</div>
         <div style={{ marginTop: 4 }}>Not financial advice. Past performance does not guarantee future results. Do your own research.</div>
       </footer>
     </>
