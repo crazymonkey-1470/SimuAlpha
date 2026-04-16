@@ -255,9 +255,99 @@ DISCIPLINE REMINDER
   }
 }
 
+/**
+ * FREEFORM AGENT QUERY
+ * Used by agent_bridge.js to handle direct ALPHA queries.
+ * Accepts a prompt, optional context, mode, and pre-fetched enriched data.
+ * Returns structured JSON for the /api/agent/query endpoint.
+ */
+async function freeformQuery(prompt, context, mode, enrichedData = {}) {
+  const { screener, waveCount } = enrichedData;
+
+  const stockContext = screener
+    ? `
+STOCK DATA:
+Ticker: ${screener.ticker}
+Company: ${screener.company_name || 'N/A'}
+Current Price: ${screener.current_price != null ? '$' + screener.current_price : 'N/A'}
+TLI Score: ${screener.tli_score ?? 'N/A'}/100
+Signal Tier: ${screener.signal_tier || 'N/A'}
+Entry Price: ${screener.entry_price != null ? '$' + screener.entry_price : 'N/A'}
+Fib Target: ${screener.fib_target != null ? '$' + screener.fib_target : 'N/A'}
+52W High: ${screener.week_52_high != null ? '$' + screener.week_52_high : 'N/A'}
+52W Low: ${screener.low_52w != null ? '$' + screener.low_52w : 'N/A'}
+P/E Ratio: ${screener.pe_ratio ?? 'N/A'}
+Revenue Growth: ${screener.revenue_growth_pct != null ? screener.revenue_growth_pct + '%' : 'N/A'}
+Institutional Overlap: ${screener.institutional_overlap ?? 0} funds
+`.trim()
+    : '';
+
+  const waveContext = waveCount
+    ? `
+WAVE COUNT:
+Current Wave: ${waveCount.current_wave || waveCount.wave_position || 'N/A'}
+Wave Structure: ${waveCount.wave_structure || 'N/A'}
+Confidence: ${waveCount.confidence_score != null ? waveCount.confidence_score + '%' : 'N/A'}
+Confidence Label: ${waveCount.confidence_label || 'N/A'}
+TLI Signal: ${waveCount.tli_signal || 'N/A'}
+Entry Zone: ${waveCount.entry_zone_low != null ? '$' + waveCount.entry_zone_low + ' — $' + waveCount.entry_zone_high : 'N/A'}
+Stop Loss: ${waveCount.stop_loss != null ? '$' + waveCount.stop_loss : 'N/A'}
+Target 1: ${waveCount.target_1 != null ? '$' + waveCount.target_1 : 'N/A'}
+Reward/Risk: ${waveCount.reward_risk_ratio != null ? waveCount.reward_risk_ratio + 'x' : 'N/A'}
+`.trim()
+    : '';
+
+  const modeInstructions = {
+    analysis: 'Provide a full Elliott Wave + fundamental analysis. Identify the current wave position, key levels, and TLI conviction.',
+    signal: 'Focus on actionable signal output: entry price, stop loss, target, tier, and whether this is a TLI buy zone.',
+    risk:    'Focus on risk assessment: position sizing, stop levels, Kelly fraction, DCA tranches, and what would invalidate the setup.',
+    explain: 'Explain the current situation in plain English for an investor who understands TLI methodology but wants clear reasoning.',
+  };
+
+  const instruction = modeInstructions[mode] || modeInstructions.analysis;
+
+  const systemPrompt = `You are ALPHA, the SimuAlpha AI agent — an expert in TLI (The Long Investor) Elliott Wave methodology.
+
+TLI RULES (never violate):
+- Best entries: Wave 2, Wave 4, Wave C completions only
+- NEVER recommend buying in Wave 5 or Wave B
+- Always require fundamentally undervalued stocks with growing revenue
+- Think in 2-5 year time horizons
+- Scale into positions in thirds
+
+${stockContext ? stockContext + '\n' : ''}${waveContext ? waveContext + '\n' : ''}${context ? 'ADDITIONAL CONTEXT:\n' + context + '\n' : ''}
+QUERY MODE: ${mode || 'analysis'}
+INSTRUCTION: ${instruction}
+
+USER QUERY: ${prompt}
+
+Respond ONLY with a valid JSON object — no preamble, no markdown, no backticks:
+{
+  "response": "Direct answer to the user query (2-4 sentences, TLI voice)",
+  "ticker": "TICKER or null",
+  "signal_tier": "LOAD_THE_BOAT | ACCUMULATE | WATCH | AVOID | null",
+  "entry_price": number or null,
+  "fib_target": number or null,
+  "wave_position": "e.g. Wave C or Wave 2 or null",
+  "confidence": number 0.0-1.0 or null,
+  "reasoning": "Chain of thought — what data drove this conclusion, step by step"
+}`;
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 1200,
+    messages: [{ role: 'user', content: systemPrompt }],
+  });
+
+  const text = response.content[0].text;
+  const clean = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean);
+}
+
 module.exports = {
   interpretWaveCount,
   generateAlertNarrative,
   generateWeeklyBrief,
   shouldInterpret,
+  freeformQuery,
 };
