@@ -2,28 +2,28 @@ import { motion } from 'framer-motion';
 
 const cards = [
   {
-    label: 'TLI Scoring Engine',
-    body: 'Proprietary 0–100 score: 50pts fundamentals (revenue growth, margins, FCF) + 50pts technical position relative to 200-week and 200-month moving averages.',
+    label: 'Layer 1 — Conviction Scoring',
+    body: 'Every stock gets a single number. One score. One verdict. The system decides what\'s worth your time so you don\'t have to.',
     accent: 'var(--signal-green)',
-    symbol: '◈',
+    symbol: '01',
   },
   {
-    label: 'SAIN Intelligence',
-    body: '4-layer consensus: Super Investors (13F), Politicians (STOCK Act, committee-weighted), AI Models, and TLI score. Full-stack alignment is the highest conviction signal.',
+    label: 'Layer 2 — Intelligence Network',
+    body: '30+ independent data sources. When they agree, conviction is highest. When they disagree, you stay out.',
     accent: 'var(--blue)',
-    symbol: '◉',
+    symbol: '02',
   },
   {
-    label: 'Elliott Wave Analysis',
-    body: 'Automated wave counting pinpoints Wave 2, 4, and C entries. Wave 5 extensions are always avoided. Fibonacci targets calculated per setup.',
+    label: 'Layer 3 — Timing Engine',
+    body: 'Knows where to enter, where to take profit, and where to walk away. Every signal comes with a plan.',
     accent: 'var(--gold)',
-    symbol: '◌',
+    symbol: '03',
   },
   {
-    label: 'Agentic Research',
-    body: 'AI-written investment theses per ticker — analysed from 9 legendary investor perspectives. Kill-thesis flags, position sizing, and 5-tranche DCA plans included.',
+    label: 'Layer 4 — AI Analyst',
+    body: 'Writes the thesis. Stress-tests it. Tells you what could go wrong. Institutional-grade research on every opportunity.',
     accent: '#a855f7',
-    symbol: '◎',
+    symbol: '04',
   },
 ];
 
@@ -48,7 +48,7 @@ export default function Features() {
           fontFamily: 'IBM Plex Mono', fontSize: 12, color: 'var(--text-dim)',
           letterSpacing: '0.04em', maxWidth: 480, margin: '0 auto',
         }}>
-          Most screeners give you data. SimuAlpha gives you a verdict.
+          Most platforms give you data. SimuAlpha gives you a verdict.
         </p>
       </motion.div>
 
@@ -72,8 +72,8 @@ export default function Features() {
             }}
           >
             <div style={{
-              fontFamily: 'IBM Plex Mono', fontSize: 20,
-              color: c.accent, marginBottom: 12,
+              fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 500,
+              letterSpacing: '0.12em', color: c.accent, marginBottom: 12,
             }}>
               {c.symbol}
             </div>
