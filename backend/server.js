@@ -53,8 +53,10 @@ app.use('/api/v1/stocks', v1StocksRouter);
 // ═══════════════════════════════════════════
 const tierRoutes = require('./routes/tier_routes');
 const intelligenceRoutes = require('./routes/intelligence_routes');
+const agentBridgeRoutes = require('./routes/agent_bridge');
 app.use('/', tierRoutes);
 app.use('/', intelligenceRoutes);
+app.use('/', agentBridgeRoutes);
 
 // ═══════════════════════════════════════════
 // RATE LIMITING
