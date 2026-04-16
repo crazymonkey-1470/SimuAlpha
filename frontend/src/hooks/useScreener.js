@@ -78,7 +78,7 @@ export function useWatchlist() {
 
   async function fetchWatchlist() {
     try {
-      const res = await fetch('/api/watchlist');
+      const res = await fetch('/api/watchlist', { signal: AbortSignal.timeout(10000) });
       const json = await res.json();
       setData(json.watchlist || []);
     } catch (err) {
@@ -95,6 +95,7 @@ export function useWatchlist() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: ticker.toUpperCase(), notes }),
+        signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
         const err = await res.json();
