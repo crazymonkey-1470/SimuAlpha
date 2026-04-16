@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useScreenerResults, useScanHistory, useConfluenceZones, useGenerationalBuys, useLastPipelineRun } from '../hooks/useScreener';
+import { useSAINStats } from '../hooks/useSAIN';
 import OpportunityCard from '../components/OpportunityCard';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const { data: confluenceStocks, loading: confluenceLoading } = useConfluenceZones();
   const { data: generationalBuys, loading: genLoading } = useGenerationalBuys();
   const lastPipelineRun = useLastPipelineRun();
+  const { stats: sainStats } = useSAINStats();
   const { showOnboarding, dismiss: dismissOnboarding } = useOnboarding();
 
   const topOpportunities = allStocks
@@ -27,7 +29,6 @@ export default function Dashboard() {
 
   const accumulate = allStocks.filter(s => s.signal === 'ACCUMULATE').length;
   const loadTheBoat = allStocks.filter(s => s.signal === 'LOAD THE BOAT').length;
-  const entryZone = allStocks.filter(s => s.entry_zone).length;
   const lastScan = scanHistory[0]?.scanned_at;
 
   return (
@@ -81,7 +82,7 @@ export default function Dashboard() {
             { label: 'STOCKS SCANNED', value: allStocks.length.toLocaleString() },
             { label: 'LOAD THE BOAT', value: loadTheBoat, color: 'var(--signal-green)' },
             { label: 'ACCUMULATE', value: accumulate, color: 'var(--signal-amber)' },
-            { label: 'ENTRY ZONES', value: entryZone, color: 'var(--gold)' },
+            { label: 'ACTIVE SAIN SOURCES', value: sainStats?.sourcesActive ?? '\u2014', color: 'var(--blue)' },
           ].map(stat => (
             <div key={stat.label}>
               <div style={{
@@ -104,8 +105,8 @@ export default function Dashboard() {
           marginTop: '16px', fontFamily: 'IBM Plex Mono',
           fontSize: '11px', color: 'var(--text-dim)', display: 'flex', gap: '16px'
         }}>
-          {lastPipelineRun && <span>Last pipeline: {formatTimeAgo(lastPipelineRun)}</span>}
-          {lastScan && <span>Last scan: {new Date(lastScan).toLocaleString()}</span>}
+          {lastPipelineRun && <span>Last scan: {formatTimeAgo(lastPipelineRun)}</span>}
+          {!lastPipelineRun && lastScan && <span>Last scan: {formatTimeAgo(lastScan)}</span>}
         </div>
       </motion.div>
 
@@ -295,47 +296,6 @@ export default function Dashboard() {
         </div>
         <SAINStatsWidget />
       </div>
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-        style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '12px', padding: '32px', marginBottom: '48px'
-        }}
-      >
-        <h3 style={{
-          fontFamily: 'Cormorant Garamond', fontSize: '24px',
-          fontWeight: 400, marginBottom: '20px', color: 'var(--text-primary)'
-        }}>
-          How This Works
-        </h3>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: '24px'
-        }}>
-          {[
-            { step: '01', title: 'Universe Scan', desc: 'S&P 500 scanned twice weekly (Sun + Wed) for fundamental quality \u2014 revenue growth, valuation, and drawdown from highs.' },
-            { step: '02', title: 'TLI Scoring', desc: 'Each stock scored 0-100 on two pillars: fundamentals (50pts) and technical position relative to 200WMA/MMA (50pts).' },
-            { step: '03', title: 'Elliott Wave', desc: 'High-scoring stocks analyzed for wave position. Only Wave 2, 4, or C entries flagged. Wave 5 always avoided.' },
-            { step: '04', title: 'Entry Signals', desc: 'When a stock hits the TLI sweet spot \u2014 fundamentally undervalued AND at its 200MA \u2014 you get alerted.' },
-          ].map(item => (
-            <div key={item.step}>
-              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--signal-green)', marginBottom: '8px' }}>
-                {item.step}
-              </div>
-              <div style={{ fontFamily: 'Cormorant Garamond', fontSize: '18px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                {item.title}
-              </div>
-              <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                {item.desc}
-              </div>
-            </div>
-          ))}
-        </div>
-      </motion.div>
 
       <div style={{ fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-dim)', padding: '20px 0', borderTop: '1px solid var(--border)' }}>
         Not financial advice. AI-generated analysis for educational purposes only. Do your own research before investing.
