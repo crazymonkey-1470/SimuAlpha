@@ -7,7 +7,7 @@ export default function Layout() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       <NavBar />
-      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px 80px' }}>
+      <main className="app-main" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px 80px' }}>
         <Outlet />
       </main>
       <footer style={{

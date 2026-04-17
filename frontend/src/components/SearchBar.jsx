@@ -71,6 +71,7 @@ export default function SearchBar() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true); }}
+        className="search-input"
         style={{
           background: 'var(--bg-card)',
           border: '1px solid var(--border)',
@@ -86,7 +87,7 @@ export default function SearchBar() {
       />
 
       {open && results.length > 0 && (
-        <div style={{
+        <div className="search-dropdown" style={{
           position: 'absolute',
           top: '100%',
           left: 0,
@@ -163,7 +164,7 @@ export default function SearchBar() {
       )}
 
       {open && results.length === 0 && query.length >= 2 && !loading && (
-        <div style={{
+        <div className="search-dropdown" style={{
           position: 'absolute',
           top: '100%',
           left: 0,

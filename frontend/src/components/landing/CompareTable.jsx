@@ -43,7 +43,7 @@ export default function CompareTable() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          style={{ overflowX: 'auto' }}
+          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
         >
           <table style={{
             width: '100%', borderCollapse: 'collapse', minWidth: 640,
