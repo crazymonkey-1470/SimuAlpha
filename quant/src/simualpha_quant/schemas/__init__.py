@@ -1,5 +1,14 @@
 """Pydantic v2 schemas — single source of truth for tool I/O."""
 
+from simualpha_quant.schemas.backtest import (
+    BacktestPatternRequest,
+    BacktestPatternResponse,
+    HorizonStats,
+    JobStatus,
+    SampleSignal,
+    YearlyBreakdown,
+    YearlyHorizonStats,
+)
 from simualpha_quant.schemas.charts import (
     AnnotationsSpec,
     Badge,
@@ -21,9 +30,12 @@ from simualpha_quant.schemas.fundamentals import (
     FundamentalsRequest,
 )
 from simualpha_quant.schemas.prices import PriceBar, PriceHistory, PriceHistoryRequest
+from simualpha_quant.schemas.universe import UniverseSpec
 
 __all__ = [
     "AnnotationsSpec",
+    "BacktestPatternRequest",
+    "BacktestPatternResponse",
     "Badge",
     "ChartConfig",
     "DateRange",
@@ -33,7 +45,9 @@ __all__ = [
     "FundamentalRecord",
     "Fundamentals",
     "FundamentalsRequest",
+    "HorizonStats",
     "HorizontalLine",
+    "JobStatus",
     "Meta",
     "MovingAverageSpec",
     "PriceBar",
@@ -41,7 +55,11 @@ __all__ = [
     "PriceHistoryRequest",
     "RenderChartRequest",
     "RenderChartResponse",
+    "SampleSignal",
     "SuccessResponse",
+    "UniverseSpec",
     "WaveLabel",
+    "YearlyBreakdown",
+    "YearlyHorizonStats",
     "Zone",
 ]
