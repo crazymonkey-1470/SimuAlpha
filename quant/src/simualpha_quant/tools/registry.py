@@ -24,10 +24,15 @@ from simualpha_quant.schemas.backtest import (
 from simualpha_quant.schemas.charts import RenderChartRequest, RenderChartResponse
 from simualpha_quant.schemas.fundamentals import Fundamentals, FundamentalsRequest
 from simualpha_quant.schemas.prices import PriceHistory, PriceHistoryRequest
+from simualpha_quant.schemas.simulate import (
+    SimulateStrategyRequest,
+    SimulateStrategyResponse,
+)
 from simualpha_quant.tools.backtest_pattern import backtest_pattern
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
 from simualpha_quant.tools.render_chart import render_tli_chart
+from simualpha_quant.tools.simulate_strategy import simulate_strategy
 
 
 @dataclass(frozen=True)
@@ -87,6 +92,25 @@ TOOLS: tuple[ToolSpec, ...] = (
         request_model=BacktestPatternRequest,
         response_model=BacktestPatternResponse,
         handler=backtest_pattern,
+    ),
+    ToolSpec(
+        name="simulate_strategy",
+        http_route="/v1/tools/simulate-strategy",
+        mcp_name="simulate_strategy",
+        description=(
+            "Simulate a full strategy (entry rules, 5-tranche DCA, "
+            "exit legs, stop loss, position sizing) against historical "
+            "data. Returns SimulationSummary (win rate, Sharpe, max DD, "
+            "Calmar), per-horizon outcomes (3/6/12/24m by default), a "
+            "bucketed equity curve (OHLC + close), and up to "
+            "chart_samples representative annotated trade charts. Use "
+            "this AFTER backtest_pattern has validated the signal — "
+            "simulate_strategy validates the full plan end-to-end. "
+            "More expensive; prefer async."
+        ),
+        request_model=SimulateStrategyRequest,
+        response_model=SimulateStrategyResponse,
+        handler=simulate_strategy,
     ),
     ToolSpec(
         name="render_tli_chart",

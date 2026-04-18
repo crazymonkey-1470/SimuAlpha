@@ -15,10 +15,12 @@ from simualpha_quant.tools.backtest_pattern import backtest_pattern
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
 from simualpha_quant.tools.render_chart import render_tli_chart
+from simualpha_quant.tools.simulate_strategy import simulate_strategy
 
 __all__ = [
     "backtest_pattern",
     "get_fundamentals",
     "get_price_history",
     "render_tli_chart",
+    "simulate_strategy",
 ]

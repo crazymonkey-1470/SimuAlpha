@@ -20,13 +20,21 @@ from simualpha_quant.logging_config import configure_logging, get_logger
 from simualpha_quant.research import jobs as jobs_mod
 from simualpha_quant.research import universes
 from simualpha_quant.schemas.backtest import BacktestPatternRequest
+from simualpha_quant.schemas.simulate import SimulateStrategyRequest
 from simualpha_quant.tools.backtest_pattern import backtest_pattern
 from simualpha_quant.tools.registry import TOOLS, ToolSpec
+from simualpha_quant.tools.simulate_strategy import simulate_strategy
 
 configure_logging()
 log = get_logger(__name__)
 
 _BACKTEST_TOOL_NAME = "backtest_pattern"
+_SIMULATE_TOOL_NAME = "simulate_strategy"
+
+# Stage-4 async thresholds — stricter than Stage-3 because simulations
+# run the full freqtrade backtest loop per trade.
+SIMULATE_SYNC_COST_LIMIT: int = 200         # len(tickers) * num_years
+SIMULATE_SYNC_TIME_LIMIT_SECONDS: float = 10.0
 
 
 # ─────────────────────────── generic tool handler ──────────────────────
@@ -51,9 +59,11 @@ def _make_handler(spec: ToolSpec) -> Callable:
             extra={"tool": spec.name, "auth": auth.name, "bootstrap": auth.is_bootstrap},
         )
 
-        # backtest_pattern has its own async-aware handler.
+        # backtest_pattern and simulate_strategy have their own async-aware handlers.
         if spec.name == _BACKTEST_TOOL_NAME:
             return await _handle_backtest(request, req_model, started)  # type: ignore[arg-type]
+        if spec.name == _SIMULATE_TOOL_NAME:
+            return await _handle_simulate(request, req_model, started)  # type: ignore[arg-type]
 
         try:
             result: BaseModel = spec.handler(req_model)
@@ -132,6 +142,69 @@ async def _handle_backtest(request: Request, req: BacktestPatternRequest, starte
 
     elapsed_ms = int((time.time() - started) * 1000)
     return success(result.model_dump(mode="json"), tool=_BACKTEST_TOOL_NAME, elapsed_ms=elapsed_ms)
+
+
+# ─────────────────────────── simulate async glue ───────────────────────
+
+
+def _simulate_cost(req: SimulateStrategyRequest) -> int:
+    universe = req.strategy.universe_spec
+    if universe.tickers is not None:
+        n = len(universe.tickers)
+    else:
+        n = len(universes.snapshot("tracked_8500").tickers)
+    years = max((req.strategy.date_range.end - req.strategy.date_range.start).days / 365.25, 1.0)
+    return int(n * years)
+
+
+async def _handle_simulate(request: Request, req: SimulateStrategyRequest, started: float):
+    force_async = request.query_params.get("async", "").lower() in {"1", "true", "yes"}
+    cost = _simulate_cost(req)
+
+    if force_async or cost > SIMULATE_SYNC_COST_LIMIT:
+        job_id = jobs_mod.submit(req.model_dump(mode="json"))
+        asyncio.create_task(
+            jobs_mod.run_async(
+                job_id,
+                lambda: asyncio.to_thread(simulate_strategy, req),
+            )
+        )
+        return success(
+            {"job_id": job_id, "status": "queued"},
+            status_code=202,
+            tool=_SIMULATE_TOOL_NAME,
+            async_mode="enqueued",
+        )
+
+    try:
+        result = jobs_mod.run_with_watchdog(
+            lambda: simulate_strategy(req),
+            time_limit=SIMULATE_SYNC_TIME_LIMIT_SECONDS,
+        )
+    except jobs_mod.SyncTimeoutExceeded:
+        job_id = jobs_mod.submit(req.model_dump(mode="json"))
+        asyncio.create_task(
+            jobs_mod.run_async(
+                job_id,
+                lambda: asyncio.to_thread(simulate_strategy, req),
+            )
+        )
+        log.info(
+            "simulate exceeded sync time budget, converted to async",
+            extra={"job_id": job_id},
+        )
+        return success(
+            {"job_id": job_id, "status": "queued"},
+            status_code=202,
+            tool=_SIMULATE_TOOL_NAME,
+            async_mode="watchdog_converted",
+        )
+    except Exception as exc:
+        log.exception("simulate_strategy failed")
+        return fail("simulate_strategy failed", 500, details=str(exc))
+
+    elapsed_ms = int((time.time() - started) * 1000)
+    return success(result.model_dump(mode="json"), tool=_SIMULATE_TOOL_NAME, elapsed_ms=elapsed_ms)
 
 
 # ─────────────────────────── jobs / admin ──────────────────────────────
