@@ -1,0 +1,82 @@
+# SimuAlpha Stage 4.5 verification universe — 50 tickers
+#
+# Format: one ticker per line. Lines starting with `#` and blank lines
+# are ignored. Comments after a ticker are allowed (everything after the
+# first whitespace is dropped).
+#
+# Coverage caveat: tickers marked [POST-2010 IPO] won't have data for
+# the full 2010-2020 window. The Stage-1 ingestion pipeline tolerates
+# short windows (it skips dates with no data) but the backtester will
+# show fewer signals + smaller sample sizes for these names. If you
+# want a strictly-pre-2010-listed universe, drop the [POST-2010 IPO]
+# tickers and substitute longer-listed names (e.g. IBM, GE, T, INTC).
+#
+# Last reviewed: 2026-04-18
+
+# ── Mega-cap tech ────────────────────────────────────────────
+AAPL
+MSFT
+GOOGL
+AMZN
+NVDA
+META          # [POST-2010 IPO] Facebook IPO 2012-05
+TSLA          # [POST-2010 IPO] IPO 2010-06 — full window OK
+ORCL
+
+# ── Financials ───────────────────────────────────────────────
+JPM
+BAC
+V             # [POST-2010 IPO 2008] full window OK
+MA            # [POST-2010 IPO 2006] full window OK
+GS
+MS
+
+# ── Consumer ─────────────────────────────────────────────────
+NKE
+LULU
+SBUX
+MCD
+KO
+PEP
+WMT
+COST
+HD
+DIS
+
+# ── Healthcare ───────────────────────────────────────────────
+UNH
+JNJ
+PFE
+LLY
+MRK
+TMO
+ABBV          # [POST-2010 IPO] AbbVie spun off from Abbott 2013-01
+
+# ── Industrial / cyclical ────────────────────────────────────
+CAT
+DE
+BA
+LMT
+HON
+
+# ── Energy / materials ───────────────────────────────────────
+XOM
+CVX
+NEM
+
+# ── Semis + enterprise ───────────────────────────────────────
+AMD
+AVGO          # [POST-2010 IPO 2009 — Avago] full window OK
+CRM
+ADBE
+
+# ── Recent IPOs / high-beta (will have short series) ─────────
+ROKU          # [POST-2010 IPO 2017-09]
+SQ            # [POST-2010 IPO 2015-11] now BLOCK
+SHOP          # [POST-2010 IPO 2015-05]
+NET           # [POST-2010 IPO 2019-09]
+SNOW          # [POST-2010 IPO 2020-09]
+
+# ── Small/mid-cap for pattern variety ────────────────────────
+ETSY          # [POST-2010 IPO 2015-04]
+NFLX

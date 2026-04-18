@@ -1,19 +1,25 @@
-"""Seed prices_daily with OpenBB data for a 50-ticker universe.
+"""Seed prices_daily with OpenBB data for the verification universe.
 
-Usage (real environment — Py 3.12, requirements.txt installed,
-SUPABASE_URL + SUPABASE_SERVICE_KEY + OPENBB_PAT set in .env):
-
-    python scripts/seed_universe_sample.py
+Default reads tickers from scripts/universes/verification_50.txt
+(committed; one ticker per line, '#' comments allowed). Override with
+``SEED_UNIVERSE`` env var pointing at any text file in the same format.
 
 Default window: 2010-01-01 → 2020-12-31 (Stage 4.5 verification window).
 Override with env vars SEED_START / SEED_END (YYYY-MM-DD).
 
-The 50-ticker set is a pragmatic spread: mega-caps, mid-caps, one
-recent IPO, one small-cap, a couple of cyclicals. Not an index
-replica. If you want the real S&P 500 universe, adjust SEED_TICKERS.
+Required env (real environment, Py 3.12 + ``pip install -r
+requirements.txt``):
 
-Idempotent — the underlying fetch_prices() upserts on
-(ticker, date), so re-running won't double-write. Incremental —
+    OPENBB_PAT            OpenBB Platform personal access token
+    SUPABASE_URL          Supabase project URL
+    SUPABASE_SERVICE_KEY  Supabase service-role key
+
+Usage:
+
+    python scripts/seed_verification_universe.py
+
+Idempotent — the underlying ``fetch_prices`` upserts on
+``(ticker, date)``, so re-running won't double-write. Incremental —
 future runs after the window extends only pull the missing tail per
 ticker (handled by the Stage-1 ingestion layer).
 """
@@ -35,28 +41,7 @@ from simualpha_quant.logging_config import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
-
-# 50 tickers — diversified across sectors, market caps, listing ages.
-SEED_TICKERS: tuple[str, ...] = (
-    # Mega-cap tech
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "ORCL",
-    # Financials
-    "JPM", "BAC", "V", "MA", "GS", "MS",
-    # Consumer
-    "NKE", "LULU", "SBUX", "MCD", "KO", "PEP", "WMT", "COST", "HD", "DIS",
-    # Healthcare
-    "UNH", "JNJ", "PFE", "LLY", "MRK", "TMO", "ABBV",
-    # Industrial / cyclical
-    "CAT", "DE", "BA", "LMT", "HON",
-    # Energy / materials
-    "XOM", "CVX", "NEM",
-    # Semis + enterprise
-    "AMD", "AVGO", "CRM", "ADBE",
-    # Retail-y recent IPOs / high-beta names (verify these go back to 2010)
-    "ROKU", "SQ", "SHOP", "NET", "SNOW",
-    # Small/mid-cap for pattern variety
-    "ETSY", "NFLX",
-)
+DEFAULT_UNIVERSE = ROOT / "scripts" / "universes" / "verification_50.txt"
 
 
 def _parse_env_date(key: str, default: date) -> date:
@@ -70,22 +55,44 @@ def _parse_env_date(key: str, default: date) -> date:
         return default
 
 
+def load_tickers(path: Path) -> list[str]:
+    """Read a one-per-line ticker file. '#' comments + blanks ignored."""
+    if not path.exists():
+        raise FileNotFoundError(f"universe file not found: {path}")
+    out: list[str] = []
+    for raw in path.read_text().splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        ticker = line.split()[0].upper()
+        if ticker:
+            out.append(ticker)
+    if not out:
+        raise ValueError(f"no tickers found in {path}")
+    return out
+
+
 def main() -> int:
+    universe_path = Path(os.environ.get("SEED_UNIVERSE", str(DEFAULT_UNIVERSE)))
     start = _parse_env_date("SEED_START", date(2010, 1, 1))
     end = _parse_env_date("SEED_END", date(2020, 12, 31))
 
+    tickers = load_tickers(universe_path)
     log.info(
         "seed start",
         extra={
-            "ticker_count": len(SEED_TICKERS),
+            "ticker_count": len(tickers),
             "start": start.isoformat(),
             "end": end.isoformat(),
+            "universe_file": str(universe_path),
         },
     )
 
-    total = fetch_prices(list(SEED_TICKERS), start=start.isoformat(), end=end.isoformat())
-    print(f"seed done: {total} rows across {len(SEED_TICKERS)} tickers "
-          f"from {start} to {end}")
+    total = fetch_prices(tickers, start=start.isoformat(), end=end.isoformat())
+    print(
+        f"seed done: {total} rows across {len(tickers)} tickers "
+        f"from {start} to {end} (universe: {universe_path.name})"
+    )
     return 0
 
 
