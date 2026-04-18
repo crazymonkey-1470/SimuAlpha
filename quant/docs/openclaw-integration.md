@@ -149,6 +149,73 @@ Force a refresh of the in-memory `tracked_8500` snapshot. Auth
 required. Otherwise the snapshot refreshes automatically every
 15 minutes at startup.
 
+### `POST /v1/tools/simulate-strategy`
+
+Simulate a full plan — entry + tranche ladder + exit legs + stop +
+position sizing — against historical data. Returns Sharpe / Sortino /
+profit factor / Calmar / max drawdown, per-horizon outcomes, a
+downsampled equity curve (close + OHLC), and up to `chart_samples`
+annotated trade charts.
+
+**Use this *after* `backtest_pattern`.** Backtest validates the
+signal; simulate validates the full plan. Simulations are expensive —
+prefer async.
+
+Three async triggers (same semantics as `backtest_pattern`):
+1. `?async=true` explicit.
+2. Cost pre-emptive: `len(tickers) * num_years > SIMULATE_SYNC_COST_LIMIT = 200`.
+3. Sync watchdog: any run exceeding 10 s converts mid-flight.
+
+Chart rendering:
+- `chart_samples ∈ [0, 5]` — rendered inline synchronously.
+- `chart_samples ∈ [6, 20]` — rendered asynchronously. Response's
+  `trade_log_sample[i]` carries `chart_status: "pending"` and a
+  `charts_job_id`. Poll `GET /v1/jobs/{charts_job_id}`; cached
+  simulation row is patched with URLs as charts land.
+
+Full grammar: [`docs/strategy-dsl.md`](./strategy-dsl.md).
+
+Example (sync, 3 charts, walked Wave-2-at-0.618 plan on HIMS):
+
+```bash
+curl -s https://quant-api.example.com/v1/tools/simulate-strategy \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "strategy": {
+      "entry": {"pattern_name": "wave_2_at_618"},
+      "exit": {
+        "take_profit": [
+          {"pct_of_position": 0.2, "price_rule": {"type": "at_fib", "level": 1.618}},
+          {"pct_of_position": 0.5, "price_rule": {"type": "at_fib", "level": 2.618}},
+          {"pct_of_position": 0.3, "price_rule": {"type": "at_ma", "period": 50, "freq": "daily"}}
+        ],
+        "stop_loss": {"price_rule": {"type": "at_price", "price": 11.00}, "type": "hard"},
+        "time_stop_days": 540
+      },
+      "position_sizing": {"method": "fixed", "params": {"stake_usd": 10000}},
+      "universe_spec": {"tickers": ["HIMS"]},
+      "date_range":    {"start": "2023-01-01", "end": "2024-12-31"}
+    },
+    "chart_samples": 5
+  }'
+```
+
+Example (async universe-wide):
+
+```bash
+curl -s "https://quant-api.example.com/v1/tools/simulate-strategy?async=true" \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "strategy": {"...": "..."},
+    "chart_samples": 12
+  }'
+# → 202 { "job_id": "...", "status": "queued" }
+curl -s https://quant-api.example.com/v1/jobs/<job_id> \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN"
+```
+
 ### `POST /v1/tools/render-tli-chart`
 
 Render a chart that shows OpenClaw's reasoning. OpenClaw composes the
@@ -282,6 +349,7 @@ Client config:
 - `get_fundamentals`  — input: `{ticker, metrics?: [string]}`
 - `render_tli_chart`  — input: `{ticker, timeframe, date_range, annotations, config}` (see AnnotationsSpec above)
 - `backtest_pattern`  — input: `{pattern_name? | custom_expression?, universe_spec, date_range, horizons?, params?, include_per_year?, sample_size?}`. Returns the same shape the HTTP tool returns. MCP path is synchronous — for long-running backtests, prefer the HTTP transport with the async job flow.
+- `simulate_strategy` — input: `{strategy: StrategySpec, chart_samples?}` (see `docs/strategy-dsl.md` for StrategySpec). MCP path is synchronous — simulate is expensive; prefer HTTP with async job flow for multi-ticker runs.
 
 Output shapes: whatever the Pydantic models in `simualpha_quant.schemas.*`
 return, serialized as a JSON string inside an MCP `TextContent` block.
