@@ -9,6 +9,24 @@ from simualpha_quant.schemas.backtest import (
     YearlyBreakdown,
     YearlyHorizonStats,
 )
+from simualpha_quant.schemas.simulate import (
+    EquityOHLC,
+    HorizonOutcome,
+    SimulateStrategyRequest,
+    SimulateStrategyResponse,
+    SimulationSummary,
+    TradeChart,
+)
+from simualpha_quant.schemas.strategy import (
+    EntryRules,
+    ExitLeg,
+    ExitRules,
+    PositionSizing,
+    PriceRule,
+    StopLoss,
+    StrategySpec,
+    Tranche,
+)
 from simualpha_quant.schemas.charts import (
     AnnotationsSpec,
     Badge,

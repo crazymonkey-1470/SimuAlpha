@@ -1,0 +1,21 @@
+# Stage 4 — simulate_strategy execution dependencies.
+#
+# Core service is installable WITHOUT this file. Install on the
+# Railway service(s) that run simulate_strategy:
+#
+#     pip install -r requirements.txt -r requirements-stage4.txt
+#
+# ───────────────────────────────────────────────────────────────
+# pandas-ta fixup — its PyPI release is incompatible with Python
+# 3.11 (TA-Lib dependency breaks on newer numpy). Use the upstream
+# git mainline which carries the fix.
+#
+# If the git URL fails on Railway (network / auth / HTTPS), fall
+# back order:
+#   1) pip install from a pinned commit hash (add @<sha> below)
+#   2) wheel from a private PyPI index
+#   3) vendor the package into third_party/pandas-ta (last resort)
+pandas-ta @ git+https://github.com/twopirllc/pandas-ta.git@development
+
+# Freqtrade itself.
+freqtrade==2024.11
