@@ -27,31 +27,18 @@ def _strict_visual_enabled(request) -> bool:
     return bool(request.config.getoption("--strict-visual", default=False))
 
 
-def _synthetic_prices_for(ticker: str) -> pd.DataFrame:
-    """Deterministic synthetic series used when generating reference PNGs
-    so the test doesn't depend on network / Supabase state."""
-    idx = pd.date_range("2024-01-01", periods=240, freq="B")
-    seed = sum(ord(c) for c in ticker)
-    base = 15.0 + (seed % 10)
-    df = pd.DataFrame(
-        {
-            "open":  [base + 0.04 * i + (i % 9) * 0.1 for i in range(240)],
-            "high":  [base + 0.04 * i + 0.7 for i in range(240)],
-            "low":   [base + 0.04 * i - 0.7 for i in range(240)],
-            "close": [base + 0.04 * i + (i % 5) * 0.08 for i in range(240)],
-            "volume": [1_500_000 + i * 2_000 for i in range(240)],
-        },
-        index=idx,
-    )
-    return df
+def _load_synthetic_for(req: RenderChartRequest) -> pd.DataFrame:
+    """Use the same per-fixture calibrated generator that produced the
+    committed reference PNGs."""
+    import sys
+    from pathlib import Path
 
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from _synthetic import synthetic_for
 
-@pytest.fixture(autouse=True)
-def _stub_price_loader(monkeypatch):
-    def loader(ticker, start, end):  # noqa: ARG001
-        return _synthetic_prices_for(ticker)
-
-    monkeypatch.setattr(tli_renderer, "_load_prices", loader)
+    return synthetic_for(req)
 
 
 def _hist_similarity(a_bytes: bytes, b_bytes: bytes) -> float:
@@ -113,7 +100,14 @@ def test_visual_regression(request, fixture_name):
         pytest.skip(f"reference PNG missing: {ref} — run scripts/generate_fixtures.py")
 
     req = RenderChartRequest.model_validate_json(spec.read_text())
-    rendered = tli_renderer.render(req)
+    df = _load_synthetic_for(req)
+    request.addfinalizer(lambda: None)
+    original_loader = tli_renderer._load_prices
+    tli_renderer._load_prices = lambda ticker, start, end: df
+    try:
+        rendered = tli_renderer.render(req)
+    finally:
+        tli_renderer._load_prices = original_loader
     reference = ref.read_bytes()
 
     if _strict_visual_enabled(request):

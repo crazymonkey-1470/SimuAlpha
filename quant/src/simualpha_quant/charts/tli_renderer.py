@@ -74,12 +74,33 @@ def _load_prices(ticker: str, start: date, end: date) -> pd.DataFrame:
 # ──────────────────────────── moving averages ────────────────────────────
 
 
+# When the agent specifies several MAs without colors, cycle through these
+# (the 200-period MA always stays yellow no matter where it sits in the list).
+_MA_FALLBACK_COLORS: tuple[str, ...] = ("#FACC15", "#22D3EE", "#A855F7", "#F472B6", "#34D399")
+
+
 def _resolve_mas(
     spec_mas: list[MovingAverageSpec], timeframe: str
 ) -> list[MovingAverageSpec]:
-    if spec_mas:
-        return spec_mas
-    return [MovingAverageSpec(period=default_ma_period_for(timeframe), type="SMA", color=MA_YELLOW)]
+    if not spec_mas:
+        return [MovingAverageSpec(period=default_ma_period_for(timeframe), type="SMA", color=MA_YELLOW)]
+    resolved: list[MovingAverageSpec] = []
+    color_idx = 0
+    for ma in spec_mas:
+        if ma.color is not None:
+            resolved.append(ma)
+            continue
+        # 200-period MA always reserves yellow.
+        if ma.period == 200:
+            resolved.append(ma.model_copy(update={"color": MA_YELLOW}))
+            continue
+        chosen = _MA_FALLBACK_COLORS[color_idx % len(_MA_FALLBACK_COLORS)]
+        if chosen == MA_YELLOW:
+            color_idx += 1
+            chosen = _MA_FALLBACK_COLORS[color_idx % len(_MA_FALLBACK_COLORS)]
+        color_idx += 1
+        resolved.append(ma.model_copy(update={"color": chosen}))
+    return resolved
 
 
 def _compute_ma(df: pd.DataFrame, spec: MovingAverageSpec) -> pd.Series:
@@ -140,10 +161,13 @@ def render(req: RenderChartRequest) -> bytes:
     )
     price_ax = axlist[0]
 
-    # Apply annotations on top of the candles.
+    # Apply annotations on top of the candles. Order matters:
+    # zones first (background), then lines/fibs (mid), then waves +
+    # tranches + badges + caption (foreground).
     a: AnnotationsSpec = req.annotations
     ann.draw_zones(price_ax, a.zones, theme)
-    ann.draw_horizontals(price_ax, a.horizontal_lines, theme)
+    zone_centers = tuple((z.low + z.high) / 2.0 for z in a.zones)
+    ann.draw_horizontals(price_ax, a.horizontal_lines, theme, zone_y_centers=zone_centers)
     ann.draw_fibs(price_ax, a.fibonacci_levels, theme)
     ann.draw_waves(price_ax, a.wave_labels, df.index, theme)
     ann.draw_entry_tranches(price_ax, a.entry_tranches, theme)
