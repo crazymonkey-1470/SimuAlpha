@@ -13,5 +13,6 @@ registry — do NOT write transport-specific wrappers inline.
 
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
+from simualpha_quant.tools.render_chart import render_tli_chart
 
-__all__ = ["get_fundamentals", "get_price_history"]
+__all__ = ["get_fundamentals", "get_price_history", "render_tli_chart"]

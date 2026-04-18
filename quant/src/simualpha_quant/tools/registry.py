@@ -17,10 +17,12 @@ from typing import Callable
 
 from pydantic import BaseModel
 
+from simualpha_quant.schemas.charts import RenderChartRequest, RenderChartResponse
 from simualpha_quant.schemas.fundamentals import Fundamentals, FundamentalsRequest
 from simualpha_quant.schemas.prices import PriceHistory, PriceHistoryRequest
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
+from simualpha_quant.tools.render_chart import render_tli_chart
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,23 @@ TOOLS: tuple[ToolSpec, ...] = (
         request_model=FundamentalsRequest,
         response_model=Fundamentals,
         handler=get_fundamentals,
+    ),
+    ToolSpec(
+        name="render_tli_chart",
+        http_route="/v1/tools/render-tli-chart",
+        mcp_name="render_tli_chart",
+        description=(
+            "Render a TLI-methodology chart for a ticker with custom "
+            "annotations. Use this to visually show your reasoning when "
+            "you've identified a setup. You compose the annotations "
+            "(Fibonacci levels, wave labels, S/R lines, MAs, zones, "
+            "entry tranches, badges); this tool renders them. Cache-first "
+            "by spec hash — repeated identical specs return the same URL "
+            "without re-rendering."
+        ),
+        request_model=RenderChartRequest,
+        response_model=RenderChartResponse,
+        handler=render_tli_chart,
     ),
 )
 
