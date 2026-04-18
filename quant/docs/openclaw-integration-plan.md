@@ -973,4 +973,143 @@ OpenClaw's final reply to the user should:
 
 ---
 
-**Section 4 (test prompt) pending in a separate commit.**
+## 4. Test prompt — end-to-end integration check
+
+One prompt you give OpenClaw after the integration is live to confirm
+every piece of the pipeline works: auth header reaches the quant
+service, the four tools resolve and return data, OpenClaw reasons
+over the results, and the final reply comes back with a chart URL
+embedded.
+
+### 4.1 The prompt
+
+Paste this verbatim into OpenClaw's chat as a single user message:
+
+```text
+Analyze HIMS as a potential TLI Wave 2 setup. I want to know:
+
+1. Current price context vs. the recent 2-year range.
+2. Does the business fundamentally pass the TLI screen (revenue
+   growth positive, FCF positive, margins not contracting, balance
+   sheet healthy)?
+3. Is there a backtested Wave 2 at 0.618 fib signal I can lean on
+   — how often has that pattern worked historically?
+4. If there's a setup, show me the chart with the wave labels,
+   fib zone, and DCA tranche ladder annotated.
+
+Answer in the order above. Cite tool results inline so I can audit
+where each number came from.
+```
+
+### 4.2 Expected tool-call sequence
+
+A well-behaved OpenClaw will make 3 or 4 tool calls, in this order,
+with roughly these arguments. Deviations in arguments are fine —
+**deviations in order or a radically different call count are the
+signal something's off**.
+
+| # | Tool | Approx. arguments |
+| - | --- | --- |
+| 1 | `get_price_history` | `{"ticker": "HIMS", "start": "<~2 years ago>", "end": "<today>"}` |
+| 2 | `get_fundamentals` | `{"ticker": "HIMS"}` (no `metrics` filter — question asks about a full screen) |
+| 3 | `backtest_pattern` | `{"pattern_name": "wave_2_at_618", "universe_spec": {"universe": "tracked_8500"}` (or `{"tickers": [<20+ liquid names>]}`)`, "date_range": {"start": "<~5-10y ago>", "end": "<today>"}, "horizons": [3, 6, 12, 24]}` |
+| 4 | `render_tli_chart` | `{"ticker": "HIMS", "date_range": {...}, "annotations": {"wave_labels": [...], "fibonacci_levels": [...], "entry_tranches": [...], "caption": "..."}}` — **only if** OpenClaw concluded a valid setup in steps 1-3 |
+
+Call #4 is conditionally skipped if OpenClaw honestly concludes HIMS
+isn't in a Wave 2 setup right now — that's **correct behavior**, not
+a failure. The §3 system prompt teaches this explicitly.
+
+### 4.3 Expected final reply shape
+
+OpenClaw should reply with roughly this structure (the exact prose
+will vary — verify structure, not wording):
+
+```text
+[lead-in conclusion: e.g. "HIMS is / isn't in a Wave 2 setup right
+now; conviction: <level>"]
+
+1. Price context:
+   Current close $<X>, 2-year range $<low>-$<high>, position <pct>% off
+   recent high. (get_price_history)
+
+2. Fundamental screen:
+   Revenue <+/-X>% YoY, FCF <positive/negative>, gross margin
+   <expanding/flat/contracting>, total debt / cash ratio <X>.
+   TLI screen: <passes all 5 gates / fails at <gate>>. (get_fundamentals)
+
+3. Historical backing:
+   wave_2_at_618 over <window>, n=<signals>:
+     3-mo hit rate <X>%  median +<Y>%
+     6-mo hit rate <X>%  median +<Y>%
+    12-mo hit rate <X>%  median +<Y>%
+    24-mo hit rate <X>%  median +<Y>%
+   (backtest_pattern)
+
+4. Setup visualization:
+   [Chart URL — https://<supabase-storage>/charts/HIMS/daily/<hash>.png]
+   (render_tli_chart)
+
+Overall: <final assessment + any caveats>.
+```
+
+Numbers in the sample above are placeholders — OpenClaw fills in
+real values from the tool results. What matters:
+
+- The **conclusion leads** (not a recap of tool calls).
+- Each number is **cited inline** with the tool that produced it.
+- The **chart URL is embedded**, not described.
+- If any tool returned an error or missing data, that's **surfaced
+  honestly** ("I couldn't pull fundamentals for HIMS — [reason]")
+  rather than invented around.
+
+### 4.4 Failure modes to watch for
+
+Run the test prompt. If any of these happen, stop and investigate
+before declaring the integration good.
+
+| Symptom | Likely cause | Where to look |
+| --- | --- | --- |
+| OpenClaw calls no tools at all | System-prompt additions didn't land, or tools array didn't register. | Verify §2 `tools=[...]` was pasted into OpenClaw's request; verify §3 prompt block is in the active system prompt. |
+| Every tool call returns `401 Invalid API key` | Wrong / rotated / missing bearer token in OpenClaw's client. | Check `QUANT_API_TOKEN` in OpenClaw's env; re-curl `/v1/tools` from OpenClaw's shell; confirm `is_active = true` in Supabase `api_keys`. |
+| `403 Requires scope: quant:tools` | Key exists but scope array is wrong. | `update api_keys set scopes = ARRAY['quant:tools'] where name = 'OpenClaw';` |
+| `get_price_history` returns `{"bars": []}` | HIMS isn't cached in `prices_daily` yet. | Either (a) run the ingestion CLI for HIMS, or (b) tell OpenClaw to re-call after a few seconds — the service falls through to OpenBB on miss and upserts, so the second call succeeds. |
+| `get_fundamentals` returns sparse data | HIMS has been public < 4 quarters, or OpenBB rate-limited. | Sparse is expected for recent IPOs. Surface honestly. |
+| `backtest_pattern` returns `n=0` at every horizon | Universe or window too narrow. | Check the `universe_spec` sent — should be `tracked_8500` or ≥ 20 tickers. A 10-year window is a realistic floor. |
+| Hit rates implausibly extreme (< 10 % or > 90 %) | Universe is one ticker, or the pattern detector isn't firing. | §3 rule: don't backtest one-ticker cohorts. If universe is large and hit rate is still extreme, stop and inspect sample signals. |
+| Chart URL returns 404 | Supabase Storage bucket `tli-charts` not public-read, or the render service isn't deployed. | `supabase storage get-bucket tli-charts` — confirm `public = true`. |
+| Chart renders but annotations missing | OpenClaw passed `annotations: {}` (empty). | §3 teaches to compose annotations before calling; check OpenClaw's reasoning log. |
+| OpenClaw calls the same tool twice in a row with identical args | System prompt §3 not followed. | The compact-version block's rule "don't re-call" is the mitigation — reinforce in the prompt. |
+| OpenClaw fabricates price levels or hit rates after a tool failure | Tool error handling in OpenClaw's adapter not surfacing errors back to the model. | §2.2 (response envelope) explains the expected adapter behavior — on `success:false`, surface `error` + `details` as a tool-error so the model self-corrects. |
+| Tool calls work but final reply is a wall of tool logs | System prompt §3.5 ("hand output back to the user") not followed. | Tighten the prompt to lead with conclusion, not recap. |
+| Total prompt latency > 30 s | Likely a `backtest_pattern` on `tracked_8500` × 10 years hitting the sync watchdog. | Service has an async path (`?async=true` returns a `job_id`); OpenClaw's client should either tolerate slower sync or implement the polling flow. Start with sync; upgrade only if p95 crosses 10 s. |
+
+### 4.5 Pass criteria
+
+The integration passes the smoke test when **all** of:
+
+1. OpenClaw emits 3 or 4 tool calls in the order above.
+2. Every tool call returns `success: true` (or a surfaced-honestly
+   failure with a stated reason).
+3. The final reply contains a numeric answer for each of the four
+   questions in the prompt.
+4. Cited numbers inline reference the tool that produced them.
+5. If the setup is valid, a chart URL is embedded and clickable
+   returns a PNG.
+6. Total wall time is under 15 s.
+
+If all six hold, the four green tools are production-ready against
+OpenClaw. If any fail, surface the failure before proceeding to the
+simulate_strategy integration conversation.
+
+---
+
+**Integration plan complete. Next checkpoints:**
+
+1. Run the Step 1 Railway egress check (branch
+   `claude/stage4.5-railway-egress-check`) to unblock
+   `simulate_strategy`.
+2. Run the Step 2 real-data verification
+   (`docs/real-data-verification.md`) to confirm the `backtest_pattern`
+   numbers stand up against 2010-2020 real prices.
+3. Mint the OpenClaw key per §1, paste §2 and §3 into OpenClaw's
+   config, run §4's test prompt, and iterate from there.
