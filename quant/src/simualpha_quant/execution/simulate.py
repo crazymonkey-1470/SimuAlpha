@@ -166,8 +166,11 @@ def _run_freqtrade(
     if store.custom_loader is None:
         ensure_universe_current(store.qlib_root, tickers, spec.date_range.end, fetcher=fetcher)
 
-    from freqtrade.configuration import Configuration  # lazy import
-    from freqtrade.optimize.backtesting import Backtesting  # lazy import
+    # Lazy imports.
+    import tempfile
+
+    from freqtrade.configuration import Configuration
+    from freqtrade.optimize.backtesting import Backtesting
 
     config = build_config(spec)
     state: dict = {}
@@ -179,32 +182,50 @@ def _run_freqtrade(
         spec.date_range.end,
     )
 
-    # Minimal freqtrade Configuration wrapper (skips JSON file load).
-    ft_config = Configuration.from_files([]) if hasattr(Configuration, "from_files") else None
-    if ft_config is None:
-        ft_config = {}
-    if isinstance(ft_config, dict):
-        ft_config.update(config)
+    # Freqtrade 2026.x Configuration.from_files requires a user_data
+    # directory to exist (it rejects missing paths rather than creating
+    # them). We hand it an ephemeral tempdir so no on-disk side effects
+    # leak into the repo. Deleted via context manager when we're done.
+    with tempfile.TemporaryDirectory(prefix="simualpha_ft_") as user_data:
+        import os as _os
+        for sub in ("data", "logs", "strategies", "backtest_results", "hyperopt_results"):
+            _os.makedirs(_os.path.join(user_data, sub), exist_ok=True)
+        config.setdefault("user_data_dir", user_data)
 
-    backtesting = Backtesting(ft_config)
-    backtesting.dataprovider = provider  # type: ignore[attr-defined]
-    backtesting.strategylist = [StrategyCls(ft_config)]  # type: ignore[arg-type]
-    try:
-        backtesting.start()
-    except Exception as exc:
-        log.exception("freqtrade backtesting raised", extra={"err": str(exc)})
-        return [], []
+        try:
+            ft_config = Configuration.from_files([])
+        except Exception as exc:
+            log.warning("freqtrade Configuration.from_files failed", extra={"err": str(exc)})
+            ft_config = {}
+        if isinstance(ft_config, dict):
+            ft_config.update(config)
+            ft_config.setdefault("user_data_dir", user_data)
 
-    # Freqtrade 2024.11 stores results on `backtesting.results` as a
-    # dict keyed by strategy name. Parse defensively.
-    results_payload = getattr(backtesting, "results", {}) or {}
-    first_strategy = next(iter(results_payload.values()), {}) if results_payload else {}
-    trades_df = first_strategy.get("results") or pd.DataFrame()
-    equity_df = first_strategy.get("equity_curve") or pd.DataFrame()
+        try:
+            backtesting = Backtesting(ft_config)
+        except Exception as exc:
+            log.exception("freqtrade Backtesting init failed", extra={"err": str(exc)})
+            return [], []
+        backtesting.dataprovider = provider  # type: ignore[attr-defined]
+        try:
+            backtesting.strategylist = [StrategyCls(ft_config)]  # type: ignore[arg-type]
+            backtesting.start()
+        except Exception as exc:
+            log.exception("freqtrade backtesting raised", extra={"err": str(exc)})
+            return [], []
 
-    trades = _trades_from_freqtrade(trades_df)
-    equity_points = _equity_from_freqtrade(equity_df, spec.initial_capital)
-    return trades, equity_points
+        results_payload = getattr(backtesting, "results", {}) or {}
+        first_strategy = next(iter(results_payload.values()), {}) if results_payload else {}
+        trades_df = first_strategy.get("results") if first_strategy else None
+        if trades_df is None:
+            trades_df = pd.DataFrame()
+        equity_df = first_strategy.get("equity_curve") if first_strategy else None
+        if equity_df is None:
+            equity_df = pd.DataFrame()
+
+        trades = _trades_from_freqtrade(trades_df)
+        equity_points = _equity_from_freqtrade(equity_df, spec.initial_capital)
+        return trades, equity_points
 
 
 def _trades_from_freqtrade(df: pd.DataFrame) -> list[TradeRecord]:

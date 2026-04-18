@@ -63,6 +63,15 @@ def _pair_to_ticker(pair: str) -> str:
     return pair.split("/", 1)[0].upper()
 
 
+# Freqtrade's ExchangeResolver demands a ccxt-known exchange name
+# during Backtesting.__init__. There's no "equities" option, so we
+# impersonate a lightweight spot exchange. `binance` is the community
+# default for equity backtests in freqtrade because it's supported by
+# every ccxt version and has permissive precision defaults. dry_run +
+# API-keyless config means no real connection is ever attempted.
+SHIMMED_EXCHANGE = "binance"
+
+
 def build_config(spec: StrategySpec) -> dict[str, Any]:
     """Equity-realistic freqtrade config dict (in-memory; no JSON on disk)."""
     tickers = universes.resolve(spec.universe_spec)
@@ -70,9 +79,13 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
     return {
         "runmode": "backtest",
         "exchange": {
-            "name": "custom",
+            "name": SHIMMED_EXCHANGE,
             "pair_whitelist": pairs,
             "pair_blacklist": [],
+            "ccxt_config": {},
+            "ccxt_async_config": {},
+            "key": "",
+            "secret": "",
         },
         "stake_currency": PAIR_QUOTE,
         "stake_amount": "unlimited",
