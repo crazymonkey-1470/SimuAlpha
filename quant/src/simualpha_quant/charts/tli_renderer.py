@@ -27,6 +27,10 @@ TODO (Stage 2):
 - [ ] Expose CLI: `python -m simualpha_quant.cli render-chart --ticker HIMS`.
 - [ ] Golden-image test against a reference chart for HIMS sample data.
 
+When implemented, register this tool in
+`simualpha_quant.tools.registry.TOOLS` — the FastAPI app and MCP server
+will pick it up automatically.
+
 Do NOT implement until Stage 2 begins.
 """
 

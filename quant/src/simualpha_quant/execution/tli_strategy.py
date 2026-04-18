@@ -29,6 +29,9 @@ TODO (Stage 4):
 - [ ] CLI: `python -m simualpha_quant.cli validate-strategy` that shells
       out to `freqtrade backtesting` with our config.
 
+When implemented, register the agent-facing tool (likely
+`simulate_strategy`) in `simualpha_quant.tools.registry.TOOLS`.
+
 Do NOT implement until Stage 4 begins.
 """
 

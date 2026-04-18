@@ -45,6 +45,9 @@ TLI factor expressions (qlib Alpha expression syntax):
 - [ ] CLI: `python -m simualpha_quant.cli export-qlib --out ./qlib_data`
       and `... run-backtest --config configs/tli.yaml`.
 
+When implemented, register the agent-facing tool (likely
+`backtest_pattern`) in `simualpha_quant.tools.registry.TOOLS`.
+
 Do NOT implement until Stage 3 begins.
 """
 

@@ -1,26 +1,52 @@
 # SimuAlpha Quant Research Service
 
-Python service that owns quantitative research, backtesting, charting, and
-data ingestion for the SimuAlpha stock analysis platform.
+## Architecture: tools for OpenClaw
+
+This service is a **tool provider**, not an agent. OpenClaw (running
+elsewhere on Railway) is the reasoning loop. The quant service exposes
+capabilities OpenClaw can call — never the other way around.
+
+Every capability has **three layers**:
+
+1. **Pure function** in `simualpha_quant.tools.<name>` — business logic,
+   no transport.
+2. **HTTP endpoint** in `simualpha_quant.api` — FastAPI wrapper around
+   the pure function. Bearer-token auth against Supabase `api_keys`.
+3. **MCP tool** in `simualpha_quant.mcp` — identical wrapper for the
+   MCP protocol. Same binary, stdio for local dev and SSE for Railway.
+
+A single registry in `simualpha_quant.tools.registry.TOOLS` is read by
+both the FastAPI app and the MCP server. Adding a tool is one place,
+not three.
+
+No LLM clients or reasoning logic live in this service. OpenClaw owns
+that.
 
 ## Role in the monorepo
 
-- **backend/** (Node/Express): user-facing API, scoring, alerts, Supabase writes for app state
-- **scraper/** (Python/FastAPI): on-demand fundamentals/historical fetches from Polygon and web sources
+- **backend/** (Node/Express): user-facing API, scoring, alerts, app-state Supabase writes
+- **scraper/** (Python/FastAPI): on-demand fundamentals/historical from Polygon and web sources
 - **frontend/** (Vite/React): UI
-- **quant/** (this service): batch ingestion of clean OHLCV and fundamentals via OpenBB, factor research with qlib, TLI chart rendering with mplfinance, and strategy validation with freqtrade
+- **quant/** (this service): OpenBB-backed cache-first tools for OpenClaw + Stage 2–4 research/chart/strategy tools
 
-This service is **cron-driven**, not request/response. It writes to Supabase
-tables that the backend reads.
+## Components
 
-## Build stages
+### Tools (Stage 1 live)
+| Tool | HTTP | MCP | Source of truth |
+| --- | --- | --- | --- |
+| `get_price_history` | `POST /v1/tools/price-history` | `get_price_history` | `prices_daily` (OpenBB on miss) |
+| `get_fundamentals` | `POST /v1/tools/fundamentals` | `get_fundamentals` | `fundamentals_quarterly` (OpenBB on miss) |
 
-- **Stage 1 (current):** OpenBB ingestion → Supabase (`prices_daily`, `fundamentals_quarterly`)
-- **Stage 2:** TLI chart renderer (mplfinance)
-- **Stage 3:** qlib adapter + TLI factor expressions
-- **Stage 4:** freqtrade strategy with 5-tranche DCA
+### CLI — cache warmer (not agent-facing)
+The CLI's role is to populate Supabase ahead of time so that
+agent-initiated tool calls are fast. The agent-on-demand path
+(cache-first, OpenBB on miss) is the primary flow; the CLI is a
+scheduled warmer for the universe we track.
 
-Modules for Stages 2–4 exist as stubs with TODO lists.
+```bash
+python -m simualpha_quant.cli fetch-prices       --tickers HIMS,NKE --start 2020-01-01 --end 2024-12-31
+python -m simualpha_quant.cli fetch-fundamentals --tickers HIMS,NKE
+```
 
 ## Local setup
 
@@ -34,20 +60,29 @@ cp .env.example .env  # fill in values
 
 ## Running
 
-Ingest prices:
-
+**HTTP API:**
 ```bash
-python -m simualpha_quant.cli fetch-prices \
-  --tickers HIMS,NKE \
-  --start 2020-01-01 \
-  --end 2024-12-31
+export PYTHONPATH=src
+uvicorn simualpha_quant.api.app:app --host 0.0.0.0 --port 8000
+# OpenAPI docs: http://localhost:8000/docs
 ```
 
-Ingest fundamentals:
-
+**MCP server — stdio (Claude Code / local):**
 ```bash
-python -m simualpha_quant.cli fetch-fundamentals --tickers HIMS,NKE
+python -m simualpha_quant.mcp.server
 ```
+
+**MCP server — SSE (Railway / production):**
+```bash
+python -m simualpha_quant.mcp.server --transport sse --host 0.0.0.0 --port 8765
+```
+
+## Authentication
+
+- **Production:** OpenClaw uses a `Bearer <token>` whose SHA-256 hash is stored in the Supabase `api_keys` table (same table the Node backend already uses — minted via `backend/scripts/generate_api_key.js`). Required scope: **`quant:tools`**.
+- **Break-glass:** set `QUANT_SERVICE_BOOTSTRAP_TOKEN=<raw-token>` in the environment. A raw equality match with the bearer token authorizes the request **and logs a WARNING on every use**. Remove once every caller has a scoped Supabase-minted key.
+
+See `docs/openclaw-integration.md` for curl and MCP client examples.
 
 ## Tests
 
@@ -55,25 +90,29 @@ python -m simualpha_quant.cli fetch-fundamentals --tickers HIMS,NKE
 pytest
 ```
 
-The smoke test (`tests/test_smoke.py`) verifies the four core libraries
-(openbb, qlib, mplfinance, freqtrade) import cleanly.
-
 ## Supabase schema
 
-See `supabase/migration_quant_data.sql` at the repo root. Two tables:
+Run once in the Supabase SQL Editor:
+- `supabase/migration_quant_data.sql` — `prices_daily`, `fundamentals_quarterly`, RLS (service role full; authenticated read-only).
 
-- `prices_daily` — daily OHLCV, keyed on `(ticker, date)`
-- `fundamentals_quarterly` — long-format metrics, keyed on `(ticker, period_end, metric_name)`
+The `api_keys` table is already provisioned via `supabase/migration_auth.sql` (backend). Mint a key with scope `quant:tools`:
 
-RLS: service role has full access, authenticated role is read-only.
+```bash
+cd backend
+node scripts/generate_api_key.js "OpenClaw" quant:tools
+```
 
 ## Deployment (Railway)
 
-Railway auto-detects the Dockerfile. Configure as a **cron service**, not a
-long-running web service. The `CMD` in the Dockerfile defaults to printing
-help; override with the cron command in Railway.
+Three Railway services, all from this single directory, same image, different start commands:
 
-A commented Railway cron placeholder is in `Dockerfile`.
+| Service | Start command | Config reference |
+| --- | --- | --- |
+| `quant-api` | `uvicorn simualpha_quant.api.app:app --host 0.0.0.0 --port $PORT` | `railway.api.json` |
+| `quant-mcp` | `python -m simualpha_quant.mcp.server --transport sse --host 0.0.0.0 --port $PORT` | `railway.mcp.json` |
+| `quant-cron` | Railway cron jobs running `python -m simualpha_quant.cli …` | n/a |
+
+Both long-running services healthcheck `/health`.
 
 ## Environment variables
 
@@ -82,4 +121,14 @@ A commented Railway cron placeholder is in `Dockerfile`.
 | `OPENBB_PAT` | OpenBB Platform personal access token |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service-role key (RLS bypass) |
-| `ANTHROPIC_API_KEY` | Claude API key (for later stages) |
+| `ANTHROPIC_API_KEY` | Reserved for downstream tools; unused today |
+| `QUANT_SERVICE_BOOTSTRAP_TOKEN` | Break-glass bearer token; WARNING on every use |
+
+## Stage plan
+
+- **Stage 1 (live):** `get_price_history` + `get_fundamentals` tools; CLI cache warmer; Supabase migration.
+- **Stage 2:** `render_tli_chart` tool (mplfinance).
+- **Stage 3:** `backtest_pattern` tool (qlib).
+- **Stage 4:** `simulate_strategy` tool (freqtrade).
+
+Stage 2–4 stubs note their registry-registration requirement.
