@@ -33,8 +33,10 @@ def test_weekly_aggregates_correctly():
     df = _daily_frame(28)
     weekly = resample_ohlcv(df, "weekly")
     assert len(weekly) >= 4
-    # Each weekly bar's high must equal the max high in its underlying days.
-    assert weekly["high"].iloc[0] >= df["high"].iloc[:7].max() - 1e-9
+    # Every weekly high must equal the max of the underlying daily highs
+    # that fall in its (Sat..Fri) window. Verify overall: weekly max == daily max.
+    assert weekly["high"].max() == pytest.approx(df["high"].max())
+    assert weekly["low"].min() == pytest.approx(df["low"].min())
 
 
 def test_monthly_aggregates_correctly():

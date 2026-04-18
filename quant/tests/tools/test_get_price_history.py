@@ -7,8 +7,11 @@ from datetime import date, datetime, timezone
 
 import pytest
 
+import importlib
+
 from simualpha_quant.schemas.prices import PriceHistoryRequest
-from simualpha_quant.tools import get_price_history as mod
+
+mod = importlib.import_module("simualpha_quant.tools.get_price_history")
 
 
 @dataclass

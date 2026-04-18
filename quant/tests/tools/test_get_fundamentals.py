@@ -7,8 +7,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+import importlib
+
 from simualpha_quant.schemas.fundamentals import FundamentalsRequest
-from simualpha_quant.tools import get_fundamentals as mod
+
+mod = importlib.import_module("simualpha_quant.tools.get_fundamentals")
 
 
 @dataclass

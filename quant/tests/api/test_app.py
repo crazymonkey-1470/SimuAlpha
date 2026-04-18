@@ -137,4 +137,6 @@ def test_list_tools_requires_auth(client):
     assert r2.status_code == 200
     tools = r2.json()["tools"]
     names = {t["name"] for t in tools}
-    assert names == {"get_price_history", "get_fundamentals"}
+    # Stage 1 + 2 + 3 registered tools (any future addition must be a
+    # superset of this baseline).
+    assert {"get_price_history", "get_fundamentals"} <= names

@@ -24,7 +24,8 @@ def test_server_builds():
 
 def test_expected_tools_registered():
     names = {t.mcp_name for t in TOOLS}
-    assert names == {"get_price_history", "get_fundamentals"}
+    # Any future stage adds to the set; this is a baseline subset check.
+    assert {"get_price_history", "get_fundamentals"} <= names
 
 
 def test_each_tool_has_serializable_schema():
