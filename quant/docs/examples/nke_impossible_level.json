@@ -1,0 +1,42 @@
+{
+  "ticker": "NKE",
+  "timeframe": "weekly",
+  "date_range": { "start": "2020-01-01", "end": "2025-04-30" },
+  "annotations": {
+    "fibonacci_levels": [
+      { "level": 0.618, "price": 56.80, "label": "0.618" },
+      { "level": 0.786, "price": 39.09, "label": "0.786 — Impossible Level" }
+    ],
+    "wave_labels": [
+      { "wave_id": "1", "wave_type": "impulse",    "price": 26.70, "date": "2020-03-23", "label": "Wave 1 origin" }
+    ],
+    "horizontal_lines": [
+      { "price": 39.09, "kind": "support",    "label": "0.786 Fib"    },
+      { "price": 26.70, "kind": "support",    "label": "Wave 1 origin" }
+    ],
+    "moving_averages": [
+      { "period": 200, "type": "SMA" }
+    ],
+    "zones": [
+      { "low": 26.00, "high": 39.00, "label": "GENERATIONAL SUPPORT ZONE", "color": "#F97316", "opacity": 0.20 }
+    ],
+    "entry_tranches": [
+      { "price": 38.00, "pct": 0.10, "label": "Tranche 1" },
+      { "price": 35.00, "pct": 0.15, "label": "Tranche 2" },
+      { "price": 32.00, "pct": 0.20, "label": "Tranche 3" },
+      { "price": 29.50, "pct": 0.25, "label": "Tranche 4" },
+      { "price": 27.00, "pct": 0.30, "label": "Tranche 5" }
+    ],
+    "badges": [
+      { "text": "GENERATIONAL BUY", "placement": "top", "color": "#F97316", "style": "banner" }
+    ],
+    "caption": "NKE — 0.786 Fib + Wave 1 origin + 200MMA converging ($26-39)"
+  },
+  "config": {
+    "width": 1280,
+    "height": 720,
+    "theme": "dark",
+    "watermark": "SimuAlpha",
+    "show_volume": true
+  }
+}
