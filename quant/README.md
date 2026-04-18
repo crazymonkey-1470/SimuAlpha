@@ -31,11 +31,12 @@ that.
 
 ## Components
 
-### Tools (Stage 1 live)
+### Tools (live)
 | Tool | HTTP | MCP | Source of truth |
 | --- | --- | --- | --- |
-| `get_price_history` | `POST /v1/tools/price-history` | `get_price_history` | `prices_daily` (OpenBB on miss) |
-| `get_fundamentals` | `POST /v1/tools/fundamentals` | `get_fundamentals` | `fundamentals_quarterly` (OpenBB on miss) |
+| `get_price_history`  | `POST /v1/tools/price-history`     | `get_price_history`  | `prices_daily` (OpenBB on miss)              |
+| `get_fundamentals`   | `POST /v1/tools/fundamentals`      | `get_fundamentals`   | `fundamentals_quarterly` (OpenBB on miss)    |
+| `render_tli_chart`   | `POST /v1/tools/render-tli-chart`  | `render_tli_chart`   | Supabase Storage `tli-charts` (content-addressed by spec hash) |
 
 ### CLI — cache warmer (not agent-facing)
 The CLI's role is to populate Supabase ahead of time so that
@@ -94,6 +95,7 @@ pytest
 
 Run once in the Supabase SQL Editor:
 - `supabase/migration_quant_data.sql` — `prices_daily`, `fundamentals_quarterly`, RLS (service role full; authenticated read-only).
+- `supabase/migration_quant_charts.sql` — `tli_charts_index` audit table + `tli-charts` Storage bucket (public-read, service-role writes).
 
 The `api_keys` table is already provisioned via `supabase/migration_auth.sql` (backend). Mint a key with scope `quant:tools`:
 
@@ -127,8 +129,8 @@ Both long-running services healthcheck `/health`.
 ## Stage plan
 
 - **Stage 1 (live):** `get_price_history` + `get_fundamentals` tools; CLI cache warmer; Supabase migration.
-- **Stage 2:** `render_tli_chart` tool (mplfinance).
+- **Stage 2 (live):** `render_tli_chart` tool (mplfinance), Supabase Storage.
 - **Stage 3:** `backtest_pattern` tool (qlib).
 - **Stage 4:** `simulate_strategy` tool (freqtrade).
 
-Stage 2–4 stubs note their registry-registration requirement.
+Stage 3–4 stubs note their registry-registration requirement.
