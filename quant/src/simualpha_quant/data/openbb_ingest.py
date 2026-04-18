@@ -1,12 +1,16 @@
 """OpenBB-based ingestion into Supabase.
 
-Two entry points:
-- fetch_prices(tickers, start, end): upserts daily OHLCV into prices_daily.
-- fetch_fundamentals(tickers): upserts the TLI-scoring metrics into
-  fundamentals_quarterly.
+Two roles:
 
-Both use tenacity for exponential backoff (3 attempts) on transient failures
-and batch Supabase writes in chunks of 1000 rows.
+1. CLI / cron cache-warmer — `fetch_prices` and `fetch_fundamentals`
+   loop over many tickers and upsert into Supabase.
+
+2. On-demand source for the cache-first agent-facing tools — the
+   public per-ticker helpers `fetch_prices_one`, `fetch_fundamentals_one`,
+   and `batch_upsert` are reused by `simualpha_quant.tools.*`.
+
+Both paths share tenacity-backed retries (3 attempts, exponential backoff)
+and chunk Supabase writes at 1000 rows per upsert.
 """
 
 from __future__ import annotations
@@ -99,7 +103,8 @@ def _upsert(table: str, rows: list[dict], on_conflict: str) -> None:
     client.table(table).upsert(rows, on_conflict=on_conflict).execute()
 
 
-def _batch_upsert(table: str, rows: Sequence[dict], on_conflict: str) -> int:
+def batch_upsert(table: str, rows: Sequence[dict], on_conflict: str) -> int:
+    """Chunk and upsert rows into Supabase. Public for tool-layer reuse."""
     if not rows:
         return 0
     written = 0
@@ -111,6 +116,10 @@ def _batch_upsert(table: str, rows: Sequence[dict], on_conflict: str) -> int:
             extra={"table": table, "rows": len(chunk), "running_total": written},
         )
     return written
+
+
+# Backwards-compat alias (was internal-only).
+_batch_upsert = batch_upsert
 
 
 # ───────────────────────── prices ─────────────────────────
@@ -142,7 +151,8 @@ class PriceRow:
 
 
 @_retry
-def _fetch_prices_one(ticker: str, start: str, end: str) -> list[PriceRow]:
+def fetch_prices_one(ticker: str, start: str, end: str) -> list[PriceRow]:
+    """Fetch daily OHLCV for a single ticker from OpenBB. Public."""
     obb = _openbb_client()
     log.info("openbb price fetch", extra={"ticker": ticker, "start": start, "end": end})
     resp = obb.equity.price.historical(
@@ -195,11 +205,11 @@ def fetch_prices(tickers: Sequence[str], start: str, end: str) -> int:
     for ticker in tickers:
         ticker = ticker.upper().strip()
         try:
-            rows = _fetch_prices_one(ticker, start, end)
+            rows = fetch_prices_one(ticker, start, end)
         except Exception as exc:
             log.exception("price fetch failed", extra={"ticker": ticker, "err": str(exc)})
             continue
-        total += _batch_upsert(
+        total += batch_upsert(
             "prices_daily",
             [r.as_dict() for r in rows],
             on_conflict="ticker,date",
@@ -262,7 +272,8 @@ def _fetch_statement(obb, call, symbol: str) -> list[dict]:
     return df.to_dict("records")
 
 
-def _fetch_fundamentals_one(ticker: str) -> list[FundamentalRow]:
+def fetch_fundamentals_one(ticker: str) -> list[FundamentalRow]:
+    """Fetch TLI-scoring quarterly metrics for one ticker from OpenBB. Public."""
     obb = _openbb_client()
     log.info("openbb fundamentals fetch", extra={"ticker": ticker})
 
@@ -320,11 +331,11 @@ def fetch_fundamentals(tickers: Sequence[str]) -> int:
     for ticker in tickers:
         ticker = ticker.upper().strip()
         try:
-            rows = _fetch_fundamentals_one(ticker)
+            rows = fetch_fundamentals_one(ticker)
         except Exception as exc:
             log.exception("fundamentals fetch failed", extra={"ticker": ticker, "err": str(exc)})
             continue
-        total += _batch_upsert(
+        total += batch_upsert(
             "fundamentals_quarterly",
             [r.as_dict() for r in rows],
             on_conflict="ticker,period_end,metric_name",
