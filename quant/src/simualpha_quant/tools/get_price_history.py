@@ -18,7 +18,6 @@ from simualpha_quant.schemas.prices import (
     PriceHistory,
     PriceHistoryRequest,
 )
-from simualpha_quant.supabase_client import get_client
 
 log = get_logger(__name__)
 
@@ -29,6 +28,8 @@ EDGE_TOLERANCE_DAYS = 5
 
 
 def _read_cache(ticker: str, start: date, end: date) -> list[dict]:
+    from simualpha_quant.supabase_client import get_client
+
     client = get_client()
     res = (
         client.table("prices_daily")

@@ -46,7 +46,12 @@ def configure_logging(level: str | None = None) -> None:
         return
     resolved = (level or os.environ.get("LOG_LEVEL") or "INFO").upper()
 
-    handler = logging.StreamHandler(sys.stdout)
+    # Log to stderr, not stdout. The MCP stdio transport demands
+    # exclusive ownership of stdout for JSON-RPC messages — any other
+    # bytes there corrupt the protocol and the client hangs forever.
+    # Railway captures both streams, so this is also fine for the
+    # uvicorn / cron deployments.
+    handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
 
     root = logging.getLogger()

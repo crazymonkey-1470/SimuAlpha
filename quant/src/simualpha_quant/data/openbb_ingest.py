@@ -29,7 +29,6 @@ from tenacity import (
 )
 
 from simualpha_quant.logging_config import get_logger
-from simualpha_quant.supabase_client import get_client
 
 load_dotenv()
 
@@ -99,6 +98,11 @@ def _chunked(rows: Sequence[dict], size: int = CHUNK_SIZE) -> Iterable[list[dict
 
 @_retry
 def _upsert(table: str, rows: list[dict], on_conflict: str) -> None:
+    # Lazy import: keeps module load free of the supabase / cryptography
+    # chain so test stubs that monkeypatch _upsert / batch_upsert don't
+    # need supabase importable at all.
+    from simualpha_quant.supabase_client import get_client
+
     client = get_client()
     client.table(table).upsert(rows, on_conflict=on_conflict).execute()
 

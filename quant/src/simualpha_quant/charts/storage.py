@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from simualpha_quant.logging_config import get_logger
-from simualpha_quant.supabase_client import get_client
 
 log = get_logger(__name__)
 
@@ -33,6 +32,12 @@ class StoredChart:
 
 
 def _bucket():
+    # Lazy import: keeps `from simualpha_quant.charts import storage`
+    # cheap (no supabase / cryptography import on module load), so test
+    # stubs that monkeypatch the public functions don't require the
+    # full supabase stack to be importable.
+    from simualpha_quant.supabase_client import get_client
+
     return get_client().storage.from_(BUCKET)
 
 

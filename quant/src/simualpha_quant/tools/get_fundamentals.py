@@ -20,7 +20,6 @@ from simualpha_quant.schemas.fundamentals import (
     Fundamentals,
     FundamentalsRequest,
 )
-from simualpha_quant.supabase_client import get_client
 
 log = get_logger(__name__)
 
@@ -30,6 +29,8 @@ STALE_AFTER_DAYS = 100
 
 
 def _read_cache(ticker: str, metrics: list[str]) -> list[dict]:
+    from simualpha_quant.supabase_client import get_client
+
     client = get_client()
     query = (
         client.table("fundamentals_quarterly")

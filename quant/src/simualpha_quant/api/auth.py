@@ -23,7 +23,6 @@ from typing import Callable
 from fastapi import Request
 
 from simualpha_quant.logging_config import get_logger
-from simualpha_quant.supabase_client import get_client
 
 log = get_logger(__name__)
 
@@ -84,6 +83,8 @@ def _check_bootstrap(token: str) -> AuthedKey | None:
 
 
 def _lookup_supabase(token: str) -> AuthedKey:
+    from simualpha_quant.supabase_client import get_client
+
     client = get_client()
     res = (
         client.table("api_keys")
@@ -141,7 +142,9 @@ def _touch_last_used(key_id: str, is_bootstrap: bool) -> None:
     try:
         from datetime import datetime, timezone
 
-        client = get_client()
+        from simualpha_quant.supabase_client import get_client
+
+    client = get_client()
         client.table("api_keys").update(
             {"last_used_at": datetime.now(tz=timezone.utc).isoformat()}
         ).eq("id", key_id).execute()
