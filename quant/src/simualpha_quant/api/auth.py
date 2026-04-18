@@ -144,7 +144,7 @@ def _touch_last_used(key_id: str, is_bootstrap: bool) -> None:
 
         from simualpha_quant.supabase_client import get_client
 
-    client = get_client()
+        client = get_client()
         client.table("api_keys").update(
             {"last_used_at": datetime.now(tz=timezone.utc).isoformat()}
         ).eq("id", key_id).execute()

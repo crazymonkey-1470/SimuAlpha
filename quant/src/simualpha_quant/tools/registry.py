@@ -17,9 +17,14 @@ from typing import Callable
 
 from pydantic import BaseModel
 
+from simualpha_quant.schemas.backtest import (
+    BacktestPatternRequest,
+    BacktestPatternResponse,
+)
 from simualpha_quant.schemas.charts import RenderChartRequest, RenderChartResponse
 from simualpha_quant.schemas.fundamentals import Fundamentals, FundamentalsRequest
 from simualpha_quant.schemas.prices import PriceHistory, PriceHistoryRequest
+from simualpha_quant.tools.backtest_pattern import backtest_pattern
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
 from simualpha_quant.tools.render_chart import render_tli_chart
@@ -64,6 +69,24 @@ TOOLS: tuple[ToolSpec, ...] = (
         request_model=FundamentalsRequest,
         response_model=Fundamentals,
         handler=get_fundamentals,
+    ),
+    ToolSpec(
+        name="backtest_pattern",
+        http_route="/v1/tools/backtest-pattern",
+        mcp_name="backtest_pattern",
+        description=(
+            "Validate a pattern against historical data. Returns hit "
+            "rate and forward-return statistics at 3/6/12/24 months "
+            "(configurable). Use a pre-built pattern name for known "
+            "TLI setups (wave_2_at_618, wave_4_at_382, confluence_zone, "
+            "generational_support, impossible_level), or compose a "
+            "custom_expression for novel patterns — see "
+            "docs/custom-expression-dsl.md. Use this whenever you want "
+            "to justify a call with empirical evidence."
+        ),
+        request_model=BacktestPatternRequest,
+        response_model=BacktestPatternResponse,
+        handler=backtest_pattern,
     ),
     ToolSpec(
         name="render_tli_chart",

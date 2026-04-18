@@ -11,8 +11,14 @@ Both the FastAPI app (`api/`) and the MCP server (`mcp/`) read from the
 registry — do NOT write transport-specific wrappers inline.
 """
 
+from simualpha_quant.tools.backtest_pattern import backtest_pattern
 from simualpha_quant.tools.get_fundamentals import get_fundamentals
 from simualpha_quant.tools.get_price_history import get_price_history
 from simualpha_quant.tools.render_chart import render_tli_chart
 
-__all__ = ["get_fundamentals", "get_price_history", "render_tli_chart"]
+__all__ = [
+    "backtest_pattern",
+    "get_fundamentals",
+    "get_price_history",
+    "render_tli_chart",
+]
