@@ -72,6 +72,83 @@ Omit `metrics` to receive all TLI-scoring metrics (revenue, ebitda,
 free_cash_flow, shares_outstanding, total_debt, cash, gross_margin,
 operating_margin, net_income).
 
+### `POST /v1/tools/backtest-pattern`
+
+Validate a pattern against historical data. Returns hit rate + forward
+return statistics at 3 / 6 / 12 / 24 months (configurable). Use a
+pre-built pattern name or compose a `custom_expression` in the DSL.
+
+Synchronous by default. Three conditions trigger async mode (HTTP 202
+with a `job_id` — poll `GET /v1/jobs/{id}`):
+
+1. `?async=true` query string (explicit).
+2. `len(tickers) * num_years > 1000` (pre-emptive; engine would take a while).
+3. Sync run exceeds 5 seconds (watchdog; returns `job_id` mid-flight).
+
+Sync example (named pattern):
+```bash
+curl -s https://quant-api.example.com/v1/tools/backtest-pattern \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pattern_name": "wave_2_at_618",
+    "universe_spec": {"tickers": ["HIMS", "NKE", "AAPL"]},
+    "date_range": {"start": "2015-01-01", "end": "2024-12-31"},
+    "horizons": [3, 6, 12, 24],
+    "include_per_year": true
+  }'
+```
+
+Async example (named universe, whole of tracked_8500):
+```bash
+curl -s "https://quant-api.example.com/v1/tools/backtest-pattern?async=true" \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pattern_name": "confluence_zone",
+    "universe_spec": {"universe": "tracked_8500"},
+    "date_range": {"start": "2010-01-01", "end": "2024-12-31"}
+  }'
+# → 202 Accepted
+# {"success": true, "data": {"job_id": "…", "status": "queued"}, ...}
+
+# Poll:
+curl -s https://quant-api.example.com/v1/jobs/<job_id> \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN"
+```
+
+Custom DSL example:
+```bash
+curl -s https://quant-api.example.com/v1/tools/backtest-pattern \
+  -H "Authorization: Bearer $OPENCLAW_QUANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "custom_expression": {
+      "all": [
+        {"distance_pct": {"a": "$close", "b": {"sma": ["$close", 200, "daily"]}, "max": 0.02}},
+        {"gt":           {"a": "$close", "b": {"sma": ["$close", 50,  "daily"]}}}
+      ]
+    },
+    "universe_spec": {"tickers": ["HIMS", "NKE"]},
+    "date_range": {"start": "2020-01-01", "end": "2024-12-31"}
+  }'
+```
+
+See `docs/custom-expression-dsl.md` for the full grammar and
+`docs/patterns/` for per-pattern definitions.
+
+### `GET /v1/jobs/{job_id}`
+
+Poll an async backtest. Returns `{job_id, status: queued|running|done|error,
+submitted_at, started_at, completed_at, result, error}`. When `status == "done"`,
+`result` contains the full `BacktestPatternResponse`.
+
+### `POST /admin/reload-universe`
+
+Force a refresh of the in-memory `tracked_8500` snapshot. Auth
+required. Otherwise the snapshot refreshes automatically every
+15 minutes at startup.
+
 ### `POST /v1/tools/render-tli-chart`
 
 Render a chart that shows OpenClaw's reasoning. OpenClaw composes the
@@ -204,6 +281,7 @@ Client config:
 - `get_price_history` — input: `{ticker, start, end, timeframe="daily"}`
 - `get_fundamentals`  — input: `{ticker, metrics?: [string]}`
 - `render_tli_chart`  — input: `{ticker, timeframe, date_range, annotations, config}` (see AnnotationsSpec above)
+- `backtest_pattern`  — input: `{pattern_name? | custom_expression?, universe_spec, date_range, horizons?, params?, include_per_year?, sample_size?}`. Returns the same shape the HTTP tool returns. MCP path is synchronous — for long-running backtests, prefer the HTTP transport with the async job flow.
 
 Output shapes: whatever the Pydantic models in `simualpha_quant.schemas.*`
 return, serialized as a JSON string inside an MCP `TextContent` block.

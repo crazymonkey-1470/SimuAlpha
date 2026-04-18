@@ -98,6 +98,11 @@ supabase import — and even there it lives inside `get_client()`.)
 | `get_price_history`  | `POST /v1/tools/price-history`     | `get_price_history`  | `prices_daily` (OpenBB on miss)              |
 | `get_fundamentals`   | `POST /v1/tools/fundamentals`      | `get_fundamentals`   | `fundamentals_quarterly` (OpenBB on miss)    |
 | `render_tli_chart`   | `POST /v1/tools/render-tli-chart`  | `render_tli_chart`   | Supabase Storage `tli-charts` (content-addressed by spec hash) |
+| `backtest_pattern`   | `POST /v1/tools/backtest-pattern`  | `backtest_pattern`   | `pattern_stats_cache` (hash-keyed) + qlib binary store |
+
+Stage-3 adds two auxiliary endpoints:
+- `GET /v1/jobs/{id}` — poll an async backtest.
+- `POST /admin/reload-universe` — force-refresh the `tracked_8500` snapshot.
 
 ### CLI — cache warmer (not agent-facing)
 The CLI's role is to populate Supabase ahead of time so that
@@ -154,9 +159,10 @@ pytest
 
 ## Supabase schema
 
-Run once in the Supabase SQL Editor:
+Run once in the Supabase SQL Editor (order matters):
 - `supabase/migration_quant_data.sql` — `prices_daily`, `fundamentals_quarterly`, RLS (service role full; authenticated read-only).
 - `supabase/migration_quant_charts.sql` — `tli_charts_index` audit table + `tli-charts` Storage bucket (public-read, service-role writes).
+- `supabase/migration_quant_backtest.sql` — `pattern_stats_cache`, `pattern_signals` (append-only audit), `backtest_jobs` (async tracking). Same RLS posture.
 
 The `api_keys` table is already provisioned via `supabase/migration_auth.sql` (backend). Mint a key with scope `quant:tools`:
 
@@ -191,7 +197,12 @@ Both long-running services healthcheck `/health`.
 
 - **Stage 1 (live):** `get_price_history` + `get_fundamentals` tools; CLI cache warmer; Supabase migration.
 - **Stage 2 (live):** `render_tli_chart` tool (mplfinance), Supabase Storage.
-- **Stage 3:** `backtest_pattern` tool (qlib).
+- **Stage 3 (live):** `backtest_pattern` tool (qlib data layer + pure-Python detectors); 5 named patterns + JSON DSL; async job mechanism.
 - **Stage 4:** `simulate_strategy` tool (freqtrade).
 
-Stage 3–4 stubs note their registry-registration requirement.
+All TLI thresholds and Fib levels live in `simualpha_quant.tli_constants`;
+see `docs/tli-constants.md` for file:line citations. Pattern docs in
+`docs/patterns/`. Custom-expression DSL grammar in
+`docs/custom-expression-dsl.md`.
+
+Stage 4 stub notes its registry-registration requirement.
