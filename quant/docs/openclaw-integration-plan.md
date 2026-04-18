@@ -296,5 +296,409 @@ runtime supports.
 
 ---
 
-**Sections 2–4 (tool schemas, system-prompt additions, test prompt)
-pending in separate commits.**
+## 2. Tool schemas
+
+All four schemas below are pulled verbatim from
+`simualpha_quant.tools.registry.TOOLS[*].request_model.model_json_schema()`
+on branch `claude/stage4-simulate-strategy`. They are the authoritative
+contract — if you paste these, the quant service will validate every
+inbound payload against exactly these shapes.
+
+### Endpoint / MCP-name summary
+
+| Tool | HTTP endpoint (POST) | MCP tool name |
+| --- | --- | --- |
+| `get_price_history` | `${QUANT_API_URL}/v1/tools/price-history` | `get_price_history` |
+| `get_fundamentals` | `${QUANT_API_URL}/v1/tools/fundamentals` | `get_fundamentals` |
+| `render_tli_chart` | `${QUANT_API_URL}/v1/tools/render-tli-chart` | `render_tli_chart` |
+| `backtest_pattern` | `${QUANT_API_URL}/v1/tools/backtest-pattern` | `backtest_pattern` |
+
+All four require `Authorization: Bearer $QUANT_API_TOKEN` and
+`Content-Type: application/json`.
+
+### Anthropic Messages-API `tools=[...]` block (paste-ready)
+
+Drop this array directly into OpenClaw's `tools` argument. Each entry
+is the Anthropic SDK shape — `name` / `description` / `input_schema`.
+
+```json
+[
+  {
+    "name": "get_price_history",
+    "description": "Return daily OHLCV for a single ticker between two dates. Cache-first against Supabase prices_daily; backfills from OpenBB on miss or gap at either end of the window.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "ticker": {
+          "description": "Equity symbol, upper-cased",
+          "maxLength": 12,
+          "minLength": 1,
+          "title": "Ticker",
+          "type": "string"
+        },
+        "start": {
+          "description": "Inclusive start date (YYYY-MM-DD)",
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "description": "Inclusive end date (YYYY-MM-DD)",
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "timeframe": {
+          "const": "daily",
+          "default": "daily",
+          "title": "Timeframe",
+          "type": "string"
+        }
+      },
+      "required": ["ticker", "start", "end"],
+      "title": "PriceHistoryRequest",
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_fundamentals",
+    "description": "Return latest quarterly TLI-scoring fundamentals (revenue, ebitda, free_cash_flow, shares_outstanding, total_debt, cash, gross_margin, operating_margin, net_income) for a ticker. Cache-first; refreshes from OpenBB when the newest cached period is older than one quarter.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "ticker": {
+          "maxLength": 12,
+          "minLength": 1,
+          "title": "Ticker",
+          "type": "string"
+        },
+        "metrics": {
+          "anyOf": [
+            { "items": { "type": "string" }, "type": "array" },
+            { "type": "null" }
+          ],
+          "default": null,
+          "description": "Subset of TLI metrics. Omit to receive all known metrics.",
+          "title": "Metrics"
+        }
+      },
+      "required": ["ticker"],
+      "title": "FundamentalsRequest",
+      "type": "object"
+    }
+  },
+  {
+    "name": "render_tli_chart",
+    "description": "Render a TLI-methodology chart for a ticker with custom annotations. Use this to visually show your reasoning when you've identified a setup. You compose the annotations (Fibonacci levels, wave labels, S/R lines, MAs, zones, entry tranches, badges); this tool renders them. Cache-first by spec hash — repeated identical specs return the same URL without re-rendering.",
+    "input_schema": {
+      "$defs": {
+        "AnnotationsSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "fibonacci_levels": { "items": { "$ref": "#/$defs/FibLevel" }, "title": "Fibonacci Levels", "type": "array" },
+            "wave_labels":      { "items": { "$ref": "#/$defs/WaveLabel" }, "title": "Wave Labels", "type": "array" },
+            "horizontal_lines": { "items": { "$ref": "#/$defs/HorizontalLine" }, "title": "Horizontal Lines", "type": "array" },
+            "moving_averages":  { "items": { "$ref": "#/$defs/MovingAverageSpec" }, "title": "Moving Averages", "type": "array" },
+            "zones":            { "items": { "$ref": "#/$defs/Zone" }, "title": "Zones", "type": "array" },
+            "entry_tranches":   { "items": { "$ref": "#/$defs/EntryTranche" }, "title": "Entry Tranches", "type": "array" },
+            "badges":           { "items": { "$ref": "#/$defs/Badge" }, "title": "Badges", "type": "array" },
+            "caption": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Caption" }
+          },
+          "title": "AnnotationsSpec",
+          "type": "object"
+        },
+        "Badge": {
+          "additionalProperties": false,
+          "properties": {
+            "text": { "title": "Text", "type": "string" },
+            "placement": { "default": "top", "enum": ["top", "bottom", "near_zone"], "title": "Placement", "type": "string" },
+            "color": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Color" },
+            "style": { "default": "pill", "enum": ["pill", "flag", "banner"], "title": "Style", "type": "string" }
+          },
+          "required": ["text"],
+          "title": "Badge",
+          "type": "object"
+        },
+        "ChartConfig": {
+          "additionalProperties": false,
+          "properties": {
+            "width":  { "default": 1200, "maximum": 4000, "minimum": 400, "title": "Width", "type": "integer" },
+            "height": { "default": 700,  "maximum": 4000, "minimum": 300, "title": "Height", "type": "integer" },
+            "theme":  { "default": "dark", "enum": ["light", "dark"], "title": "Theme", "type": "string" },
+            "watermark": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": "SimuAlpha", "title": "Watermark" },
+            "show_volume": { "default": true, "title": "Show Volume", "type": "boolean" }
+          },
+          "title": "ChartConfig",
+          "type": "object"
+        },
+        "DateRange": {
+          "additionalProperties": false,
+          "properties": {
+            "start": { "format": "date", "title": "Start", "type": "string" },
+            "end":   { "format": "date", "title": "End",   "type": "string" }
+          },
+          "required": ["start", "end"],
+          "title": "DateRange",
+          "type": "object"
+        },
+        "EntryTranche": {
+          "additionalProperties": false,
+          "properties": {
+            "price": { "title": "Price", "type": "number" },
+            "pct":   { "description": "Fraction of total position (0 < pct <= 1)", "exclusiveMinimum": 0.0, "maximum": 1.0, "title": "Pct", "type": "number" },
+            "label": { "title": "Label", "type": "string" }
+          },
+          "required": ["price", "pct", "label"],
+          "title": "EntryTranche",
+          "type": "object"
+        },
+        "FibLevel": {
+          "additionalProperties": false,
+          "properties": {
+            "level": { "description": "Fib ratio, e.g. 0.618 or 1.618", "maximum": 4.0, "minimum": 0.0, "title": "Level", "type": "number" },
+            "price": { "title": "Price", "type": "number" },
+            "label": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Label" },
+            "style": { "default": "dashed", "enum": ["solid", "dashed", "dotted"], "title": "Style", "type": "string" },
+            "color": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Color" }
+          },
+          "required": ["level", "price"],
+          "title": "FibLevel",
+          "type": "object"
+        },
+        "HorizontalLine": {
+          "additionalProperties": false,
+          "properties": {
+            "price": { "title": "Price", "type": "number" },
+            "kind":  { "enum": ["support", "resistance", "bullish_flip", "bearish_flip"], "title": "Kind", "type": "string" },
+            "label": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Label" }
+          },
+          "required": ["price", "kind"],
+          "title": "HorizontalLine",
+          "type": "object"
+        },
+        "MovingAverageSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "period": { "exclusiveMinimum": 0, "maximum": 2000, "title": "Period", "type": "integer" },
+            "type":   { "default": "SMA", "enum": ["SMA", "EMA"], "title": "Type", "type": "string" },
+            "color":  { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Color" }
+          },
+          "required": ["period"],
+          "title": "MovingAverageSpec",
+          "type": "object"
+        },
+        "WaveLabel": {
+          "additionalProperties": false,
+          "properties": {
+            "wave_id":   { "description": "e.g. '1', '2', 'A', 'B'", "maxLength": 4, "minLength": 1, "title": "Wave Id", "type": "string" },
+            "wave_type": { "enum": ["impulse", "corrective"], "title": "Wave Type", "type": "string" },
+            "price":     { "title": "Price", "type": "number" },
+            "date":      { "format": "date", "title": "Date", "type": "string" },
+            "label":     { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Label" }
+          },
+          "required": ["wave_id", "wave_type", "price", "date"],
+          "title": "WaveLabel",
+          "type": "object"
+        },
+        "Zone": {
+          "additionalProperties": false,
+          "properties": {
+            "low":   { "title": "Low",   "type": "number" },
+            "high":  { "title": "High",  "type": "number" },
+            "label": { "title": "Label", "type": "string" },
+            "color": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "title": "Color" },
+            "opacity": { "default": 0.25, "maximum": 1.0, "minimum": 0.0, "title": "Opacity", "type": "number" }
+          },
+          "required": ["low", "high", "label"],
+          "title": "Zone",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "ticker":    { "maxLength": 12, "minLength": 1, "title": "Ticker", "type": "string" },
+        "timeframe": { "default": "daily", "enum": ["daily", "weekly", "monthly"], "title": "Timeframe", "type": "string" },
+        "date_range":  { "$ref": "#/$defs/DateRange" },
+        "annotations": { "$ref": "#/$defs/AnnotationsSpec" },
+        "config":      { "$ref": "#/$defs/ChartConfig" }
+      },
+      "required": ["ticker", "date_range"],
+      "title": "RenderChartRequest",
+      "type": "object"
+    }
+  },
+  {
+    "name": "backtest_pattern",
+    "description": "Validate a pattern against historical data. Returns hit rate and forward-return statistics at 3/6/12/24 months (configurable). Use a pre-built pattern name for known TLI setups (wave_2_at_618, wave_4_at_382, confluence_zone, generational_support, impossible_level), or compose a custom_expression for novel patterns — see docs/custom-expression-dsl.md. Use this whenever you want to justify a call with empirical evidence.",
+    "input_schema": {
+      "$defs": {
+        "DateRange": {
+          "additionalProperties": false,
+          "properties": {
+            "start": { "format": "date", "title": "Start", "type": "string" },
+            "end":   { "format": "date", "title": "End",   "type": "string" }
+          },
+          "required": ["start", "end"],
+          "title": "DateRange",
+          "type": "object"
+        },
+        "UniverseSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "universe": {
+              "anyOf": [{ "const": "tracked_8500", "type": "string" }, { "type": "null" }],
+              "default": null,
+              "description": "Named cohort. Use this OR `tickers`, not both.",
+              "title": "Universe"
+            },
+            "tickers": {
+              "anyOf": [{ "items": { "type": "string" }, "type": "array" }, { "type": "null" }],
+              "default": null,
+              "description": "Explicit ticker list. Use this OR `universe`.",
+              "title": "Tickers"
+            }
+          },
+          "title": "UniverseSpec",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "pattern_name": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "default": null,
+          "description": "Name of a pre-built pattern from the library (wave_2_at_618, wave_4_at_382, confluence_zone, generational_support, impossible_level).",
+          "title": "Pattern Name"
+        },
+        "custom_expression": {
+          "anyOf": [{ "additionalProperties": true, "type": "object" }, { "type": "null" }],
+          "default": null,
+          "description": "Custom pattern expression in the JSON DSL. See docs/custom-expression-dsl.md.",
+          "title": "Custom Expression"
+        },
+        "universe_spec": { "$ref": "#/$defs/UniverseSpec" },
+        "date_range":    { "$ref": "#/$defs/DateRange" },
+        "horizons":      { "default": [3, 6, 12, 24], "items": { "type": "integer" }, "title": "Horizons", "type": "array" },
+        "params":        { "anyOf": [{ "additionalProperties": true, "type": "object" }, { "type": "null" }], "default": null, "title": "Params" },
+        "include_per_year": { "default": true, "title": "Include Per Year", "type": "boolean" },
+        "sample_size":      { "default": 10, "maximum": 100, "minimum": 0, "title": "Sample Size", "type": "integer" }
+      },
+      "required": ["universe_spec", "date_range"],
+      "title": "BacktestPatternRequest",
+      "type": "object"
+    }
+  }
+]
+```
+
+Schema notes the schema itself doesn't make obvious:
+
+- **`get_price_history`:** `timeframe` is currently `const: "daily"`
+  (future stages may add weekly/monthly — if so this will loosen to
+  an enum, backward-compatible).
+- **`get_fundamentals` metrics whitelist:** `revenue`, `ebitda`,
+  `free_cash_flow`, `shares_outstanding`, `total_debt`, `cash`,
+  `gross_margin`, `operating_margin`, `net_income`. Unknown metrics
+  return `422` with the full list in the error.
+- **`render_tli_chart` defaults** when `annotations` is empty: TLI
+  legend auto-applies — blue S/R, green/red flip, yellow 200-period
+  MA keyed to the requested `timeframe`, dark theme, SimuAlpha
+  watermark. Caller overrides stay authoritative.
+- **`backtest_pattern` XOR:** exactly one of `pattern_name` or
+  `custom_expression` must be non-null. Providing both returns
+  `422`. Providing neither returns `422`.
+- **`UniverseSpec` XOR:** exactly one of `universe` or `tickers`.
+  Same rules. `universe: "tracked_8500"` reads from the quant
+  service's in-memory snapshot (15-min refresh); `tickers` is a
+  per-request explicit list.
+
+### How to call each tool (HTTP POST body examples)
+
+Minimal payloads — enough to hit the happy path from OpenClaw:
+
+```bash
+# get_price_history
+curl -sS -XPOST "$QUANT_API_URL/v1/tools/price-history" \
+  -H "Authorization: Bearer $QUANT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ticker":"HIMS","start":"2024-01-01","end":"2024-12-31"}'
+
+# get_fundamentals
+curl -sS -XPOST "$QUANT_API_URL/v1/tools/fundamentals" \
+  -H "Authorization: Bearer $QUANT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ticker":"HIMS"}'
+
+# render_tli_chart  (minimal — defaults fill in the TLI legend)
+curl -sS -XPOST "$QUANT_API_URL/v1/tools/render-tli-chart" \
+  -H "Authorization: Bearer $QUANT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ticker": "HIMS",
+    "date_range": {"start": "2024-01-01", "end": "2024-12-31"},
+    "annotations": {
+      "wave_labels": [
+        {"wave_id": "1", "wave_type": "impulse",    "price": 11.00, "date": "2023-08-01", "label": "Wave 1"},
+        {"wave_id": "2", "wave_type": "corrective", "price": 19.50, "date": "2024-05-06", "label": "Wave 2 low"}
+      ],
+      "caption": "HIMS Wave 2 at 0.618 fib confluence"
+    }
+  }'
+
+# backtest_pattern
+curl -sS -XPOST "$QUANT_API_URL/v1/tools/backtest-pattern" \
+  -H "Authorization: Bearer $QUANT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pattern_name": "wave_2_at_618",
+    "universe_spec": {"tickers": ["HIMS","NKE","AAPL"]},
+    "date_range": {"start": "2018-01-01", "end": "2024-12-31"},
+    "horizons": [3, 6, 12, 24]
+  }'
+```
+
+### Response envelope (identical for every tool)
+
+Success (`200`):
+
+```json
+{
+  "success": true,
+  "data": { /* tool-specific response body */ },
+  "meta": {
+    "timestamp": "2026-04-18T...Z",
+    "tool": "<tool-name>",
+    "elapsed_ms": 123
+  }
+}
+```
+
+Validation / auth / internal error (`400` / `401` / `403` / `422` / `500`):
+
+```json
+{
+  "success": false,
+  "error": "<short-message>",
+  "details": "<optional longer context, may be a structured object for 422>",
+  "meta": { "timestamp": "..." }
+}
+```
+
+OpenClaw's tool-call adapter should inspect `success`; on `false`,
+log `error` + `details` and surface back to the model as a
+tool-error so the model can self-correct (e.g. a `422` for a bad
+ticker).
+
+### MCP path (alternative to HTTP)
+
+If OpenClaw uses MCP natively, the tool names above map 1:1 onto
+the MCP server's `list_tools` response (server name
+`simualpha-quant`, stdio / SSE — see
+`docs/openclaw-integration.md` for the connection config).
+`tools/call` argument schemas are identical to the `input_schema`
+JSON blocks above.
+
+---
+
+**Sections 3–4 (system-prompt additions, test prompt) pending in
+separate commits.**
