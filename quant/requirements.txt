@@ -1,0 +1,11 @@
+openbb==4.4.1
+pyqlib==0.9.6
+mplfinance==0.12.10b0
+freqtrade==2024.11
+supabase==2.8.1
+pandas==2.2.3
+pydantic==2.9.2
+python-dotenv==1.0.1
+httpx==0.27.0
+tenacity==9.0.0
+pytest==8.3.3
