@@ -13,7 +13,6 @@ from __future__ import annotations
 import io
 from datetime import date
 
-import mplfinance as mpf
 import pandas as pd
 
 from simualpha_quant.charts import annotations as ann
@@ -131,6 +130,10 @@ def render(req: RenderChartRequest) -> bytes:
 
     theme: Theme = get_theme(req.config.theme)
     style = mpf_style(theme)
+
+    # Lazy import — keeps mplfinance + matplotlib off the module-load
+    # critical path so importing this module is cheap.
+    import mplfinance as mpf
 
     mas = _resolve_mas(req.annotations.moving_averages, req.timeframe)
     ma_panels = []

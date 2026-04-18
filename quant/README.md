@@ -22,6 +22,67 @@ not three.
 No LLM clients or reasoning logic live in this service. OpenClaw owns
 that.
 
+## Conventions
+
+Two architectural rules apply across the entire service. Both are
+enforced; do not work around them.
+
+### Rule 1 — All logging goes to stderr, never stdout
+
+Stdout is reserved for the MCP stdio transport's JSON-RPC framing.
+Any non-JSON-RPC byte on stdout corrupts the protocol and the MCP
+client hangs on `initialize()` with no error — extraordinarily
+painful to debug.
+
+`simualpha_quant.logging_config` installs a single stderr handler on
+the root logger and calls `_assert_no_stdout_handlers()` after
+configuration. If any other module attaches a stdout-bound handler
+the service crashes loudly at startup with a clear message rather
+than silently breaking the protocol.
+
+If you add a new dependency that configures its own logging, redirect
+its handler to stderr or remove it. Do not add `print()` calls to
+production code paths — use `get_logger(__name__)`.
+
+### Rule 2 — Heavy / optional deps are imported lazily
+
+`supabase`, `openbb`, `pyqlib`, `freqtrade`, `mplfinance`, and
+`matplotlib.*` are imported **inside the function that uses them**,
+never at module load. Reasons:
+
+- A broken / missing native dep (e.g. `cryptography` cffi backend)
+  must not prevent unrelated modules from being importable.
+- Tests can stub `tools/get_price_history` without dragging the
+  supabase / gotrue / cryptography chain into the test process.
+- Importing `simualpha_quant.tools` (or any sibling) must stay fast.
+
+Pattern:
+
+```python
+def get_client():
+    from supabase import create_client  # lazy: see README "Conventions"
+    return create_client(url, key)
+```
+
+For type-only references, use `TYPE_CHECKING`:
+
+```python
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:  # pragma: no cover
+    from matplotlib.axes import Axes
+```
+
+To audit, run from `quant/`:
+
+```bash
+find src -name "*.py" -exec grep -nE \
+  "^(from|import)\s+(supabase|openbb|qlib|freqtrade|mplfinance|matplotlib)" {} +
+```
+
+This must return zero matches in production source. (The dedicated
+`supabase_client.py` module is the only acceptable site for the
+supabase import — and even there it lives inside `get_client()`.)
+
 ## Role in the monorepo
 
 - **backend/** (Node/Express): user-facing API, scoring, alerts, app-state Supabase writes

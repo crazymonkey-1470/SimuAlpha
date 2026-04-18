@@ -10,10 +10,13 @@ the y-axis tick column or into the volume panel.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
-from matplotlib.axes import Axes
-from matplotlib.patches import Rectangle
-from matplotlib.transforms import blended_transform_factory
+
+if TYPE_CHECKING:  # pragma: no cover
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 from simualpha_quant.charts.layout import (
     CORRECTIVE_RED,
@@ -84,6 +87,7 @@ def _ylim_clamped(ax: Axes, price: float) -> float | None:
 def draw_fibs(ax: Axes, levels: list[FibLevel], theme: Theme) -> None:
     if not levels:
         return
+    from matplotlib.transforms import blended_transform_factory  # lazy
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     for lvl in levels:
         if _ylim_clamped(ax, lvl.price) is None:
@@ -120,6 +124,7 @@ def draw_horizontals(
 ) -> None:
     if not lines:
         return
+    from matplotlib.transforms import blended_transform_factory  # lazy
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     ymin, ymax = ax.get_ylim()
     yspan = max(ymax - ymin, 1e-9)
@@ -158,6 +163,7 @@ def draw_horizontals(
 def draw_zones(ax: Axes, zones: list[Zone], theme: Theme) -> None:
     if not zones:
         return
+    from matplotlib.transforms import blended_transform_factory  # lazy
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     for z in zones:
         low, high = sorted([z.low, z.high])
@@ -244,6 +250,7 @@ def draw_entry_tranches(ax: Axes, tranches: list[EntryTranche], theme: Theme) ->
     """
     if not tranches:
         return
+    from matplotlib.transforms import blended_transform_factory  # lazy
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     visible = [t for t in tranches if _ylim_clamped(ax, t.price) is not None]
     if not visible:
@@ -291,6 +298,7 @@ def draw_entry_tranches(ax: Axes, tranches: list[EntryTranche], theme: Theme) ->
 def draw_badges(ax: Axes, badges: list[Badge], theme: Theme) -> None:
     if not badges:
         return
+    from matplotlib.transforms import blended_transform_factory  # lazy
     trans = blended_transform_factory(ax.transAxes, ax.transAxes)
     for i, b in enumerate(badges):
         if b.placement == "bottom":

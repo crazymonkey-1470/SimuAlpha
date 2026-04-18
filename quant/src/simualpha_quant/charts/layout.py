@@ -3,14 +3,15 @@
 Defines the default TLI color palette, the SimuAlpha dark/light themes,
 and the watermark drawer. Callers can override any color at the
 annotation level.
+
+mplfinance is imported lazily inside `mpf_style()`. See README
+"Conventions" for the lazy-import rule.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
-
-import mplfinance as mpf
 
 # ───────────────────────── color palette (TLI legend) ─────────────────────────
 
@@ -88,6 +89,8 @@ def get_theme(name: str) -> Theme:
 
 def mpf_style(theme: Theme):
     """Build a mplfinance style object for a theme."""
+    import mplfinance as mpf
+
     marketcolors = mpf.make_marketcolors(
         up=theme.candle_up,
         down=theme.candle_down,
