@@ -1,4 +1,8 @@
-FROM python:3.11-slim
+# Python 3.12 is required — pandas-ta (a transitive dep of freqtrade)
+# dropped Python 3.11 wheels on PyPI. The Stage-4.5 resolver sweep
+# confirmed that 3.11 + current openbb + current freqtrade cannot
+# coexist without vendoring or private-index workarounds.
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -7,8 +11,12 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Core install. Services that also run simulate_strategy add
+# requirements-stage4.txt on top (freqtrade + pandas-ta).
+COPY requirements.txt requirements-stage4.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+# Uncomment the next line on the simulate-strategy Railway service only:
+#   RUN pip install --no-cache-dir -r requirements-stage4.txt
 
 COPY . .
 
