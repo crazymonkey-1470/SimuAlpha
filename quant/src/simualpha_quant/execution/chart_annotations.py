@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Sequence
 
-from simualpha_quant.execution.trade_log import TradeRecord
+from simualpha_quant.execution.trade_log import TradeContext, TradeRecord
 from simualpha_quant.schemas.charts import (
     AnnotationsSpec,
     Badge,
@@ -29,12 +29,31 @@ from simualpha_quant.schemas.charts import (
 
 @dataclass(frozen=True)
 class TradeChartInputs:
-    """Context the engine knows that the TradeRecord alone doesn't carry."""
+    """Caller-supplied extras — the engine builds this from TradeContext.
+
+    Fields are optional; a trade whose context wasn't captured falls
+    back to tranche-only annotations.
+    """
     stop_loss_price: float | None = None
-    take_profit_prices: list[tuple[float, str]] = ()  # (price, label)
-    wave_1_anchor: tuple[date, float] | None = None   # (date, price)
+    take_profit_prices: tuple[tuple[float, str], ...] = ()
+    wave_1_anchor: tuple[date, float] | None = None
+    wave_1_top_anchor: tuple[date, float] | None = None
     wave_2_anchor: tuple[date, float] | None = None
-    confluence_zone: tuple[float, float] | None = None  # (low, high) dollar
+    confluence_zone: tuple[float, float] | None = None
+
+
+def inputs_from_context(ctx: TradeContext | None) -> TradeChartInputs:
+    """Map a captured TradeContext into the chart-builder inputs."""
+    if ctx is None:
+        return TradeChartInputs()
+    return TradeChartInputs(
+        stop_loss_price=ctx.stop_loss_price,
+        take_profit_prices=tuple(ctx.take_profit_prices),
+        wave_1_anchor=ctx.wave_1_start,
+        wave_1_top_anchor=ctx.wave_1_top,
+        wave_2_anchor=ctx.wave_2_low,
+        confluence_zone=ctx.confluence_zone,
+    )
 
 
 DEFAULT_WINDOW_PRE_DAYS = 180
@@ -80,10 +99,13 @@ def build_chart_request(
     wave_labels: list[WaveLabel] = []
     if inputs.wave_1_anchor is not None:
         d, p = inputs.wave_1_anchor
-        wave_labels.append(WaveLabel(wave_id="1", wave_type="impulse", price=p, date=d, label="Wave 1"))
+        wave_labels.append(WaveLabel(wave_id="1", wave_type="impulse", price=p, date=d, label="Wave 1 start"))
+    if inputs.wave_1_top_anchor is not None:
+        d, p = inputs.wave_1_top_anchor
+        wave_labels.append(WaveLabel(wave_id="1", wave_type="impulse", price=p, date=d, label="Wave 1 top"))
     if inputs.wave_2_anchor is not None:
         d, p = inputs.wave_2_anchor
-        wave_labels.append(WaveLabel(wave_id="2", wave_type="corrective", price=p, date=d, label="Wave 2"))
+        wave_labels.append(WaveLabel(wave_id="2", wave_type="corrective", price=p, date=d, label="Wave 2 low"))
 
     badge_text, badge_color = _outcome_badge(trade)
     badges = [Badge(text=badge_text, placement="top", color=badge_color, style="pill")]

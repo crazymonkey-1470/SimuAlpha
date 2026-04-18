@@ -26,6 +26,7 @@ from typing import Callable
 from simualpha_quant.execution.chart_annotations import (
     TradeChartInputs,
     build_chart_request,
+    inputs_from_context,
 )
 from simualpha_quant.execution.simulate import run_simulation
 from simualpha_quant.execution.trade_log import TradeRecord
@@ -123,7 +124,10 @@ def _default_renderer():
 
 def _render_sample_chart(trade: TradeRecord, renderer: Renderer) -> TradeChart:
     try:
-        req = build_chart_request(trade, inputs=TradeChartInputs())
+        # Stage 4.5: pull the per-trade TradeContext the engine attached
+        # (wave anchors, resolved TP prices, stop price, confluence zone)
+        # so the rendered chart carries the full reasoning.
+        req = build_chart_request(trade, inputs=inputs_from_context(trade.context))
         resp = renderer(req)
         return TradeChart(
             ticker=trade.ticker,

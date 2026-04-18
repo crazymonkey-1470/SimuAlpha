@@ -23,6 +23,25 @@ from simualpha_quant.schemas.simulate import (
 
 
 @dataclass
+class TradeContext:
+    """Per-trade snapshot the engine captures at signal time.
+
+    Threaded into chart annotations so each sample chart shows the
+    full per-trade reasoning: Wave 1 anchors, resolved TP / stop
+    prices, and any confluence zone. Optional — None means 'not
+    available' and the chart falls back to tranche-only annotations.
+    """
+    wave_1_start: tuple[date, float] | None = None       # (date, price)
+    wave_1_top: tuple[date, float] | None = None
+    wave_2_low: tuple[date, float] | None = None
+    stop_loss_price: float | None = None
+    take_profit_prices: list[tuple[float, str]] = field(default_factory=list)
+    # list of (dollar price, label) pairs — label describes the leg
+    # (e.g. "Wave 3 target 1.618").
+    confluence_zone: tuple[float, float] | None = None   # (low, high) dollar
+
+
+@dataclass
 class TradeRecord:
     ticker: str
     entry_date: date
@@ -32,6 +51,8 @@ class TradeRecord:
     pct_return: float                 # net; negative = loss
     tranche_entries: list[tuple[date, float, float]] = field(default_factory=list)
     # List of (date, price, pct_of_planned_position) tuples used for chart annotation.
+    context: TradeContext | None = None
+    # Optional snapshot for annotated-chart rendering (Stage 4.5).
 
     @property
     def is_win(self) -> bool:

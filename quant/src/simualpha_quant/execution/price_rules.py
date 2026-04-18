@@ -83,11 +83,26 @@ def resolve(rule: PriceRule, ctx: ResolveContext) -> float:
     if rule.type == "at_fib":
         assert rule.level is not None
         w1s, w1t = _wave_1_anchors(ctx)
-        levels = wave_1_retracement_levels(w1s, w1t)
-        if rule.level not in levels:
-            # Non-standard level (e.g. 1.618 extension): compute inline.
-            return w1t.price - float(rule.level) * (w1t.price - w1s.price)
-        return float(levels[rule.level])
+        level = float(rule.level)
+        # Levels ≤ 1.0 are RETRACEMENTS of Wave 1 (from the top down).
+        # Levels > 1.0 are EXTENSIONS anchored on the Wave 2 low (the
+        # Wave 3 / Wave 5 target line). Matches fibonacci.wave_3_target
+        # and the convention used by the agent-facing pattern docs.
+        if level <= 1.0:
+            levels = wave_1_retracement_levels(w1s, w1t)
+            if level in levels:
+                return float(levels[level])
+            return w1t.price - level * (w1t.price - w1s.price)
+        # Extension path — needs the Wave 2 low anchor too.
+        from simualpha_quant.research.waves import find_developing_wave_2
+
+        relevant = [p for p in ctx.pivots if p.index <= ctx.current_index]
+        dev = find_developing_wave_2(relevant)
+        if not dev:
+            raise UnresolvablePriceRule("no developing Wave-2 anchors for extension")
+        _, _, w2_low = dev[-1]
+        height = w1t.price - w1s.price
+        return w2_low.price + level * height
 
     if rule.type == "at_ma":
         assert rule.period is not None and rule.freq is not None

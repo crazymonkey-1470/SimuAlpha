@@ -35,6 +35,7 @@ from simualpha_quant.execution.freqtrade_adapter import (
     build_strategy_class,
     make_data_provider,
 )
+from simualpha_quant.execution.trade_context import enrich_trades_with_context
 from simualpha_quant.execution.trade_log import (
     TradeRecord,
     downsample_equity_ohlc,
@@ -102,6 +103,20 @@ def run_simulation(
         trades, equity_points = synthetic_simulator(spec, store)
     else:
         trades, equity_points = _run_freqtrade(spec, store, fetcher)
+
+    # Stage 4.5 — attach per-trade TradeContext so sample charts get
+    # the full reasoning (Wave anchors, TP prices, stop, zone).
+    if trades:
+        try:
+            enrich_trades_with_context(
+                spec,
+                trades,
+                price_loader=lambda ticker: store.load(
+                    ticker, spec.date_range.start, spec.date_range.end
+                ),
+            )
+        except Exception as exc:
+            log.warning("trade-context enrichment failed", extra={"err": str(exc)})
 
     equity_dates = [p[0] for p in equity_points]
     equity_closes = [p[1] for p in equity_points]
