@@ -217,7 +217,7 @@ secret — check its env.
 
 ---
 
-## 2. OpenClaw-side secret storage
+### 1.5 OpenClaw-side secret storage
 
 OpenClaw is an **external service** — the raw token never lands on
 the SimuAlpha side after mint. OpenClaw stores it and sends it on
