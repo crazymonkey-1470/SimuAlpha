@@ -15,13 +15,21 @@ COPY . .
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
-# Default command prints help. Override in Railway cron config, e.g.:
+EXPOSE 8000
+EXPOSE 8765
+
+# One image, three launch modes. Pick per Railway service by overriding CMD:
 #
-#   [deploy.cron]
-#   schedule = "0 6 * * 1-5"   # weekdays 06:00 UTC
-#   command  = "python -m simualpha_quant.cli fetch-prices --tickers HIMS,NKE"
+#   quant-api (persistent web service; healthcheck /health):
+#     uvicorn simualpha_quant.api.app:app --host 0.0.0.0 --port $PORT
 #
-#   [deploy.cron]
-#   schedule = "0 7 * * 1"     # Mondays 07:00 UTC
-#   command  = "python -m simualpha_quant.cli fetch-fundamentals --tickers HIMS,NKE"
+#   quant-mcp (persistent web service over HTTP/SSE; healthcheck /health):
+#     python -m simualpha_quant.mcp.server --transport sse --host 0.0.0.0 --port $PORT
+#
+#   quant-cron (Railway cron jobs; not a persistent service):
+#     python -m simualpha_quant.cli fetch-prices --tickers HIMS,NKE --start 2020-01-01 --end 2025-12-31
+#     python -m simualpha_quant.cli fetch-fundamentals --tickers HIMS,NKE
+#
+# Default CMD prints CLI help — harmless placeholder for local
+# `docker run` without overrides.
 CMD ["python", "-m", "simualpha_quant.cli", "--help"]
