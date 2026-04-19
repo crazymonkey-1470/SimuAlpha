@@ -1,0 +1,18 @@
+# Stage 4 — simulate_strategy execution dependencies.
+#
+# Core service is installable WITHOUT this file. Install on the
+# Railway service(s) that run simulate_strategy:
+#
+#     pip install -r requirements.txt -r requirements-stage4.txt
+#
+# ───────────────────────────────────────────────────────────────
+# REQUIRES PYTHON 3.12+ — pandas-ta on PyPI now requires
+# Requires-Python >=3.12. The service as a whole has been moved to
+# Python 3.12 (see Dockerfile + .python-version). The git-URL
+# workaround that previously lived here has been removed — Railway's
+# default builder lacks git https auth for github.com in the sandbox
+# we tested, so the git-URL install blocked on build. PyPI is the
+# more reliable path on Py 3.12.
+
+pandas-ta>=0.4.71b0
+freqtrade>=2024.11

@@ -1,0 +1,139 @@
+"""Tool registry — the single place every capability gets listed.
+
+Adding a new tool means:
+
+1. Implement a pure function in `simualpha_quant.tools.<name>`.
+2. Define its request/response Pydantic models in `simualpha_quant.schemas`.
+3. Add one `ToolSpec` entry to `TOOLS` below.
+
+The FastAPI app and the MCP server both iterate this list — do NOT add
+transport-specific wiring elsewhere.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+from pydantic import BaseModel
+
+from simualpha_quant.schemas.backtest import (
+    BacktestPatternRequest,
+    BacktestPatternResponse,
+)
+from simualpha_quant.schemas.charts import RenderChartRequest, RenderChartResponse
+from simualpha_quant.schemas.fundamentals import Fundamentals, FundamentalsRequest
+from simualpha_quant.schemas.prices import PriceHistory, PriceHistoryRequest
+from simualpha_quant.schemas.simulate import (
+    SimulateStrategyRequest,
+    SimulateStrategyResponse,
+)
+from simualpha_quant.tools.backtest_pattern import backtest_pattern
+from simualpha_quant.tools.get_fundamentals import get_fundamentals
+from simualpha_quant.tools.get_price_history import get_price_history
+from simualpha_quant.tools.render_chart import render_tli_chart
+from simualpha_quant.tools.simulate_strategy import simulate_strategy
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    http_route: str
+    mcp_name: str
+    description: str
+    request_model: type[BaseModel]
+    response_model: type[BaseModel]
+    handler: Callable[[BaseModel], BaseModel]
+
+
+TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        name="get_price_history",
+        http_route="/v1/tools/price-history",
+        mcp_name="get_price_history",
+        description=(
+            "Return daily OHLCV for a single ticker between two dates. "
+            "Cache-first against Supabase prices_daily; backfills from "
+            "OpenBB on miss or gap at either end of the window."
+        ),
+        request_model=PriceHistoryRequest,
+        response_model=PriceHistory,
+        handler=get_price_history,
+    ),
+    ToolSpec(
+        name="get_fundamentals",
+        http_route="/v1/tools/fundamentals",
+        mcp_name="get_fundamentals",
+        description=(
+            "Return latest quarterly TLI-scoring fundamentals (revenue, "
+            "ebitda, free_cash_flow, shares_outstanding, total_debt, cash, "
+            "gross_margin, operating_margin, net_income) for a ticker. "
+            "Cache-first; refreshes from OpenBB when the newest cached "
+            "period is older than one quarter."
+        ),
+        request_model=FundamentalsRequest,
+        response_model=Fundamentals,
+        handler=get_fundamentals,
+    ),
+    ToolSpec(
+        name="backtest_pattern",
+        http_route="/v1/tools/backtest-pattern",
+        mcp_name="backtest_pattern",
+        description=(
+            "Validate a pattern against historical data. Returns hit "
+            "rate and forward-return statistics at 3/6/12/24 months "
+            "(configurable). Use a pre-built pattern name for known "
+            "TLI setups (wave_2_at_618, wave_4_at_382, confluence_zone, "
+            "generational_support, impossible_level), or compose a "
+            "custom_expression for novel patterns — see "
+            "docs/custom-expression-dsl.md. Use this whenever you want "
+            "to justify a call with empirical evidence."
+        ),
+        request_model=BacktestPatternRequest,
+        response_model=BacktestPatternResponse,
+        handler=backtest_pattern,
+    ),
+    ToolSpec(
+        name="simulate_strategy",
+        http_route="/v1/tools/simulate-strategy",
+        mcp_name="simulate_strategy",
+        description=(
+            "Simulate a full strategy (entry rules, 5-tranche DCA, "
+            "exit legs, stop loss, position sizing) against historical "
+            "data. Returns SimulationSummary (win rate, Sharpe, max DD, "
+            "Calmar), per-horizon outcomes (3/6/12/24m by default), a "
+            "bucketed equity curve (OHLC + close), and up to "
+            "chart_samples representative annotated trade charts. Use "
+            "this AFTER backtest_pattern has validated the signal — "
+            "simulate_strategy validates the full plan end-to-end. "
+            "More expensive; prefer async."
+        ),
+        request_model=SimulateStrategyRequest,
+        response_model=SimulateStrategyResponse,
+        handler=simulate_strategy,
+    ),
+    ToolSpec(
+        name="render_tli_chart",
+        http_route="/v1/tools/render-tli-chart",
+        mcp_name="render_tli_chart",
+        description=(
+            "Render a TLI-methodology chart for a ticker with custom "
+            "annotations. Use this to visually show your reasoning when "
+            "you've identified a setup. You compose the annotations "
+            "(Fibonacci levels, wave labels, S/R lines, MAs, zones, "
+            "entry tranches, badges); this tool renders them. Cache-first "
+            "by spec hash — repeated identical specs return the same URL "
+            "without re-rendering."
+        ),
+        request_model=RenderChartRequest,
+        response_model=RenderChartResponse,
+        handler=render_tli_chart,
+    ),
+)
+
+
+def by_name(name: str) -> ToolSpec:
+    for spec in TOOLS:
+        if spec.name == name or spec.mcp_name == name:
+            return spec
+    raise KeyError(f"unknown tool: {name!r}")

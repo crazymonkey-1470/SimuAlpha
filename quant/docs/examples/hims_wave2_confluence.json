@@ -1,0 +1,47 @@
+{
+  "ticker": "HIMS",
+  "timeframe": "daily",
+  "date_range": { "start": "2023-07-01", "end": "2024-06-30" },
+  "annotations": {
+    "fibonacci_levels": [
+      { "level": 0.382, "price": 24.60, "label": "0.382" },
+      { "level": 0.5,   "price": 22.05, "label": "0.5"   },
+      { "level": 0.618, "price": 19.50, "label": "0.618 — Wave 2 target" },
+      { "level": 0.786, "price": 15.90, "label": "0.786" }
+    ],
+    "wave_labels": [
+      { "wave_id": "1", "wave_type": "impulse",    "price": 11.00, "date": "2023-08-01", "label": "Wave 1" },
+      { "wave_id": "1",  "wave_type": "impulse",    "price": 32.25, "date": "2024-03-11", "label": "Wave 1 top" },
+      { "wave_id": "2",  "wave_type": "corrective", "price": 19.50, "date": "2024-05-06", "label": "Wave 2 low" }
+    ],
+    "horizontal_lines": [
+      { "price": 20.92, "kind": "bullish_flip", "label": "50-day MA trigger" },
+      { "price": 19.50, "kind": "support",       "label": "Wave 2 support" }
+    ],
+    "moving_averages": [
+      { "period": 50,  "type": "SMA" },
+      { "period": 200, "type": "SMA" }
+    ],
+    "zones": [
+      { "low": 18.80, "high": 20.20, "label": "CONFLUENCE ZONE", "color": "#A855F7", "opacity": 0.25 }
+    ],
+    "entry_tranches": [
+      { "price": 20.20, "pct": 0.10, "label": "Tranche 1" },
+      { "price": 19.80, "pct": 0.15, "label": "Tranche 2" },
+      { "price": 19.40, "pct": 0.20, "label": "Tranche 3" },
+      { "price": 19.00, "pct": 0.25, "label": "Tranche 4" },
+      { "price": 18.50, "pct": 0.30, "label": "Tranche 5" }
+    ],
+    "badges": [
+      { "text": "WAVE 2 · 0.618 FIB", "placement": "top", "color": "#A855F7" }
+    ],
+    "caption": "HIMS  ·  Wave 2 confluence entry  ·  Wave 3 target $40.85  ·  Wave 5 target $54.56"
+  },
+  "config": {
+    "width": 1280,
+    "height": 720,
+    "theme": "dark",
+    "watermark": "SimuAlpha",
+    "show_volume": true
+  }
+}
