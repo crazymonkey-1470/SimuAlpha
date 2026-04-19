@@ -5,7 +5,7 @@ CMD), it emits one line of structured output that the operator can
 read from the deploy logs:
 
     EGRESS_CHECK_STATUS=PASS  freqtrade=2026.3.0  trades=N  duration_s=...
-    EGRESS_CHECK_STATUS=FAIL  stage=<step>        error=<class>: <msg>
+    EGRESS_CHECK_STATUS=FAIL  stage=<step>  error_type=<type>  detail=<msg>
 
 Two phases:
 
@@ -20,6 +20,16 @@ Two phases:
    identical in shape to what we'd already shipped."
 
 If phase 1 fails, phase 2 is skipped and we report the network error.
+
+PASS/FAIL CONTRACT (tightened after the Bug-1 post-mortem):
+
+    STATUS=PASS is emitted ONLY when phase 2 produced a genuine
+    SimulationEngineResult. A SimulationError raised from freqtrade's
+    init (e.g. ``KeyError: 'exit_pricing'``) or from mid-backtest is
+    distinguished from "ran to completion with zero trades" and maps
+    to STATUS=FAIL with the original error_type preserved. The
+    previous version of this script conflated the two and reported
+    PASS even when freqtrade had crashed.
 """
 
 from __future__ import annotations
@@ -59,10 +69,15 @@ def _phase_1_reach_binance() -> tuple[bool, str]:
         return False, f"{type(exc).__name__}: {exc}"
 
 
-def _phase_2_freqtrade_loop() -> tuple[bool, dict, str]:
+def _phase_2_freqtrade_loop() -> tuple[bool, dict, str, str | None]:
     """Run a minimal simulate_strategy through the real freqtrade path.
 
-    Returns (ok, result_summary_dict, msg).
+    Returns ``(ok, summary, detail, error_type)``. When freqtrade's
+    init or runtime raises, ``ok`` is False and ``error_type`` is
+    the machine-readable tag carried on the ``SimulationError``
+    (``freqtrade_init_failure``, ``freqtrade_runtime_failure``) so
+    the PASS/FAIL report contains exact failure semantics instead
+    of a generic "something went wrong".
     """
     import numpy as np
     import pandas as pd
@@ -94,7 +109,10 @@ def _phase_2_freqtrade_loop() -> tuple[bool, dict, str]:
     from simualpha_quant.research import universes
     universes.resolve = lambda spec: spec.tickers if spec.tickers else []
 
-    from simualpha_quant.execution.simulate import run_simulation
+    from simualpha_quant.execution.simulate import (
+        SimulationError,
+        run_simulation,
+    )
     from simualpha_quant.schemas import (
         DateRange, EntryRules, ExitLeg, ExitRules, PositionSizing,
         PriceRule, StopLoss, StrategySpec, UniverseSpec,
@@ -124,8 +142,23 @@ def _phase_2_freqtrade_loop() -> tuple[bool, dict, str]:
 
     try:
         result = run_simulation(spec, price_loader=loader, chart_samples=0)
+    except SimulationError as exc:
+        # Bug-1 regression guard: freqtrade init / runtime failures
+        # MUST NOT masquerade as PASS. Preserve the error_type so
+        # the operator sees exactly which phase of freqtrade died.
+        return (
+            False,
+            {},
+            f"SimulationError: {exc.detail}\n{traceback.format_exc()[-600:]}",
+            exc.error_type,
+        )
     except Exception as exc:
-        return False, {}, f"{type(exc).__name__}: {exc}\n{traceback.format_exc()[-600:]}"
+        return (
+            False,
+            {},
+            f"{type(exc).__name__}: {exc}\n{traceback.format_exc()[-600:]}",
+            "unexpected_phase2_exception",
+        )
 
     summary = {
         "trade_count": len(result.trades),
@@ -136,7 +169,7 @@ def _phase_2_freqtrade_loop() -> tuple[bool, dict, str]:
         "equity_points": len(result.equity_curve_close),
         "horizons": [o.horizon_months for o in result.per_horizon_outcomes],
     }
-    return True, summary, "ok"
+    return True, summary, "ok", None
 
 
 def main() -> int:
@@ -158,9 +191,12 @@ def main() -> int:
 
     _emit("EGRESS_CHECK_PHASE_2_START run_simulation")
     p2_start = time.time()
-    ok2, summary, msg2 = _phase_2_freqtrade_loop()
+    ok2, summary, msg2, err_type = _phase_2_freqtrade_loop()
     p2_dur = time.time() - p2_start
-    _emit(f"EGRESS_CHECK_PHASE_2_RESULT  ok={ok2}  duration_s={p2_dur:.2f}  detail={msg2!r}")
+    _emit(
+        f"EGRESS_CHECK_PHASE_2_RESULT  ok={ok2}  duration_s={p2_dur:.2f}  "
+        f"error_type={err_type!r}  detail={msg2!r}"
+    )
 
     if ok2:
         try:
@@ -178,7 +214,26 @@ def main() -> int:
         _emit(f"EGRESS_CHECK_RESULT_JSON={json.dumps(summary)}")
         return 0
 
-    _emit(f"EGRESS_CHECK_STATUS=FAIL  stage=phase_2  reason=freqtrade_loop_failed")
+    # Phase 2 failed. Preserve the error_type tag end-to-end so an
+    # operator greping Railway logs learns whether this was a
+    # freqtrade schema bug, a runtime error, or something upstream.
+    _emit(
+        f"EGRESS_CHECK_STATUS=FAIL  stage=phase_2  "
+        f"error_type={err_type or 'unknown'}  reason=freqtrade_loop_failed"
+    )
+    if err_type == "freqtrade_init_failure":
+        _emit(
+            "EGRESS_CHECK_NEXT=freqtrade Backtesting init raised — check "
+            "build_config against the currently-installed freqtrade's "
+            "SCHEMA_TRADE_REQUIRED and add the missing key(s)."
+        )
+    elif err_type == "freqtrade_runtime_failure":
+        _emit(
+            "EGRESS_CHECK_NEXT=freqtrade completed init but raised during "
+            "backtest — inspect the exception class + stack in "
+            "EGRESS_CHECK_PHASE_2_RESULT detail and fix the offending "
+            "strategy / dataprovider code."
+        )
     return 2
 
 
