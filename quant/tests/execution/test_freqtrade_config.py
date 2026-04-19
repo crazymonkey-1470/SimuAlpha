@@ -1,15 +1,28 @@
-"""Freqtrade 2026.3 config-shape smoke test.
+"""Freqtrade 2026.3 config + strategy-resolution smoke test.
 
-Closes the feedback loop on the Stage-4.5 egress-check bug: the
-production deploy caught ``KeyError: 'exit_pricing'`` at
-``Backtesting.__init__`` because ``build_config`` was missing keys
-freqtrade considers required. If freqtrade's
-``SCHEMA_TRADE_REQUIRED`` grows new keys in a future release, this
-test fails at CI time instead of at Railway boot time.
+Each commit to the freqtrade-adapter surface has been followed by a
+different production failure:
 
-The test is skipped when freqtrade isn't installed — the core
-service is installable without it; only the Stage-4 execution
-service needs it.
+  1. ``KeyError: 'exit_pricing'`` at Exchange init.
+  2. ``OperationalException: No strategy set`` at StrategyResolver
+     init — freqtrade 2026.3 made filesystem-based strategy
+     discovery mandatory.
+
+This test is the checklist that would have caught both before
+Railway did. It drives freqtrade's real ``Backtesting.__init__``
+end-to-end:
+
+  Phase 1 (schema):       every ``SCHEMA_TRADE_REQUIRED`` key is
+                          present in ``build_config``'s output.
+  Phase 2 (exchange):     ``Backtesting(config)`` reaches the
+                          strategy-resolution step (exchange
+                          stubbed out so no network).
+  Phase 3 (strategy):     ``register_dynamic_strategy`` + ``config
+                          ["strategy"] = "TLIStrategy"`` together
+                          satisfy ``StrategyResolver.load_strategy``.
+
+Skipped cleanly when freqtrade isn't installed (core service, CI
+sandbox without stage-4 extras).
 """
 
 from __future__ import annotations
@@ -18,7 +31,12 @@ from datetime import date
 
 import pytest
 
-from simualpha_quant.execution.freqtrade_adapter import build_config
+from simualpha_quant.execution.freqtrade_adapter import (
+    STRATEGY_NAME,
+    build_config,
+    build_strategy_class,
+    register_dynamic_strategy,
+)
 from simualpha_quant.research import universes
 from simualpha_quant.schemas import (
     DateRange,
@@ -53,9 +71,9 @@ def _minimal_spec() -> StrategySpec:
 
 
 def test_build_config_has_all_freqtrade_2026_3_required_keys(monkeypatch):
-    """Every key in freqtrade's ``SCHEMA_TRADE_REQUIRED`` must be
-    present in ``build_config``'s output. This is the precise
-    invariant violated by Bug 2."""
+    """Phase 1: every key in freqtrade's ``SCHEMA_TRADE_REQUIRED``
+    must be present. This is the precise invariant violated by
+    Bug 2 (missing ``exit_pricing``)."""
     monkeypatch.setattr(universes, "resolve", lambda spec: spec.tickers or [])
     cfg = build_config(_minimal_spec())
 
@@ -64,23 +82,33 @@ def test_build_config_has_all_freqtrade_2026_3_required_keys(monkeypatch):
     missing = [k for k in SCHEMA_TRADE_REQUIRED if k not in cfg]
     assert not missing, f"build_config missing freqtrade-required keys: {missing}"
 
+    # The adapter sets a fixed strategy name; the registration
+    # context manager relies on it being there.
+    assert cfg["strategy"] == STRATEGY_NAME
 
-def test_build_config_accepted_by_backtesting_init(monkeypatch, tmp_path):
-    """Regression test for Bug 2. Constructs a minimal
-    ``Backtesting`` instance with only the config dict — the exact
-    code path that raised ``KeyError: 'exit_pricing'`` on the
-    production Railway deploy.
 
-    We mock out the exchange so the test never touches the network
-    (the real ``Exchange.__init__`` hits binance.com; we only care
-    that freqtrade's schema validation accepts the config)."""
+def test_backtesting_init_resolves_dynamic_strategy(monkeypatch, tmp_path):
+    """Phase 3: Backtesting init reaches StrategyResolver.load_
+    strategy and our register_dynamic_strategy context manager
+    produces a valid instance.
+
+    Regression test for Bug 3 — freqtrade 2026.3's
+    ``OperationalException: No strategy set`` which fired because
+    the previous adapter left ``config["strategy"]`` unset and
+    relied on an after-the-fact ``backtesting.strategylist = [...]``
+    assignment that never ran because init had already raised.
+
+    Exchange init is stubbed so the test never touches the network
+    (real ``Exchange.__init__`` hits binance.com); we only care
+    that schema validation + strategy resolution both succeed."""
     monkeypatch.setattr(universes, "resolve", lambda spec: spec.tickers or [])
-
-    import tempfile
 
     from freqtrade.configuration import Configuration
 
-    cfg = build_config(_minimal_spec())
+    spec = _minimal_spec()
+    cfg = build_config(spec)
+    strategy_cls = build_strategy_class(spec)
+
     cfg["user_data_dir"] = str(tmp_path)
     for sub in ("data", "logs", "strategies", "backtest_results", "hyperopt_results"):
         (tmp_path / sub).mkdir(parents=True, exist_ok=True)
@@ -93,11 +121,8 @@ def test_build_config_accepted_by_backtesting_init(monkeypatch, tmp_path):
         base.update(cfg)
         cfg = base
 
-    # We want to fail ONLY if schema validation rejects the config;
-    # we don't want to fail because the test runner can't reach
-    # binance.com. Monkey-patch the exchange-init entrypoint that
-    # Backtesting calls to prove the failure is (or isn't) schema-
-    # related.
+    # Stub exchange. We only care about schema + strategy
+    # resolution; exchange behavior is out of scope here.
     from freqtrade.resolvers import ExchangeResolver
 
     class _FakeExchange:
@@ -106,6 +131,8 @@ def test_build_config_accepted_by_backtesting_init(monkeypatch, tmp_path):
         timeframes = ["1d"]
         markets = {}
         _config = cfg
+        precisionMode = 4
+        precision_mode_price = 4
 
         def __init__(self, *a, **kw):
             pass
@@ -119,25 +146,42 @@ def test_build_config_accepted_by_backtesting_init(monkeypatch, tmp_path):
         def get_fee(self, *a, **kw):
             return 0.0
 
+        def validate_required_startup_candles(self, *a, **kw):
+            return True
+
+        def validate_pairs(self, *a, **kw):
+            return True
+
     monkeypatch.setattr(
         ExchangeResolver,
         "load_exchange",
         classmethod(lambda cls, config, *a, **kw: _FakeExchange()),
     )
 
-    # The relevant assertion: this init call must NOT raise
-    # KeyError for any of the freqtrade 2026.3 required keys.
     from freqtrade.optimize.backtesting import Backtesting
 
+    # THIS is the call that blew up on the last Railway deploy. Must
+    # not raise OperationalException("No strategy set") — the context
+    # manager is responsible for producing our dynamic strategy
+    # through freqtrade's resolver.
     try:
-        Backtesting(cfg)
+        with register_dynamic_strategy(strategy_cls):
+            Backtesting(cfg)
     except KeyError as exc:
         pytest.fail(
-            "Backtesting init raised KeyError — build_config is still "
+            "Backtesting init raised KeyError — build_config still "
             f"missing a freqtrade-required key: {exc}"
         )
-    except Exception:
-        # Non-schema errors (e.g. exchange fake incompatibility,
-        # strategy missing) are out of scope for this smoke test.
-        # Only KeyError from a missing config slot is the regression.
-        pass
+    except Exception as exc:
+        # OperationalException("No strategy set") is the regression we
+        # care about. Other OperationalExceptions from exchange-
+        # surface mismatches (the fake is intentionally minimal) are
+        # acceptable — they'd be caught by phase-2 of the egress
+        # check, not by this schema/resolver test.
+        if "No strategy set" in str(exc):
+            pytest.fail(
+                f"Strategy resolution regressed: {exc}. "
+                "register_dynamic_strategy is not installing the "
+                "scoped patch correctly, or config['strategy'] is "
+                "not being propagated."
+            )

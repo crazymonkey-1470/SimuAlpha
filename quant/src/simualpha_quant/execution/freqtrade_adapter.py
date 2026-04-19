@@ -25,10 +25,11 @@ CONVENTIONS:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import pandas as pd
 
@@ -50,6 +51,14 @@ log = get_logger(__name__)
 
 PAIR_QUOTE = "USD"
 TIMEFRAME = "1d"
+
+# Every dynamically-built IStrategy subclass registers under this
+# name with freqtrade's resolver. freqtrade 2026.3's Backtesting
+# init REQUIRES config["strategy"] to be a string; the
+# ``register_dynamic_strategy`` context manager below patches
+# StrategyResolver._load_strategy so lookups of this name return
+# our closure class instead of doing filesystem discovery.
+STRATEGY_NAME = "TLIStrategy"
 
 
 # ─────────────────────────── config builder ────────────────────────────
@@ -121,6 +130,13 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
     pairs = [_ticker_to_pair(t) for t in tickers]
     return {
         "runmode": "backtest",
+        # freqtrade 2026.3's Backtesting.__init__ calls
+        # StrategyResolver.load_strategy(config) and requires
+        # config["strategy"] to be a non-empty string. We fill in the
+        # fixed TLIStrategy name and pair it with the
+        # register_dynamic_strategy() context manager wrapped around
+        # the Backtesting(config) call in simulate.py.
+        "strategy": STRATEGY_NAME,
         "exchange": {
             "name": SHIMMED_EXCHANGE,
             "pair_whitelist": pairs,
@@ -395,9 +411,70 @@ def build_strategy_class(spec: StrategySpec, *, runtime_state: dict | None = Non
                 return max(stop_pct, trailing_pct)
             return stop_pct
 
-    _TLIStrategy.__name__ = "TLIStrategy"
-    _TLIStrategy.__qualname__ = "TLIStrategy"
+    _TLIStrategy.__name__ = STRATEGY_NAME
+    _TLIStrategy.__qualname__ = STRATEGY_NAME
     return _TLIStrategy
+
+
+# ─────────────────────────── dynamic-strategy registration ─────────────
+#
+# Freqtrade 2026.3's ``Backtesting.__init__`` calls
+# ``StrategyResolver.load_strategy(self.config)`` which:
+#
+#   1. Reads the string name from ``config["strategy"]``.
+#   2. Calls ``StrategyResolver._load_strategy(strategy_name, config,
+#      extra_dir=config.get("strategy_path"))``.
+#   3. That in turn walks ``abs_paths`` (built from ``user_data_dir``,
+#      ``strategy_path``, and recursive subdirs) and for each ``.py``
+#      file text-matches ``class <strategy_name>(`` and imports the
+#      module to pull the class out. It then calls ``ClassName(config=
+#      config)`` to instantiate.
+#
+# There is NO mechanism to pass a class object directly through the
+# config — every path assumes on-disk discovery. Writing our dynamic
+# class out to a tempfile would lose the closure over ``spec`` and
+# ``runtime_state`` that ``build_strategy_class`` sets up.
+#
+# The surgical fix: inside a context manager, swap in a replacement
+# for ``StrategyResolver._load_strategy`` that recognizes our
+# well-known name (``TLIStrategy``) and returns the instantiated
+# closure class, then delegates everything else to the original
+# implementation. ``load_strategy`` (the public caller) still runs
+# its attribute-override / sanity-validation pipeline on whatever
+# ``_load_strategy`` returns, so nothing else in freqtrade's init
+# path needs to change.
+#
+# Restore is guaranteed by the context manager — future Backtesting
+# calls in the same process see the stock resolver.
+
+
+@contextmanager
+def register_dynamic_strategy(
+    strategy_cls: type,
+    name: str = STRATEGY_NAME,
+) -> Iterator[None]:
+    """Register ``strategy_cls`` with freqtrade's StrategyResolver
+    under ``name`` for the lifetime of the ``with`` block.
+
+    Use this around ``Backtesting(config)`` when ``config["strategy"]
+    == name``. Outside the block, freqtrade's resolver behaves
+    exactly as before.
+    """
+    from freqtrade.resolvers.strategy_resolver import StrategyResolver
+
+    original_load_strategy = StrategyResolver._load_strategy
+
+    def patched(strategy_name: str, config: dict, extra_dir: str | None = None):
+        if strategy_name == name:
+            instance = strategy_cls(config=config)
+            return StrategyResolver.validate_strategy(instance)
+        return original_load_strategy(strategy_name, config, extra_dir)
+
+    StrategyResolver._load_strategy = staticmethod(patched)
+    try:
+        yield
+    finally:
+        StrategyResolver._load_strategy = staticmethod(original_load_strategy)
 
 
 # ─────────────────────────── sizing math ──────────────────────────────

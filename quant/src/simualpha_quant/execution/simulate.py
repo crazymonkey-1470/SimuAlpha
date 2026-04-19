@@ -34,6 +34,7 @@ from simualpha_quant.execution.freqtrade_adapter import (
     build_config,
     build_strategy_class,
     make_data_provider,
+    register_dynamic_strategy,
 )
 from simualpha_quant.execution.trade_context import enrich_trades_with_context
 from simualpha_quant.execution.trade_log import (
@@ -222,8 +223,15 @@ def _run_freqtrade(
             ft_config.update(config)
             ft_config.setdefault("user_data_dir", user_data)
 
+        # freqtrade 2026.3's Backtesting.__init__ resolves the
+        # strategy from config["strategy"] via filesystem discovery.
+        # register_dynamic_strategy installs a scoped monkey-patch on
+        # StrategyResolver._load_strategy that returns our closure-
+        # based StrategyCls by name. The patch is reverted on exit
+        # whether init succeeds or raises.
         try:
-            backtesting = Backtesting(ft_config)
+            with register_dynamic_strategy(StrategyCls):
+                backtesting = Backtesting(ft_config)
         except Exception as exc:
             log.exception("freqtrade Backtesting init failed", extra={"err": str(exc)})
             raise SimulationError(
@@ -232,7 +240,6 @@ def _run_freqtrade(
             ) from exc
         backtesting.dataprovider = provider  # type: ignore[attr-defined]
         try:
-            backtesting.strategylist = [StrategyCls(ft_config)]  # type: ignore[arg-type]
             backtesting.start()
         except Exception as exc:
             log.exception("freqtrade backtesting raised", extra={"err": str(exc)})

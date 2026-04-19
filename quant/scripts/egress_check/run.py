@@ -187,7 +187,13 @@ def main() -> int:
             "api.binance.com (or vendor freqtrade exchange-markets fixture; "
             "see Stage 4.5 report)."
         )
-        return 1
+        # Return 0 even on FAIL — this is a one-shot diagnostic and we
+        # don't want Railway's container supervisor to interpret a
+        # non-zero exit as a crash and restart the pod. The PASS/FAIL
+        # contract is the EGRESS_CHECK_STATUS= line, not the exit
+        # code. See the multi-run artifact in the previous deploy log
+        # for why.
+        return 0
 
     _emit("EGRESS_CHECK_PHASE_2_START run_simulation")
     p2_start = time.time()
@@ -234,7 +240,8 @@ def main() -> int:
             "EGRESS_CHECK_PHASE_2_RESULT detail and fix the offending "
             "strategy / dataprovider code."
         )
-    return 2
+    # Exit 0 — see the comment in the phase-1-fail branch above.
+    return 0
 
 
 if __name__ == "__main__":
