@@ -15,4 +15,11 @@
 # more reliable path on Py 3.12.
 
 pandas-ta>=0.4.71b0
-freqtrade>=2024.11
+# Pinned to 2026.3 — the Stage 4.5 Railway egress probe revealed that
+# build_config's required-keys set is tied to this exact release
+# (``exit_pricing`` and friends were introduced then). If we ever
+# upgrade this pin, the quant/tests/execution/test_freqtrade_config.py
+# smoke test MUST be re-run, because freqtrade's SCHEMA_TRADE_REQUIRED
+# is not considered part of its public API and has changed between
+# minors.
+freqtrade==2026.3

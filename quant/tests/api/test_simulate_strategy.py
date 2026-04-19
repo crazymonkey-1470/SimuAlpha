@@ -125,6 +125,45 @@ def test_invalid_body_is_422(client):
     assert r.status_code == 422
 
 
+def test_engine_error_response_maps_to_500(monkeypatch, client):
+    """Bug-1 HTTP-layer regression: a tool response with status='error'
+    must become an HTTP 5xx, NOT an HTTP 200 with a zero-trade body.
+    The error_type and error_detail must survive into the response
+    envelope so an operator grepping Railway logs sees ground truth."""
+    from simualpha_quant.api import app as app_mod
+
+    err_resp = SimulateStrategyResponse(
+        status="error",
+        error_type="freqtrade_init_failure",
+        error_detail="KeyError: 'exit_pricing'",
+        summary_stats=SimulationSummary(
+            total_trades=0, win_rate=0.0, avg_win_pct=0.0, avg_loss_pct=0.0,
+            profit_factor=0.0, sharpe=0.0, sortino=0.0, max_drawdown_pct=0.0, calmar=0.0,
+        ),
+        per_horizon_outcomes=[],
+        equity_curve=[],
+        equity_curve_dates=[],
+        equity_curve_ohlc=[],
+        trade_log_sample=[],
+        cached=False,
+        hash="y" * 32,
+        computed_at=datetime.now(tz=timezone.utc),
+    )
+    monkeypatch.setattr(app_mod, "simulate_strategy", lambda req: err_resp)
+
+    r = client.post(
+        "/v1/tools/simulate-strategy",
+        json=_body(0),
+        headers={"Authorization": "Bearer test-bootstrap"},
+    )
+    assert r.status_code == 500
+    body = r.json()
+    assert body["success"] is False
+    assert "freqtrade_init_failure" in body["error"]
+    assert body["details"]["error_type"] == "freqtrade_init_failure"
+    assert "exit_pricing" in body["details"]["error_detail"]
+
+
 def test_listed_in_v1_tools(client):
     r = client.get("/v1/tools", headers={"Authorization": "Bearer test-bootstrap"})
     assert r.status_code == 200

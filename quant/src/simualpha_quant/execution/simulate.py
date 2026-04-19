@@ -56,6 +56,27 @@ from simualpha_quant.schemas.strategy import StrategySpec
 log = get_logger(__name__)
 
 
+# ─────────────────────────── errors ─────────────────────────────────
+
+
+class SimulationError(RuntimeError):
+    """Raised when the simulation could not run to completion.
+
+    Distinct from "simulation ran, produced zero trades" — that
+    returns a normal ``SimulationEngineResult`` with an empty trade
+    list. A ``SimulationError`` means freqtrade (or an upstream step)
+    failed to initialize or raised mid-run.
+
+    Carries machine-readable ``error_type`` so the tool layer can
+    surface it in the HTTP response.
+    """
+
+    def __init__(self, error_type: str, detail: str) -> None:
+        super().__init__(f"{error_type}: {detail}")
+        self.error_type = error_type
+        self.detail = detail
+
+
 # ─────────────────────────── result type ────────────────────────────
 
 
@@ -205,14 +226,20 @@ def _run_freqtrade(
             backtesting = Backtesting(ft_config)
         except Exception as exc:
             log.exception("freqtrade Backtesting init failed", extra={"err": str(exc)})
-            return [], []
+            raise SimulationError(
+                "freqtrade_init_failure",
+                f"{type(exc).__name__}: {exc}",
+            ) from exc
         backtesting.dataprovider = provider  # type: ignore[attr-defined]
         try:
             backtesting.strategylist = [StrategyCls(ft_config)]  # type: ignore[arg-type]
             backtesting.start()
         except Exception as exc:
             log.exception("freqtrade backtesting raised", extra={"err": str(exc)})
-            return [], []
+            raise SimulationError(
+                "freqtrade_runtime_failure",
+                f"{type(exc).__name__}: {exc}",
+            ) from exc
 
         results_payload = getattr(backtesting, "results", {}) or {}
         first_strategy = next(iter(results_payload.values()), {}) if results_payload else {}

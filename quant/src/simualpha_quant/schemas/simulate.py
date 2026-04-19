@@ -77,7 +77,30 @@ class TradeChart(BaseModel):
     chart_status: ChartStatus = "pending"
 
 
+SimulationStatus = Literal["ok", "error"]
+
+
 class SimulateStrategyResponse(BaseModel):
+    """Simulation result.
+
+    When ``status == "ok"``:  every field below is populated and the
+    numbers are real — trade list can legitimately be empty if no
+    signals fired, but the ``total_trades == 0`` will be explicit
+    and intentional.
+
+    When ``status == "error"``:  ``error_type`` + ``error_detail`` are
+    set; ``summary_stats`` and the curve fields hold zero/empty
+    sentinels but are NOT interpretable as a valid simulation.
+    ``error_type`` is machine-readable — e.g.
+    ``"freqtrade_init_failure"``, ``"freqtrade_runtime_failure"``,
+    ``"universe_resolution_failure"``. ``error_detail`` is the
+    underlying exception's ``type(exc).__name__ + ": " + str(exc)``.
+    """
+
+    status: SimulationStatus = "ok"
+    error_type: str | None = None
+    error_detail: str | None = None
+
     summary_stats: SimulationSummary
     per_horizon_outcomes: list[HorizonOutcome]
     # Plain close-only curve, uniform bucket, last-value-in-bucket.

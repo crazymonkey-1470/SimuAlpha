@@ -28,6 +28,7 @@ from simualpha_quant.execution.chart_annotations import (
     build_chart_request,
     inputs_from_context,
 )
+from simualpha_quant.execution.simulate import SimulationError
 from simualpha_quant.execution.simulate import run_simulation
 from simualpha_quant.execution.trade_log import TradeRecord
 from simualpha_quant.logging_config import get_logger
@@ -37,6 +38,7 @@ from simualpha_quant.schemas.simulate import (
     HorizonOutcome,
     SimulateStrategyRequest,
     SimulateStrategyResponse,
+    SimulationSummary,
     TradeChart,
 )
 
@@ -233,6 +235,21 @@ def _patch_cached_trade_log(sim_hash: str, rendered: list[TradeChart]) -> None:
 # ─────────────────────────── public tool ────────────────────────────
 
 
+def _empty_summary() -> SimulationSummary:
+    """Zero-valued summary used inside error responses only."""
+    return SimulationSummary(
+        total_trades=0,
+        win_rate=0.0,
+        avg_win_pct=0.0,
+        avg_loss_pct=0.0,
+        profit_factor=0.0,
+        sharpe=0.0,
+        sortino=0.0,
+        max_drawdown_pct=0.0,
+        calmar=0.0,
+    )
+
+
 def simulate_strategy(
     req: SimulateStrategyRequest,
     *,
@@ -253,7 +270,35 @@ def simulate_strategy(
     if cached is not None:
         return cached.model_copy(update={"cached": True, "hash": h})
 
-    engine = run_simulation(req.strategy, chart_samples=req.chart_samples)
+    # Bug-1 fix: engine errors (freqtrade init / runtime failures)
+    # MUST NOT masquerade as empty-but-successful simulations. Catch
+    # SimulationError here and return a response with status='error'
+    # so the HTTP layer can 5xx and the caller sees the truth.
+    try:
+        engine = run_simulation(req.strategy, chart_samples=req.chart_samples)
+    except SimulationError as exc:
+        log.error(
+            "simulate_strategy engine error",
+            extra={"hash": h, "error_type": exc.error_type, "detail": exc.detail},
+        )
+        err = SimulateStrategyResponse(
+            status="error",
+            error_type=exc.error_type,
+            error_detail=exc.detail,
+            summary_stats=_empty_summary(),
+            per_horizon_outcomes=[],
+            equity_curve=[],
+            equity_curve_dates=[],
+            equity_curve_ohlc=[],
+            trade_log_sample=[],
+            charts_job_id=None,
+            cached=False,
+            hash=h,
+            computed_at=datetime.now(tz=timezone.utc),
+        )
+        # Do NOT write errors to the Supabase cache — next caller
+        # should get a fresh attempt, not a stale error row.
+        return err
 
     render_fn = renderer or _default_renderer()
 

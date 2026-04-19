@@ -135,6 +135,34 @@ def test_response_carries_equity_ohlc_and_close():
     assert len(resp.equity_curve) == len(resp.equity_curve_dates)
 
 
+def test_engine_error_becomes_status_error_response(monkeypatch):
+    """Bug-1 regression: when the engine raises SimulationError, the
+    tool returns ``status='error'`` + ``error_type`` populated. It
+    must NOT look like a successful zero-trade simulation, and it
+    must NOT be written to the cache (callers should retry, not
+    read a stale error)."""
+    from simualpha_quant.execution.simulate import SimulationError
+
+    def raising(spec, *, chart_samples=5, **kwargs):  # noqa: ARG001
+        raise SimulationError("freqtrade_init_failure", "KeyError: 'exit_pricing'")
+
+    monkeypatch.setattr(sim_mod, "run_simulation", raising)
+    writes: list = []
+    monkeypatch.setattr(sim_mod, "_cache_write", lambda *a, **kw: writes.append(a))
+
+    req = SimulateStrategyRequest(strategy=_spec(), chart_samples=0)
+    resp = sim_mod.simulate_strategy(req, renderer=_renderer)
+
+    assert resp.status == "error"
+    assert resp.error_type == "freqtrade_init_failure"
+    assert resp.error_detail is not None
+    assert "exit_pricing" in resp.error_detail
+    assert resp.summary_stats.total_trades == 0
+    assert resp.trade_log_sample == []
+    assert resp.hash
+    assert writes == []  # errored responses must never be cached
+
+
 def test_spec_hash_deterministic_and_case_normalized():
     a = sim_mod.spec_hash(SimulateStrategyRequest(strategy=_spec(), chart_samples=3))
     spec2 = _spec().model_copy(update={

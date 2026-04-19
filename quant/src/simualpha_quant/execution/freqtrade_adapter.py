@@ -72,8 +72,51 @@ def _pair_to_ticker(pair: str) -> str:
 SHIMMED_EXCHANGE = "binance"
 
 
+# Freqtrade 2026.3 ``Exchange.validate_config`` demands these keys
+# exist with specific shapes even in backtest mode — missing any of
+# them raises ``KeyError`` deep inside exchange init. Sourced from
+# ``freqtrade.config_schema.config_schema.SCHEMA_TRADE_REQUIRED``
+# and runtime tracing of ``validate_config`` /
+# ``validate_pricing`` / ``check_exchange``.
+#
+# A unit test in ``tests/execution/test_freqtrade_config.py``
+# calls ``freqtrade.optimize.backtesting.Backtesting(build_config(...))``
+# so any new required key surfaces at CI time, not deploy time.
+
+
+def _default_pricing_block() -> dict[str, Any]:
+    """Minimal pricing block freqtrade's validator accepts."""
+    return {
+        "price_side": "same",        # ask / bid / same / other; 'same' = safe default
+        "use_order_book": False,
+        "price_last_balance": 0.0,
+    }
+
+
+def _default_order_types_block() -> dict[str, Any]:
+    return {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "market",
+        "force_entry": "market",
+        "force_exit": "market",
+        "stoploss": "market",
+        "stoploss_on_exchange": False,
+    }
+
+
+def _default_order_tif_block() -> dict[str, Any]:
+    return {"entry": "GTC", "exit": "GTC"}
+
+
 def build_config(spec: StrategySpec) -> dict[str, Any]:
-    """Equity-realistic freqtrade config dict (in-memory; no JSON on disk)."""
+    """Equity-realistic freqtrade config dict (in-memory; no JSON on disk).
+
+    Targets freqtrade 2026.3. If a future freqtrade release adds new
+    required keys, the integration test in
+    ``tests/execution/test_freqtrade_config.py`` will fail before
+    production does.
+    """
     tickers = universes.resolve(spec.universe_spec)
     pairs = [_ticker_to_pair(t) for t in tickers]
     return {
@@ -89,10 +132,11 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
         },
         "stake_currency": PAIR_QUOTE,
         "stake_amount": "unlimited",
+        "tradable_balance_ratio": 1.0,
+        "last_stake_amount_min_ratio": 0.5,
         "dry_run": True,
         "dry_run_wallet": spec.initial_capital,
-        "fee": 0.0,  # commission-free equity defaults; override per-broker
-        "tradable_balance_ratio": 1.0,
+        "fee": 0.0,
         "max_open_trades": spec.max_open_positions,
         "timeframe": TIMEFRAME,
         "timerange": f"{spec.date_range.start:%Y%m%d}-{spec.date_range.end:%Y%m%d}",
@@ -102,6 +146,23 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
         "process_only_new_candles": True,
         "position_adjustment_enable": True,
         "strategy_path": "",
+        # freqtrade 2026.3 additions — previously missing, caused
+        # KeyError: 'exit_pricing' at Backtesting init.
+        "entry_pricing": _default_pricing_block(),
+        "exit_pricing": _default_pricing_block(),
+        "order_types": _default_order_types_block(),
+        "order_time_in_force": _default_order_tif_block(),
+        # Placeholder stop + ROI. Real logic lives in custom_stoploss /
+        # custom_exit. freqtrade will ignore these as long as
+        # position_adjustment_enable is True and custom_* hooks are
+        # implemented on the strategy.
+        "stoploss": -0.99,
+        "minimal_roi": {"0": 10.0},
+        # Data format — the on-disk cache shape. feather is the 2026.x
+        # default and what our DataProvider returns, so this matches.
+        "dataformat_ohlcv": "feather",
+        "dataformat_trades": "feather",
+        "internals": {},
     }
 
 

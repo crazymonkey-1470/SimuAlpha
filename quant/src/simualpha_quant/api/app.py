@@ -203,6 +203,28 @@ async def _handle_simulate(request: Request, req: SimulateStrategyRequest, start
         log.exception("simulate_strategy failed")
         return fail("simulate_strategy failed", 500, details=str(exc))
 
+    # The tool layer converts SimulationError into a response with
+    # ``status == "error"``. Bug-1 fix: surface that to the HTTP layer
+    # as a non-200 so a failed backtest never looks like a successful
+    # zero-trade run.
+    if getattr(result, "status", "ok") == "error":
+        log.error(
+            "simulate_strategy error-response",
+            extra={
+                "error_type": result.error_type,
+                "error_detail": result.error_detail,
+            },
+        )
+        return fail(
+            f"simulate_strategy errored: {result.error_type}",
+            500,
+            details={
+                "error_type": result.error_type,
+                "error_detail": result.error_detail,
+                "hash": result.hash,
+            },
+        )
+
     elapsed_ms = int((time.time() - started) * 1000)
     return success(result.model_dump(mode="json"), tool=_SIMULATE_TOOL_NAME, elapsed_ms=elapsed_ms)
 
