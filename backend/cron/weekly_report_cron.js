@@ -1,234 +1,181 @@
-#!/usr/bin/env node
-'use strict';
-
-/**
- * Weekly Report Generator
- *
- * Runs every Wednesday at 12:00 EST and Friday at 16:00 EST
- * Analyzes posts from that week, generates market report, sends to Telegram
- *
- * Cron schedule (in UTC):
- *   Wednesday 12:00 EST = 17:00 UTC → 0 17 * * 3
- *   Friday 16:00 EST = 21:00 UTC → 0 21 * * 5
- */
-
 const https = require('https');
-const log = require('../services/logger').child({ module: 'weekly_report_cron' });
-
 const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const BASE_ID = 'app57wLO5tYgpApjP';
-const WEEKLY_REPORTS_TABLE = 'tblQLb83jXlM8a7Nf'; // Weekly Reports table
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '8626469251'; // Andrew's Telegram ID
+const TABLE_ID = 'tblQLb83jXlM8a7Nf';
+const TELEGRAM_CHAT_ID = '8626469251';
 
-// Airtable API wrapper
 function airtableFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
     const method = opts.method || 'GET';
     const body = opts.body ? JSON.stringify(opts.body) : undefined;
     const headers = { 'Authorization': `Bearer ${AIRTABLE_KEY}` };
-    if (body) headers['Content-Type'] = 'application/json';
-
-    const reqOpts = {
-      hostname: 'api.airtable.com',
-      path,
-      method,
-      headers,
-      timeout: 15000
-    };
-    if (body) reqOpts.headers['Content-Length'] = Buffer.byteLength(body);
-
+    if (body) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = Buffer.byteLength(body); }
     let data = '';
-    const req = https.request(reqOpts, res => {
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve(parsed);
-        } catch(e) {
-          reject(new Error(`Parse error: ${e.message}`));
-        }
-      });
+    const req = https.request({ hostname: 'api.airtable.com', path, method, headers, timeout: 15000 }, res => {
+      res.on('data', c => data += c); res.on('end', () => resolve(JSON.parse(data)));
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.abort(); reject(new Error('Timeout')); });
     if (body) req.write(body);
     req.end();
   });
 }
 
-// Get posts from the past week
-async function getWeekPosts() {
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const weekAgoStr = weekAgo.toISOString().split('T')[0];
-
-  const tables = ['TLI Posts', 'AI & Agent Intelligence', 'AutoPilot', 'Politician Trades', 'Trade Ideas', 'Macro & Markets'];
-  const allPosts = [];
-
-  for (const table of tables) {
-    try {
-      const formula = `IS_AFTER({Date Posted}, '${weekAgoStr}')`;
-      const encoded = encodeURIComponent(table);
-      const path = `/v0/${BASE_ID}/${encoded}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=500`;
-      const result = await airtableFetch(path);
-
-      if (result.records) {
-        for (const rec of result.records) {
-          allPosts.push({
-            table,
-            date: rec.fields['Date Posted'],
-            content: rec.fields['Content']?.slice(0, 200) || '',
-            author: rec.fields['Author'] || rec.fields['Source'] || 'Unknown',
-            ticker: rec.fields['Ticker'] || '',
-          });
-        }
-      }
-    } catch(e) {
-      log.warn({ table, err: e.message }, 'Failed to fetch table posts');
-    }
-  }
-
-  return allPosts;
-}
-
-// Generate market summary from posts (manual analysis — no hallucination)
-async function generateReport(posts) {
-  const tliPosts = posts.filter(p => p.table === 'TLI Posts');
-  const aiPosts = posts.filter(p => p.table === 'AI & Agent Intelligence');
-  const tradePosts = posts.filter(p => ['Trade Ideas', 'AutoPilot', 'Politician Trades'].includes(p.table));
-  const macroPosts = posts.filter(p => p.table === 'Macro & Markets');
-
-  // Extract tickers mentioned
-  const tickers = new Set();
-  posts.forEach(p => {
-    const matches = p.content.match(/\$[A-Z]{1,5}/g) || [];
-    matches.forEach(m => tickers.add(m.slice(1)));
-  });
-
-  const report = {
-    summary: `Analyzed ${posts.length} posts from this week across ${new Set(posts.map(p => p.table)).size} sources.`,
-    tliInsights: tliPosts.length > 0 ? `${tliPosts.length} Elliott Wave analyses posted. Focus on wave positions and Fib targets.` : 'No TLI posts this week.',
-    aiLearnings: aiPosts.length > 0 ? `${aiPosts.length} AI/agent posts. Track new methodologies and agent patterns.` : 'No AI learnings this week.',
-    tradeActivity: tradePosts.length > 0 ? `${tradePosts.length} trade ideas/signals. Top tickers: ${Array.from(tickers).slice(0, 5).join(', ')}.` : 'No trade activity tracked.',
-    macroContext: macroPosts.length > 0 ? `${macroPosts.length} macro updates. Watch VIX, breadth, and regime changes.` : 'No macro context this week.',
-    tickersTracked: Array.from(tickers),
-  };
-
-  return report;
-}
-
-// Insert report into Airtable
-async function insertReport(weekEnding, reportContent) {
-  const fields = {
-    'Week Ending': weekEnding,
-    'Report Content': reportContent,
-    'Posts Analyzed': posts?.length || 0,
-    'Status': 'Published'
-  };
-
-  try {
-    const result = await airtableFetch(
-      `/v0/${BASE_ID}/${WEEKLY_REPORTS_TABLE}`,
-      { method: 'POST', body: { fields } }
-    );
-    return result.id ? true : false;
-  } catch(e) {
-    log.error({ err: e.message }, 'Failed to insert report');
-    return false;
-  }
-}
-
-// Send report to Telegram
-async function sendToTelegram(message) {
-  return new Promise((resolve) => {
+function claudeAnalyze(systemPrompt, userPrompt) {
+  return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text: message,
-      parse_mode: 'Markdown'
+      model: 'claude-haiku-4-5',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
     });
-
     const opts = {
-      hostname: 'api.telegram.org',
-      path: `/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 30000
     };
-
     let data = '';
-    https.request(opts, res => {
+    const req = https.request(opts, res => {
       res.on('data', c => data += c);
       res.on('end', () => {
         try {
-          const result = JSON.parse(data);
-          resolve(result.ok || false);
-        } catch {
-          resolve(false);
-        }
+          const r = JSON.parse(data);
+          resolve(r.content?.[0]?.text || '');
+        } catch(e) { reject(e); }
       });
-    }).on('error', () => resolve(false)).write(body);
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
   });
 }
 
-// Main report generation
-async function runWeeklyReport() {
-  log.info('Starting weekly report generation');
+function sendTelegram(message) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: 'Markdown' });
+    const opts = {
+      hostname: 'api.telegram.org',
+      path: `/bot${TELEGRAM_TOKEN}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    };
+    let data = '';
+    https.request(opts, res => { res.on('data', c => data += c); res.on('end', () => resolve(JSON.parse(data))); }).on('error', () => resolve(false)).write(body);
+  });
+}
 
-  try {
-    const posts = await getWeekPosts();
-    if (posts.length === 0) {
-      log.info('No posts this week — skipping report');
-      return;
+async function getWeekPosts() {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const tables = [
+    { name: 'TLI Posts', role: 'Elliott Wave analysis, wave counts, stock setups, price targets' },
+    { name: 'AI & Agent Intelligence', role: 'AI tools, agent methodologies, productivity principles' },
+    { name: 'Macro & Markets', role: 'Macro trends, market regime, VIX, sector moves' },
+    { name: 'Trade Ideas', role: 'Short-term trade setups, derivatives, market signals' },
+    { name: 'Politician Trades', role: 'Insider and politician stock buys/sells' },
+    { name: 'AutoPilot', role: 'Unique investor strategies and trading approaches' },
+  ];
+
+  const collected = {};
+  for (const t of tables) {
+    try {
+      const formula = encodeURIComponent(`IS_AFTER({Date Posted}, '${weekAgo}')`);
+      const r = await airtableFetch(`/v0/${BASE_ID}/${encodeURIComponent(t.name)}?filterByFormula=${formula}&maxRecords=100`);
+      // Filter out retweets and very short posts
+      const posts = (r.records || [])
+        .map(rec => rec.fields['Content'] || '')
+        .filter(c => c.length > 80 && !c.startsWith('RT @'))
+        .slice(0, 30); // Cap at 30 per table to keep context manageable
+      collected[t.name] = { posts, role: t.role };
+    } catch(e) {
+      collected[t.name] = { posts: [], role: t.role };
     }
-
-    const report = await generateReport(posts);
-    const now = new Date();
-    const weekEnding = new Date(now.getTime() - now.getDay() * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    const reportText = `
-**Weekly Market Report — Week of ${weekEnding}**
-
-${report.summary}
-
-**Elliott Wave & TLI:**
-${report.tliInsights}
-
-**AI & Agent Intelligence:**
-${report.aiLearnings}
-
-**Trade Activity:**
-${report.tradeActivity}
-
-**Macro Context:**
-${report.macroContext}
-
-**Tickers Tracked:**
-${report.tickersTracked.slice(0, 10).join(', ')}
-
-*(Full data in Airtable Weekly Reports table)*
-    `.trim();
-
-    // Insert into Airtable
-    const inserted = await insertReport(weekEnding, reportText);
-    log.info({ inserted, postsAnalyzed: posts.length }, 'Report generated');
-
-    // Send to Telegram
-    if (inserted) {
-      const sent = await sendToTelegram(reportText);
-      log.info({ sent }, 'Report sent to Telegram');
-    }
-  } catch(e) {
-    log.error({ err: e.message }, 'Weekly report failed');
   }
+  return collected;
 }
 
-// Export for cron or direct invocation
-module.exports = { runWeeklyReport };
+async function main() {
+  console.log('Fetching this week\'s posts...');
+  const tables = await getWeekPosts();
+  const weekOf = new Date().toISOString().split('T')[0];
 
-// If run directly: node weekly_report_cron.js
-if (require.main === module) {
-  runWeeklyReport().then(() => process.exit(0)).catch(e => {
-    console.error(e);
-    process.exit(1);
+  // Build context for Claude
+  let context = '';
+  let totalPosts = 0;
+  for (const [name, data] of Object.entries(tables)) {
+    if (data.posts.length === 0) continue;
+    totalPosts += data.posts.length;
+    context += `\n\n=== ${name} (${data.role}) ===\n`;
+    context += data.posts.map((p, i) => `[${i+1}] ${p.slice(0, 200)}`).join('\n');
+  }
+
+  if (totalPosts === 0) {
+    console.log('No posts this week — skipping');
+    return;
+  }
+
+  console.log(`Analyzing ${totalPosts} posts with Claude...`);
+
+  const systemPrompt = `You are ALPHA, SimuAlpha's market analyst AI. You have been reading posts from expert investors, traders, and AI researchers all week. Your job is to write a weekly learning summary for your owner, Andrew.
+
+Rules:
+- Only state things that are explicitly supported by the posts below. Never fabricate.
+- Be direct and specific. Name tickers, wave positions, price levels when they appear in the data.
+- Skip sections where you learned nothing meaningful.
+- Write like a sharp analyst giving a personal debrief — concise, signal-dense.
+- Do not include filler, preamble, or caveats beyond the disclaimer.`;
+
+  const userPrompt = `Here are all the posts I read this week (${weekOf}):
+${context}
+
+Write a weekly learning report in this structure. Only include a section if there's real substance to report:
+
+**What I Learned This Week**
+
+**Markets & Elliott Wave**
+[What did TLI say about the market this week? Any specific tickers, wave counts, entries, targets?]
+
+**AI & Agent Intelligence**
+[What new AI/agent principles or tools came up? What's worth applying?]
+
+**Macro & Positioning**
+[What macro themes emerged? What are traders watching?]
+
+**Interesting Trades & Signals**
+[Any notable trade ideas, politician buys, or derivatives signals worth flagging?]
+
+**My Take**
+[1-2 sentences on what I think is most important from everything I read this week. Be direct. Only say this if you have something genuine to say based on the data.]
+
+End with: _Not financial advice. Based solely on publicly available posts._`;
+
+  const report = await claudeAnalyze(systemPrompt, userPrompt);
+  console.log('\n--- REPORT ---');
+  console.log(report);
+  console.log('--- END ---\n');
+
+  const fullReport = `📊 *ALPHA Weekly Learnings — ${weekOf}*\n\n${report}`;
+
+  // Store in Airtable
+  const r = await airtableFetch(`/v0/${BASE_ID}/${TABLE_ID}`, {
+    method: 'POST',
+    body: { fields: { 'Week Ending': weekOf, 'Report Content': fullReport, 'Posts Analyzed': totalPosts, 'Status': 'Published' } }
   });
+  console.log(r.id ? `✅ Stored: ${r.id}` : `❌ Airtable error: ${JSON.stringify(r.error)}`);
+
+  // Send to Telegram
+  const sent = await sendTelegram(fullReport);
+  console.log(sent.ok ? `✅ Sent to Telegram` : `❌ Telegram: ${JSON.stringify(sent)}`);
 }
+
+main().catch(e => console.error(e.message));
+
+// Export for cron.js integration
+module.exports = { runWeeklyReport: main };
