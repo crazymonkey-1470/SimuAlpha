@@ -730,4 +730,386 @@ def resolve_same_bar_conflict(
 # narrowing — kept at the bottom so the evaluators read
 # straight through without jumping to a helper block up top.
 
-FillTypeLiteral = Literal["signal_close", "intraday_touch", "gap_fill"]
+FillTypeLiteral = Literal["signal_close", "intraday_touch", "gap_fill", "end_of_data_mark"]
+
+
+# ─────────────────────────── result types ─────────────────────────────
+
+
+@dataclass(frozen=True)
+class EquityPoint:
+    """Per-bar mark-to-market snapshot of the backtester's account.
+
+    Emitted at the CLOSE of each bar after all fills for that bar
+    have been applied. ``equity == cash + positions_value`` by
+    construction; the split is carried separately so the equity
+    curve can be decomposed (e.g. "how much of the drawdown was
+    realized vs. unrealized?").
+
+    Mark-to-market convention: ``positions_value`` uses the bar's
+    close for every open position's remaining shares. Realized
+    P&L from closed tranches is already baked into ``cash``.
+    """
+
+    date: date
+    equity: float
+    cash: float
+    positions_value: float
+
+
+@dataclass
+class BacktestResult:
+    """Output of ``run_backtest`` for a single ticker.
+
+    - ``trades``: completed trades (every position that opened is
+      closed by the time the function returns; positions still
+      open at end-of-data are force-closed with
+      ``fill_type="end_of_data_mark"``).
+    - ``skipped``: every signal that fired but did NOT produce a
+      trade, with a specific reason. Disjoint from ``trades`` —
+      the set union equals the full signal set.
+    - ``equity_points``: one per bar processed; mark-to-market at
+      the close.
+    - ``bar_decisions``: per-bar trace of what happened. Only
+      populated when ``run_backtest(..., record_decisions=True)`` —
+      default is empty to keep memory bounded on long backtests.
+    """
+
+    trades: list = field(default_factory=list)
+    skipped: list = field(default_factory=list)
+    equity_points: list[EquityPoint] = field(default_factory=list)
+    bar_decisions: list[tuple[date, BarDecision]] = field(default_factory=list)
+
+
+# ─────────────────────────── internal: pending signal ────────────────
+
+
+@dataclass
+class _PendingSignal:
+    """A signal that fired but hasn't opened its position yet.
+
+    Lives in the main loop's per-ticker state until either (a) the
+    tranche-1 trigger is hit on a subsequent bar and the position
+    opens, or (b) ``remaining_wait_bars`` reaches zero and the
+    signal is discarded with reason
+    ``"tranche_1_unfilled_within_wait_cap"``.
+
+    ``tranche_1_rule`` is the ALREADY-RESOLVED rule — resolving
+    once at signal time freezes Wave 1 anchors, which is the right
+    semantic for at_fib tranche triggers. Resolving each bar would
+    let new pivots shift the anchor, which is wrong.
+    """
+
+    signal_date: date
+    remaining_wait_bars: int
+    tranche_1_rule: ResolvedRule
+    tranche_1_pct: float
+    entry_ctx: EntryContext
+
+
+# ─────────────────────────── signal set builder ──────────────────────
+
+
+def _build_signal_set(spec, ticker: str, prices) -> frozenset[date]:
+    """Run the spec's pattern detector or custom_expression DSL
+    and return the set of signal dates as a frozenset.
+
+    Logged at INFO so a low-trade-count backtest is diagnosable
+    directly from Railway / CI logs: ``ticker=X signals=N``.
+
+    Never raises — a broken detector or malformed custom
+    expression logs an error and returns an empty set so one bad
+    ticker can't take down a multi-ticker backtest.
+    """
+    import pandas as pd
+
+    try:
+        if spec.entry.pattern_name is not None:
+            from simualpha_quant.research.patterns import by_name
+
+            detector = by_name(spec.entry.pattern_name)
+            dates = detector.detect(prices)
+        else:
+            from simualpha_quant.research import custom_expression
+
+            dates = custom_expression.evaluate_dates(
+                spec.entry.custom_expression or {}, prices
+            )
+    except Exception as exc:  # noqa: BLE001 — don't kill the backtest
+        log.error(
+            "signal detection failed, treating as zero signals",
+            extra={"ticker": ticker, "err": str(exc)},
+        )
+        return frozenset()
+
+    signal_set = frozenset(pd.Timestamp(d).date() for d in dates)
+    log.info(
+        "signals detected",
+        extra={"ticker": ticker, "signal_count": len(signal_set)},
+    )
+    return signal_set
+
+
+# ─────────────────────────── pivot cache ──────────────────────────────
+
+
+def _detect_pivots_cached(prices):
+    """Wave-pivot detection at the timeframe the Stage-3 patterns
+    use. Called once per ticker; main loop passes the result into
+    the rule resolvers so Wave 1 / Wave 2 anchors don't get
+    recomputed on every bar.
+    """
+    from simualpha_quant.research.waves import (
+        detect_pivots,
+        sensitivity_for_timeframe,
+    )
+
+    sensitivity = sensitivity_for_timeframe("intermediate")
+    return detect_pivots(prices["close"], sensitivity=sensitivity)
+
+
+# ─────────────────────────── rule resolvers ──────────────────────────
+
+
+def _build_resolve_context(prices, pivots, current_index: int, signal_index: int):
+    """Thin wrapper around price_rules.ResolveContext to spare
+    callers the import. The dataclass itself has no state beyond
+    the four inputs.
+    """
+    from simualpha_quant.execution.price_rules import ResolveContext
+
+    return ResolveContext(
+        prices=prices,
+        current_index=current_index,
+        signal_index=signal_index,
+        pivots=pivots,
+    )
+
+
+def _date_to_index_map(prices) -> dict[date, int]:
+    """Map calendar date → integer position in ``prices.index``.
+
+    Built once per ticker; used by market-dynamic resolvers to
+    rebuild ResolveContext on each bar via a simple dict lookup
+    (O(1)) rather than a DatetimeIndex search (O(log n)).
+    """
+    import pandas as pd
+
+    return {pd.Timestamp(d).date(): i for i, d in enumerate(prices.index)}
+
+
+def _resolve_single_rule(
+    rule,
+    prices,
+    pivots,
+    signal_idx: int,
+    current_idx: int,
+    date_idx: dict[date, int],
+) -> ResolvedRule:
+    """Build a ResolvedRule of the appropriate kind for one PriceRule.
+
+    Dispatches by ``rule.type``:
+
+    - ``at_signal``, ``at_price``, ``at_fib``: resolved ONCE at
+      ``current_idx`` and cached as a static float. Wave 1 anchors
+      are frozen at signal time, so cached is the correct
+      semantic.
+    - ``at_ma``: market-dynamic. Returns a ResolvedRule whose
+      resolver re-runs ``price_rules.resolve`` against a fresh
+      ResolveContext built from the current bar's date. The MA
+      value evolves bar-by-bar.
+
+    Raises UnresolvablePriceRule if the initial resolution fails
+    (e.g. no Wave 1 formed yet). Caller handles by skipping.
+    """
+    from simualpha_quant.execution.price_rules import resolve
+
+    if rule.type == "at_ma":
+        def resolver(bar, position):  # noqa: ARG001
+            idx = date_idx.get(bar.date, current_idx)
+            ctx = _build_resolve_context(prices, pivots, idx, signal_idx)
+            return resolve(rule, ctx)
+
+        return ResolvedRule.market_dynamic(resolver)
+
+    # Static branch — at_signal / at_price / at_fib.
+    ctx = _build_resolve_context(prices, pivots, current_idx, signal_idx)
+    price = resolve(rule, ctx)
+    return ResolvedRule.static(price)
+
+
+def _resolve_tranche_ladder(
+    spec, prices, signal_idx: int, *, pivots=None, date_idx=None
+) -> list[tuple[float, ResolvedRule]]:
+    """Resolve every tranche's price_rule at signal time.
+
+    Returns ``(pct_of_position, resolved_rule)`` pairs in spec
+    order. Tranche 1 is included — the main loop pulls it off the
+    front when building the ``EntryContext``.
+
+    Static rules are cached at ``signal_idx``; ``at_ma`` rules are
+    re-resolved each bar via a closure. Rules that fail to resolve
+    at signal time raise ``UnresolvablePriceRule`` back to the
+    caller, which emits a ``price_rule_unresolvable`` skip.
+    """
+    if pivots is None:
+        pivots = _detect_pivots_cached(prices)
+    if date_idx is None:
+        date_idx = _date_to_index_map(prices)
+
+    out: list[tuple[float, ResolvedRule]] = []
+    for tranche in spec.entry.tranches:
+        resolved = _resolve_single_rule(
+            tranche.price_rule, prices, pivots, signal_idx, signal_idx, date_idx
+        )
+        out.append((float(tranche.pct_of_position), resolved))
+    return out
+
+
+def _resolve_tp_legs(
+    spec, prices, signal_idx: int, *, pivots=None, date_idx=None
+) -> list[tuple[float, ResolvedRule, str]]:
+    """Resolve every take-profit leg's price_rule at signal time.
+
+    Returns ``(pct_of_position, resolved_rule, label)`` triples in
+    spec order. The label is a short human-readable tag suitable
+    for chart annotation (``"TP leg 0 @ 1.618 fib"`` etc.) —
+    downstream renderers use it; main loop ignores it.
+    """
+    if pivots is None:
+        pivots = _detect_pivots_cached(prices)
+    if date_idx is None:
+        date_idx = _date_to_index_map(prices)
+
+    out: list[tuple[float, ResolvedRule, str]] = []
+    for idx, leg in enumerate(spec.exit.take_profit):
+        resolved = _resolve_single_rule(
+            leg.price_rule, prices, pivots, signal_idx, signal_idx, date_idx
+        )
+        label = _tp_leg_label(idx, leg.price_rule)
+        out.append((float(leg.pct_of_position), resolved, label))
+    return out
+
+
+def _tp_leg_label(idx: int, rule) -> str:
+    """Short human-readable label for a TP leg."""
+    if rule.type == "at_fib":
+        return f"TP leg {idx} @ {rule.level:.3f} fib"
+    if rule.type == "at_price":
+        return f"TP leg {idx} @ ${rule.price:.2f}"
+    if rule.type == "at_ma":
+        return f"TP leg {idx} @ {rule.freq} SMA({rule.period})"
+    return f"TP leg {idx} @ {rule.type}"
+
+
+def _resolve_stop(
+    spec,
+    prices,
+    signal_idx: int,
+    entry_price: float,
+    *,
+    pivots=None,
+    date_idx=None,
+) -> Optional[ResolvedRule]:
+    """Resolve the stop-loss as a ResolvedRule of the right kind.
+
+    DISPATCH:
+
+    - ``type="hard"`` + static rule (at_signal/at_price/at_fib):
+      ResolvedRule.static — the stop price is frozen at entry.
+    - ``type="hard"`` + ``at_ma``: ResolvedRule.market_dynamic —
+      the MA stop rides the moving average as it evolves.
+    - ``type="trailing"``: ResolvedRule.position_dynamic — the
+      effective stop = max(initial_stop, current_peak - initial
+      distance). Ratchets: never falls below the initial stop,
+      rises as current_peak rises.
+
+    TRAILING DISTANCE SEMANTICS (amendment-1 documentation):
+
+    Every currently-supported PriceRule type resolves to an
+    ABSOLUTE DOLLAR price — ``at_signal`` = signal bar's close,
+    ``at_price`` = literal dollars, ``at_fib`` = anchor-based
+    dollars, ``at_ma`` = MA dollar value. So the initial
+    trailing-distance is measured in absolute dollars:
+    ``initial_distance_dollars = entry_price - initial_stop_price``.
+    This is NOT a percentage-below-entry distance.
+
+    If a future PriceRule variant encodes percentage distance
+    directly (e.g. a hypothetical ``at_pct_below`` rule), this
+    helper should add a branch that inspects ``rule.type`` and
+    computes a proportional ratchet:
+    ``effective = peak * (1 - initial_pct_below)`` instead of
+    ``peak - initial_distance_dollars``. Until that rule exists,
+    we keep the dollar-distance semantic explicit — the
+    inspection hook is annotated inline below.
+
+    Returns ``None`` when the stop can't resolve at entry (rare —
+    typically means no Wave 1 is visible yet for an ``at_fib``
+    stop; caller treats as price_rule_unresolvable).
+    """
+    from simualpha_quant.execution.price_rules import (
+        UnresolvablePriceRule,
+        resolve,
+    )
+
+    if pivots is None:
+        pivots = _detect_pivots_cached(prices)
+    if date_idx is None:
+        date_idx = _date_to_index_map(prices)
+
+    stop_loss = spec.exit.stop_loss
+    rule = stop_loss.price_rule
+
+    try:
+        ctx_entry = _build_resolve_context(prices, pivots, signal_idx, signal_idx)
+        initial_stop = float(resolve(rule, ctx_entry))
+    except UnresolvablePriceRule:
+        return None
+    except Exception as exc:  # noqa: BLE001
+        log.warning("stop resolution failed", extra={"err": str(exc)})
+        return None
+
+    # Amendment 1 inspection hook. No percent-based rules exist
+    # today; add a branch here when one does.
+    _distance_metric: Literal["dollars", "percent"] = "dollars"
+    if rule.type not in ("at_signal", "at_price", "at_fib", "at_ma"):
+        # Defensive: future rule types must be explicitly classified
+        # before trailing behavior is trusted.
+        log.warning(
+            "stop rule.type not recognized for trailing distance classification; "
+            "defaulting to dollar-distance",
+            extra={"rule_type": rule.type},
+        )
+
+    # Hard stop, static rule → frozen dollar price for the trade's life.
+    if stop_loss.type == "hard":
+        if rule.type == "at_ma":
+            def ma_resolver(bar, position):  # noqa: ARG001
+                idx = date_idx.get(bar.date, signal_idx)
+                ctx = _build_resolve_context(prices, pivots, idx, signal_idx)
+                return float(resolve(rule, ctx))
+
+            return ResolvedRule.market_dynamic(ma_resolver)
+        return ResolvedRule.static(initial_stop)
+
+    # Trailing stop. Initial distance in absolute dollars.
+    initial_distance_dollars = float(entry_price) - initial_stop
+    if initial_distance_dollars <= 0:
+        # Stop at-or-above entry is degenerate for a long trailing
+        # stop; fall back to a static hard stop at the initial
+        # resolved price rather than build a ratchet that would
+        # fire immediately.
+        log.warning(
+            "trailing stop resolved at-or-above entry price; "
+            "degrading to static hard stop",
+            extra={"entry_price": entry_price, "initial_stop": initial_stop},
+        )
+        return ResolvedRule.static(initial_stop)
+
+    def trailing_resolver(bar, position):  # noqa: ARG001
+        if position is None:
+            return initial_stop
+        ratcheted = position.current_peak - initial_distance_dollars
+        return max(initial_stop, ratcheted)
+
+    return ResolvedRule.position_dynamic(trailing_resolver)
