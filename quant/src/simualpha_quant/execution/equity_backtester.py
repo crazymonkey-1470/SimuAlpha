@@ -365,22 +365,32 @@ def evaluate_entry(
     signal_set: frozenset[date],
     execution,  # ExecutionConfig — kept untyped to avoid circular import
 ) -> Optional[FillRecord]:
-    """Tranche-1 fill at the signal bar.
+    """Tranche-1 fill attempt on the signal bar.
 
     Pure membership check against ``signal_set`` (precomputed by
     the main loop from the pattern detector or custom-expression
     DSL). If ``bar.date`` is in the set, attempts to fill tranche
     1 at the appropriate price:
 
-    - ``is_at_signal_rule`` → fill at ``bar.close``, fill_type=
-      ``"signal_close"``.
-    - Else the first-tranche trigger must be touched on the signal
-      bar itself (intraday or gap). If not touched, returns None
-      and the main loop records a skipped_signal with reason
-      ``"price_rule_unresolvable"``.
+    - ``is_at_signal_rule`` → fill at ``bar.close`` with
+      ``fill_type="signal_close"``. Always succeeds for a sane
+      bar; this path does NOT consume the wait cap.
+    - Else the first-tranche trigger is checked against the
+      signal bar's OHLC. If touched (intraday or gap), fill
+      immediately. If NOT touched, returns None — but the main
+      loop treats this as a PENDING signal, not a discard, and
+      re-checks the trigger via ``evaluate_tranche`` on each
+      subsequent bar for up to ``execution.entry_wait_bars``
+      bars.
 
-    Returns None silently (no warn) when the date isn't a signal —
-    that's the common path.
+    If the wait cap elapses without a fill, the main loop emits
+    a SkippedSignalRecord with reason
+    ``"tranche_1_unfilled_within_wait_cap"`` and discards the
+    pending signal. ``entry_wait_bars=0`` degrades to the
+    skip-on-unfill behavior: the signal bar is the only chance.
+
+    Returns None silently (no log) when the date isn't a signal
+    — that's the common path.
     """
     if bar.date not in signal_set:
         return None
@@ -409,9 +419,10 @@ def evaluate_entry(
             fill_price = apply_slippage(trigger, "buy", execution.slippage_bps)
             fill_type = "intraday_touch"
         else:
-            # Signal fired but the price never reached the tranche-1
-            # trigger on the signal bar. TODO: support wait-for-fill
-            # across subsequent bars — for now the main loop skips.
+            # Signal bar didn't touch the tranche-1 trigger. Main
+            # loop promotes this to a PENDING signal and re-checks
+            # via evaluate_tranche for up to execution.entry_wait_bars
+            # subsequent bars. See the function docstring.
             return None
 
     notional_target = planned_capital * ctx.first_tranche_pct

@@ -286,6 +286,29 @@ class ExecutionConfig(BaseModel):
             "implemented; adding it will extend this Literal)."
         ),
     )
+    entry_wait_bars: int = Field(
+        default=20,
+        ge=0,
+        le=500,
+        description=(
+            "How many bars the main loop will wait for tranche-1 "
+            "to fill after a signal fires, if the signal bar "
+            "itself didn't touch the tranche-1 trigger. Each "
+            "subsequent bar re-checks the trigger against the "
+            "bar's OHLC; a hit fills at the trigger "
+            "(intraday_touch) or bar.open (gap_fill). If the "
+            "counter reaches zero without a fill, the signal is "
+            "discarded and a SkippedSignalRecord with reason "
+            "'tranche_1_unfilled_within_wait_cap' is emitted. "
+            "Setting entry_wait_bars=0 degrades to skip-on-unfill "
+            "(signal bar is the only chance to fill). Default 20 "
+            "bars ≈ one trading month — long enough for a "
+            "pullback to reach an 0.382/0.5/0.618 fib without "
+            "letting stale signals linger indefinitely. Tranche-1 "
+            "rules of type 'at_signal' fill on the signal bar by "
+            "construction and don't consume the wait cap."
+        ),
+    )
 
 
 # ─────────────────────────── top-level spec ──────────────────────────
