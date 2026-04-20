@@ -78,8 +78,9 @@ class TradeChart(BaseModel):
 
 
 SkippedReason = Literal[
-    "max_open_positions",  # engine already at the cap on this bar
+    "max_open_positions",  # engine already at the cross-ticker cap on this bar
     "same_bar_duplicate",  # same ticker had an earlier signal same day
+    "same_ticker_already_open",  # single-ticker: signal fired while a position was still open
     "price_rule_unresolvable",  # tranche 1 price_rule couldn't resolve at all
     "tranche_1_unfilled_within_wait_cap",  # trigger resolved but never hit within entry_wait_bars
     "no_price_data",  # universe resolved but ticker had no bars

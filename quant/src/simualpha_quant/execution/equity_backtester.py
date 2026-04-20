@@ -112,6 +112,7 @@ from enum import Enum
 from typing import Callable, Literal, Optional
 
 from simualpha_quant.execution.trade_log import FillRecord
+from simualpha_quant.schemas.simulate import SkippedSignalRecord
 
 log = logging.getLogger(__name__)
 
@@ -733,6 +734,79 @@ def resolve_same_bar_conflict(
 FillTypeLiteral = Literal["signal_close", "intraday_touch", "gap_fill", "end_of_data_mark"]
 
 
+# ─────────────────────────── pending-signal tranche-1 fill ───────────
+
+
+def _try_tranche_1_fill_pending(
+    bar: Bar,
+    pending: "_PendingSignal",
+    ticker: str,
+    execution,
+) -> Optional[FillRecord]:
+    """Pending-signal specialization of ``evaluate_tranche``.
+
+    The normal evaluator reads ``position.planned_capital`` and
+    ``position.ticker`` off a PositionState — but for a pending
+    signal no position exists yet (the whole point of the pending
+    state). This helper runs the same gap / intraday-touch /
+    no-fill logic directly against the cached pre-resolved
+    tranche-1 rule on ``_PendingSignal`` and returns a FillRecord
+    when tranche-1 fills, None otherwise.
+
+    Resolver exceptions are caught and logged at WARN — a bad
+    MA computation or missing anchor should not kill the loop;
+    the caller treats the fall-through as "didn't fill today"
+    and decrements the wait counter.
+    """
+    if not _bar_is_sane(bar):
+        return None
+    if pending.planned_capital <= 0 or pending.tranche_1_pct <= 0:
+        return None
+
+    try:
+        trigger = pending.tranche_1_rule.price(bar, position=None)
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "pending tranche-1 resolve failed",
+            extra={"ticker": ticker, "date": bar.date, "err": str(exc)},
+        )
+        return None
+
+    if trigger is None or trigger <= 0:
+        return None
+
+    if bar.open <= trigger:
+        raw_price = bar.open
+        fill_type: "FillTypeLiteral" = "gap_fill"
+    elif bar.low <= trigger <= bar.high:
+        raw_price = trigger
+        fill_type = "intraday_touch"
+    else:
+        return None
+
+    fill_price = apply_slippage(raw_price, "buy", execution.slippage_bps)
+    if fill_price <= 0:
+        return None
+
+    notional_target = pending.planned_capital * pending.tranche_1_pct
+    shares = notional_target / fill_price
+    notional = shares * fill_price
+    fee = apply_fee(notional, execution.fee_bps)
+
+    return FillRecord(
+        side="entry",
+        date=bar.date,
+        price=fill_price,
+        shares=shares,
+        notional=notional,
+        fee=fee,
+        slippage_applied_bps=execution.slippage_bps,
+        fill_type=fill_type,
+        leg_index=0,
+        exit_reason=None,
+    )
+
+
 # ─────────────────────────── result types ─────────────────────────────
 
 
@@ -794,10 +868,22 @@ class _PendingSignal:
     signal is discarded with reason
     ``"tranche_1_unfilled_within_wait_cap"``.
 
-    ``tranche_1_rule`` is the ALREADY-RESOLVED rule — resolving
-    once at signal time freezes Wave 1 anchors, which is the right
-    semantic for at_fib tranche triggers. Resolving each bar would
-    let new pivots shift the anchor, which is wrong.
+    ``tranche_1_rule`` and the full ``tranche_ladder`` + ``tp_legs``
+    are ALREADY-RESOLVED at signal time — resolving once freezes
+    Wave 1 anchors (and every static fib level below them), which
+    is the right semantic for at_fib tranches. Resolving each
+    bar would let new pivots shift the anchor, which is wrong.
+
+    ``stop_rule`` is deliberately left unresolved until tranche-1
+    actually fills: the stop's initial trailing distance needs
+    the real entry_price, which isn't known until the fill lands.
+    The main loop resolves the stop on-the-spot when opening the
+    position.
+
+    ``planned_capital`` is also frozen at signal time. For
+    ``volatility_target`` sizing this is correct by construction
+    — the vol estimate only uses bars BEFORE the signal bar, so
+    waiting more bars for a fill doesn't change it.
     """
 
     signal_date: date
@@ -805,6 +891,15 @@ class _PendingSignal:
     tranche_1_rule: ResolvedRule
     tranche_1_pct: float
     entry_ctx: EntryContext
+    # Cached pre-resolved ladder + TPs + time-stop snapshot + sizing.
+    # The stop_rule stays None here — resolved lazily when the fill
+    # lands (needs entry_price).
+    tranche_ladder: list[tuple[float, ResolvedRule]] = field(default_factory=list)
+    tp_legs: list[tuple[float, ResolvedRule, str]] = field(default_factory=list)
+    time_stop_days: Optional[int] = None
+    planned_capital: float = 0.0
+    signal_bar_close: float = 0.0
+    signal_bar_idx: int = 0
 
 
 # ─────────────────────────── signal set builder ──────────────────────
@@ -1708,6 +1803,9 @@ def run_backtest(
 
     signal_dates = _build_signal_set(spec, ticker, prices)
     date_idx = _date_to_index_map(prices)
+    # Pivots computed once per ticker so _resolve_*_{ladder,tp_legs,stop}
+    # and the pending-signal rechecks all share the same anchor set.
+    pivots = _detect_pivots_cached(prices)
 
     # ─── SECTION 1: loop state initialization ───────────────────────
 
@@ -1760,16 +1858,304 @@ def run_backtest(
             )
 
         # ─── SECTION 2b: process pending signals ───────────────────
-        # TODO(3a-iii-B): iterate pending_signals; re-check
-        # tranche-1 trigger; decrement wait counter; promote to
-        # open position or emit tranche_1_unfilled_within_wait_cap
-        # skip when counter expires.
+        #
+        # Each pending signal gets exactly ONE chance per bar:
+        # either tranche-1 fills and the signal is promoted to an
+        # open position, or the wait counter decrements and the
+        # signal lives to see tomorrow (unless it hit zero, in
+        # which case it's emitted as a
+        # tranche_1_unfilled_within_wait_cap skip).
+        #
+        # Mutually exclusive by construction: a pending signal
+        # that filled is processed (promoted or blocked); a
+        # pending signal that didn't fill is decremented. A single
+        # bar never both fills AND expires a pending.
+        #
+        # TODO(3a-iii-batch): when multiple pendings fill on the
+        # same bar and open_position is None, the first one wins
+        # in list order (effectively signal_date ascending since
+        # we append in order). Subsequent same-bar fills get
+        # same_ticker_already_open. Consider whether "earliest
+        # signal wins" is the right tie-breaker or if something
+        # else (e.g. "closest to trigger wins") would be more
+        # principled. Resolve before 3b.
+
+        if pending_signals:
+            still_pending: list[_PendingSignal] = []
+            for pending in pending_signals:
+                fill = _try_tranche_1_fill_pending(
+                    bar, pending, ticker, spec.execution
+                )
+
+                if fill is None:
+                    # No fill this bar — decrement or expire.
+                    pending.remaining_wait_bars -= 1
+                    if pending.remaining_wait_bars <= 0:
+                        skipped.append(
+                            SkippedSignalRecord(
+                                ticker=ticker,
+                                signal_date=pending.signal_date,
+                                reason="tranche_1_unfilled_within_wait_cap",
+                                detail=(
+                                    f"entry_wait_bars="
+                                    f"{spec.execution.entry_wait_bars} elapsed "
+                                    f"without tranche-1 fill"
+                                ),
+                            )
+                        )
+                        # Drop — do not re-add to still_pending.
+                    else:
+                        still_pending.append(pending)
+                    continue
+
+                # Fill landed. If the slot is already taken (either
+                # another signal earlier in this bar or a position
+                # that was never closed), emit a same-ticker skip
+                # and drop the pending.
+                if open_position is not None:
+                    skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=pending.signal_date,
+                            reason="same_ticker_already_open",
+                            detail=(
+                                "pending tranche-1 fill blocked by "
+                                f"open position entered "
+                                f"{open_position.entry_date}"
+                            ),
+                        )
+                    )
+                    continue  # drop
+
+                # Slot open — resolve the stop now that we know
+                # the actual entry_price, then open the position.
+                stop_rule = _resolve_stop(
+                    spec,
+                    prices,
+                    pending.signal_bar_idx,
+                    fill.price,
+                    pivots=pivots,
+                    date_idx=date_idx,
+                )
+                if stop_rule is None:
+                    skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=pending.signal_date,
+                            reason="price_rule_unresolvable",
+                            detail="stop rule could not resolve at fill time",
+                        )
+                    )
+                    continue  # drop
+
+                try:
+                    open_position = _open_position(
+                        signal_date=pending.signal_date,
+                        bar=bar,
+                        tranche_ladder=pending.tranche_ladder,
+                        tp_legs=pending.tp_legs,
+                        stop_rule=stop_rule,
+                        time_stop_days=pending.time_stop_days,
+                        planned_capital=pending.planned_capital,
+                        entry_fill=fill,
+                        ticker=ticker,
+                    )
+                except BacktesterInvariantError as exc:
+                    # Shouldn't happen — _try_tranche_1_fill_pending
+                    # already guards the fill shape. Log and drop.
+                    log.error(
+                        "invariant violated opening pending signal",
+                        extra={
+                            "ticker": ticker,
+                            "signal_date": pending.signal_date,
+                            "err": str(exc),
+                        },
+                    )
+                    continue  # drop
+                if record_decisions:
+                    bar_decisions.append((bar.date, BarDecision.ENTRY))
+                # Drop from pending — don't re-add to still_pending.
+
+            pending_signals = still_pending
 
         # ─── SECTION 2c: check for new signal on this bar ──────────
-        # TODO(3a-iii-B): resolve ladder / tp legs / stop at signal
-        # bar; attempt tranche-1 fill via evaluate_entry; open
-        # immediately or push onto pending_signals; emit
-        # same_ticker_already_open skip if slot is busy.
+        #
+        # A signal on this bar: resolve rules at signal-idx (freezes
+        # anchors), try tranche-1 fill via evaluate_entry, either
+        # promote to open_position or push a _PendingSignal onto the
+        # queue for the wait window.
+
+        if bar.date in signal_dates:
+            if open_position is not None:
+                skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=bar.date,
+                        reason="same_ticker_already_open",
+                        detail=(
+                            f"position opened on "
+                            f"{open_position.entry_date} still active"
+                        ),
+                    )
+                )
+                continue  # back to loop top
+
+            # Resolve full ladder + TPs at signal bar. The stop is
+            # left unresolved until entry_price is known (either
+            # here on immediate fill or later when a pending fills).
+            from simualpha_quant.execution.price_rules import (
+                UnresolvablePriceRule,
+            )
+
+            try:
+                tranche_ladder = _resolve_tranche_ladder(
+                    spec, prices, bar_idx, pivots=pivots, date_idx=date_idx
+                )
+                tp_legs = _resolve_tp_legs(
+                    spec, prices, bar_idx, pivots=pivots, date_idx=date_idx
+                )
+            except UnresolvablePriceRule as exc:
+                skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=bar.date,
+                        reason="price_rule_unresolvable",
+                        detail=f"ladder/TPs: {exc}",
+                    )
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "rule resolution errored at signal",
+                    extra={"ticker": ticker, "date": bar.date, "err": str(exc)},
+                )
+                skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=bar.date,
+                        reason="price_rule_unresolvable",
+                        detail=str(exc),
+                    )
+                )
+                continue
+
+            planned_capital = _planned_capital_for(
+                spec, prices=prices, signal_idx=bar_idx
+            )
+
+            tranche_1_pct, tranche_1_rule = tranche_ladder[0]
+            first_tranche_spec = spec.entry.tranches[0]
+            is_at_signal = first_tranche_spec.price_rule.type == "at_signal"
+            first_trigger: Optional[float] = None
+            if not is_at_signal:
+                try:
+                    first_trigger = tranche_1_rule.price(bar, position=None)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "tranche-1 trigger resolve failed at signal",
+                        extra={"ticker": ticker, "err": str(exc)},
+                    )
+                    first_trigger = None
+
+            entry_ctx = EntryContext(
+                first_tranche_trigger=first_trigger,
+                first_tranche_pct=float(tranche_1_pct),
+                first_tranche_index=0,
+                is_at_signal_rule=is_at_signal,
+            )
+
+            entry_fill = evaluate_entry(
+                bar=bar,
+                ticker=ticker,
+                planned_capital=planned_capital,
+                ctx=entry_ctx,
+                signal_set=frozenset([bar.date]),
+                execution=spec.execution,
+            )
+
+            if entry_fill is not None:
+                # Immediate fill — resolve the stop against the real
+                # entry price and open the position.
+                stop_rule = _resolve_stop(
+                    spec,
+                    prices,
+                    bar_idx,
+                    entry_fill.price,
+                    pivots=pivots,
+                    date_idx=date_idx,
+                )
+                if stop_rule is None:
+                    skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=bar.date,
+                            reason="price_rule_unresolvable",
+                            detail="stop rule unresolvable at entry",
+                        )
+                    )
+                    continue
+
+                try:
+                    open_position = _open_position(
+                        signal_date=bar.date,
+                        bar=bar,
+                        tranche_ladder=tranche_ladder,
+                        tp_legs=tp_legs,
+                        stop_rule=stop_rule,
+                        time_stop_days=spec.exit.time_stop_days,
+                        planned_capital=planned_capital,
+                        entry_fill=entry_fill,
+                        ticker=ticker,
+                    )
+                except BacktesterInvariantError as exc:
+                    log.error(
+                        "invariant violated opening new signal",
+                        extra={
+                            "ticker": ticker,
+                            "signal_date": bar.date,
+                            "err": str(exc),
+                        },
+                    )
+                    skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=bar.date,
+                            reason="price_rule_unresolvable",
+                            detail=f"invariant: {exc}",
+                        )
+                    )
+                    continue
+                if record_decisions:
+                    bar_decisions.append((bar.date, BarDecision.ENTRY))
+            else:
+                # Tranche-1 didn't fill on the signal bar. Either
+                # skip immediately (wait_bars=0 "skip-on-unfill")
+                # or push onto the pending queue.
+                if spec.execution.entry_wait_bars == 0:
+                    skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=bar.date,
+                            reason="tranche_1_unfilled_within_wait_cap",
+                            detail="entry_wait_bars=0, no grace period",
+                        )
+                    )
+                else:
+                    pending_signals.append(
+                        _PendingSignal(
+                            signal_date=bar.date,
+                            remaining_wait_bars=spec.execution.entry_wait_bars,
+                            tranche_1_rule=tranche_1_rule,
+                            tranche_1_pct=float(tranche_1_pct),
+                            entry_ctx=entry_ctx,
+                            tranche_ladder=tranche_ladder,
+                            tp_legs=tp_legs,
+                            time_stop_days=spec.exit.time_stop_days,
+                            planned_capital=planned_capital,
+                            signal_bar_close=float(bar.close),
+                            signal_bar_idx=bar_idx,
+                        )
+                    )
 
         # ─── SECTION 2d: check open position for tranche adds ──────
         # TODO(3a-iii-C): iterate tranche_queue in spec order,
