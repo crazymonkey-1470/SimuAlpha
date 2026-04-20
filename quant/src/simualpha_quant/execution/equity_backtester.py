@@ -1134,29 +1134,144 @@ class BacktesterInvariantError(RuntimeError):
 # ─────────────────────────── sizing helper ────────────────────────────
 
 
-def _planned_capital_for(spec) -> float:
-    """Per-position planned-total USD stake.
-
-    - ``fixed``:              exact ``params.stake_usd``.
-    - ``volatility_target`` / ``kelly_fraction``: fall back to
-                              ``initial_capital / max_open_positions``.
-                              The full vol-target / kelly math belongs
-                              in a dedicated sizing module, not in
-                              the backtester; the fallback lets
-                              specs that opt in to those sizing
-                              methods still run end-to-end with
-                              reasonable per-position budgets. A
-                              follow-up can replace the fallback
-                              with the actual formulas without
-                              touching the backtester.
+def _base_capital_per_position(spec) -> float:
+    """``initial_capital / max_open_positions``. The reference budget
+    that the non-``fixed`` sizing methods scale against.
     """
-    method = spec.position_sizing.method
-    params = spec.position_sizing.params
-    if method == "fixed":
-        return float(params["stake_usd"])
     if spec.max_open_positions <= 0:
         return float(spec.initial_capital)
     return float(spec.initial_capital) / float(spec.max_open_positions)
+
+
+def _realized_volatility(prices, signal_idx: int, lookback_days: int) -> Optional[float]:
+    """Annualized realized volatility of log returns over the
+    ``lookback_days`` bars ending at ``signal_idx - 1`` (strictly
+    BEFORE the signal bar so the backtest doesn't peek at its own
+    entry-bar return).
+
+    Returns None when there isn't enough history or the sample
+    std is zero / NaN. Caller treats that as "degrade to base
+    per-position capital with a warning."
+    """
+    import numpy as np
+
+    # Use bars strictly before the signal bar for the volatility
+    # estimate — point-in-time correctness.
+    end = signal_idx
+    start = end - lookback_days
+    if start < 1:
+        # Need at least one bar before `start` so we can compute
+        # log return for the first sampled return.
+        return None
+
+    close = prices["close"].iloc[start - 1 : end].to_numpy(dtype=float)
+    if len(close) < 2:
+        return None
+    if np.any(close <= 0) or np.any(~np.isfinite(close)):
+        return None
+
+    log_returns = np.log(close[1:] / close[:-1])
+    if len(log_returns) < 2:
+        return None
+    sample_std = float(np.std(log_returns, ddof=1))
+    if not np.isfinite(sample_std) or sample_std <= 0:
+        return None
+    return sample_std * (252.0 ** 0.5)
+
+
+def _planned_capital_for(
+    spec,
+    *,
+    prices=None,
+    signal_idx: Optional[int] = None,
+) -> float:
+    """Per-position planned-total USD stake.
+
+    Three sizing methods, all Stage-4-approved:
+
+    **fixed** — ``params.stake_usd`` verbatim. Ignores prices/
+    signal_idx. The simplest case: every position gets the same
+    dollar budget regardless of volatility or edge.
+
+    **volatility_target** — scale the base per-position budget
+    inversely with realized volatility. Reads the following from
+    ``params``:
+
+      target_volatility          required, annualized (e.g. 0.15)
+      lookback_days              default 60, bars of history
+      max_leverage_multiplier    default 2.0, cap on scale-up
+      min_size_fraction          default 0.1, floor on scale-down
+
+    Formula::
+
+        base   = initial_capital / max_open_positions
+        σ_R    = std(log returns over lookback_days bars BEFORE signal) × √252
+        mult   = clamp(target_volatility / σ_R,
+                       min_size_fraction, max_leverage_multiplier)
+        planned = base × mult
+
+    Using bars STRICTLY BEFORE the signal bar is point-in-time
+    correct — no lookahead into the entry day's move. When fewer
+    than ``lookback_days + 1`` bars of history are available the
+    formula degrades to ``base`` with a WARN log; this lets early-
+    in-window signals still open positions at a reasonable size
+    instead of being silently skipped.
+
+    **kelly_fraction** — naive Kelly, matching the documented DSL
+    behavior. Reads ``params.kelly_fraction`` (e.g. 0.25 for
+    quarter-Kelly) and returns ``base × kelly_fraction``. No
+    edge estimation inside the loop — the caller / OpenClaw is
+    responsible for producing a defensible fraction. Matches the
+    approved-Stage-4 decision: edge estimation is NOT the
+    backtester's job.
+
+    When ``prices`` or ``signal_idx`` are omitted for a sizing
+    method that needs them, the helper degrades gracefully to
+    ``base`` with a warning so a backtest never crashes on a
+    sizing knob.
+    """
+    method = spec.position_sizing.method
+    params = spec.position_sizing.params
+
+    if method == "fixed":
+        return float(params["stake_usd"])
+
+    base = _base_capital_per_position(spec)
+
+    if method == "kelly_fraction":
+        kf = float(params["kelly_fraction"])
+        return base * kf
+
+    if method == "volatility_target":
+        if prices is None or signal_idx is None:
+            log.warning(
+                "volatility_target sizing called without prices/signal_idx; "
+                "degrading to base per-position capital",
+            )
+            return base
+
+        target_vol = float(params["target_volatility"])
+        lookback_days = int(params.get("lookback_days", 60))
+        max_lev = float(params.get("max_leverage_multiplier", 2.0))
+        min_size = float(params.get("min_size_fraction", 0.1))
+
+        realized = _realized_volatility(prices, signal_idx, lookback_days)
+        if realized is None:
+            log.warning(
+                "volatility_target: insufficient history for realized-vol estimate; "
+                "degrading to base per-position capital",
+                extra={"signal_idx": signal_idx, "lookback_days": lookback_days},
+            )
+            return base
+
+        raw_mult = target_vol / realized
+        mult = max(min_size, min(max_lev, raw_mult))
+        return base * mult
+
+    # Unknown method: conservative fallback. Schema should have
+    # rejected this already.
+    log.warning("unknown sizing method, using base capital", extra={"method": method})
+    return base
 
 
 # ─────────────────────────── _open_position ───────────────────────────
@@ -1169,7 +1284,7 @@ def _open_position(
     tp_legs: list[tuple[float, ResolvedRule, str]],
     stop_rule: Optional[ResolvedRule],
     time_stop_days: Optional[int],
-    spec,
+    planned_capital: float,
     entry_fill,
     ticker: str,
 ) -> PositionState:
@@ -1193,7 +1308,10 @@ def _open_position(
                            not resolve at entry; caller handles that
                            edge case upstream.
       time_stop_days     — as on spec.exit, may be None.
-      spec               — full StrategySpec; read for position sizing.
+      planned_capital    — per-position USD budget, pre-computed by
+                           the main loop via ``_planned_capital_for``.
+                           Sizing logic lives there, not here — this
+                           helper stays agnostic to sizing methods.
       entry_fill         — the completed tranche-1 FillRecord.
       ticker             — for PositionState.ticker and error messages.
 
@@ -1212,8 +1330,11 @@ def _open_position(
             f"_open_position: entry_fill.shares must be positive, got "
             f"{entry_fill.shares} (ticker={ticker})"
         )
-
-    planned_capital = _planned_capital_for(spec)
+    if planned_capital <= 0:
+        raise BacktesterInvariantError(
+            f"_open_position: planned_capital must be positive, got "
+            f"{planned_capital} (ticker={ticker})"
+        )
 
     # Tranche 1 (index 0) already filled via entry_fill. Remaining
     # tranches are the tail of the ladder, tagged with their spec

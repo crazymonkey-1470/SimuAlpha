@@ -199,16 +199,43 @@ class PositionSizing(BaseModel):
             if stake is None or float(stake) <= 0:
                 raise ValueError("fixed sizing requires params.stake_usd > 0")
         elif self.method == "volatility_target":
-            tv = self.params.get("target_vol_pct")
-            ap = self.params.get("atr_period")
+            # Annualized target vol (e.g. 0.15 = 15%). Required.
+            tv = self.params.get("target_volatility")
             if tv is None or float(tv) <= 0:
-                raise ValueError("volatility_target requires params.target_vol_pct > 0")
-            if ap is None or int(ap) <= 0:
-                raise ValueError("volatility_target requires params.atr_period > 0")
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.target_volatility > 0 (annualized, e.g. 0.15)"
+                )
+            # Trailing window in bars. Optional (default 60).
+            lb = self.params.get("lookback_days", 60)
+            if int(lb) <= 1:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.lookback_days > 1 (default 60)"
+                )
+            # Optional cap / floor on the sizing multiplier.
+            max_lev = self.params.get("max_leverage_multiplier", 2.0)
+            if float(max_lev) <= 0:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.max_leverage_multiplier > 0 (default 2.0)"
+                )
+            min_size = self.params.get("min_size_fraction", 0.1)
+            if float(min_size) < 0:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.min_size_fraction >= 0 (default 0.1)"
+                )
         elif self.method == "kelly_fraction":
+            # User supplies the Kelly fraction directly — naive by
+            # design. Edge estimation is OpenClaw's job, not the
+            # backtester's.
             kf = self.params.get("kelly_fraction")
             if kf is None or not (0.0 < float(kf) <= 1.0):
-                raise ValueError("kelly_fraction requires params.kelly_fraction in (0, 1]")
+                raise ValueError(
+                    "kelly_fraction sizing requires "
+                    "params.kelly_fraction in (0, 1]"
+                )
         return self
 
 
