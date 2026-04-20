@@ -17,7 +17,7 @@ const log = require('../services/logger').child({ module: 'weekly_report_cron' }
 
 const AIRTABLE_KEY = process.env.AIRTABLE_API_KEY;
 const BASE_ID = 'app57wLO5tYgpApjP';
-const WEEKLY_REPORTS_TABLE = 'tblWeeklyReports'; // Will be set after table creation
+const WEEKLY_REPORTS_TABLE = 'tblQLb83jXlM8a7Nf'; // Weekly Reports table
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '8626469251'; // Andrew's Telegram ID
 
@@ -123,12 +123,13 @@ async function insertReport(weekEnding, reportContent) {
   const fields = {
     'Week Ending': weekEnding,
     'Report Content': reportContent,
+    'Posts Analyzed': posts?.length || 0,
     'Status': 'Published'
   };
 
   try {
     const result = await airtableFetch(
-      `/v0/${BASE_ID}/Weekly%20Reports`,
+      `/v0/${BASE_ID}/${WEEKLY_REPORTS_TABLE}`,
       { method: 'POST', body: { fields } }
     );
     return result.id ? true : false;
