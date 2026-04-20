@@ -806,6 +806,41 @@ def _try_tranche_1_fill_pending(
     )
 
 
+# ─────────────────────────── cash / realized P&L helpers ────────────
+
+
+def _trade_realized_pnl_dollars(trade) -> float:
+    """Net realized dollars from a closed trade.
+
+    Cash-flow accounting (not mark-to-market):
+      exit_proceeds - exit_fees - entry_cost - entry_fees
+    Equivalent to ``trade.pct_return * cost_basis`` where
+    cost_basis is the summed entry notional + entry fees — but
+    computing straight from fills avoids floating-point drift
+    from the percent round-trip.
+    """
+    entry_out = sum(f.notional + f.fee for f in trade.fills if f.side == "entry")
+    exit_in = sum(f.notional - f.fee for f in trade.fills if f.side == "exit")
+    return exit_in - entry_out
+
+
+def _open_position_net_cash_impact(pos: PositionState) -> float:
+    """Net cash change from an open position's fills so far.
+
+    ``exits_in - entries_out`` across every fill on this position.
+    For a fully-underwater open trade this is ≈ -filled_capital -
+    entry_fees; for one that's had profitable partial exits it
+    climbs back toward (and potentially above) zero.
+
+    Used by SECTION 2f's mark-to-market: the running cash at any
+    bar is ``initial_capital + realized_pnl + (this for the open
+    position, if any)``.
+    """
+    entries_out = sum(f.notional + f.fee for f in pos.tranches_filled)
+    exits_in = sum(f.notional - f.fee for f in pos.exits_taken)
+    return exits_in - entries_out
+
+
 # ─────────────────────────── exit-fill capper ────────────────────────
 
 
@@ -1886,6 +1921,12 @@ def run_backtest(
                 open_position.current_peak, bar
             )
 
+        # Snapshot bar_decisions length so section 2g can tell
+        # whether anything interesting happened on this bar. If
+        # the list grew across sections 2b-2e, skip the HOLD
+        # fallback; otherwise append HOLD (record_decisions only).
+        _decisions_at_bar_start = len(bar_decisions)
+
         # ─── SECTION 2b: process pending signals ───────────────────
         #
         # Each pending signal gets exactly ONE chance per bar:
@@ -2402,24 +2443,156 @@ def run_backtest(
                     )
                     raise
                 trades.append(trade)
+                realized_pnl += _trade_realized_pnl_dollars(trade)
                 open_position = None
 
         # ─── SECTION 2f: mark-to-market equity point ───────────────
-        # TODO(3a-iii-D): compute cash + positions_value and emit
-        # an EquityPoint for this bar.
+        #
+        # Cash accounting (bar-close-of-business):
+        #   cash = initial_capital
+        #        + realized_pnl (closed trades, dollar terms)
+        #        + net_cash_impact(open_position) if any
+        #
+        # The helper _open_position_net_cash_impact returns
+        # ``exits_in - entries_out`` across all fills on the open
+        # position — this is negative while the position is deployed
+        # and climbs as partial TPs come in. Adding it to
+        # (initial_capital + realized_pnl) gives the exact cash
+        # balance an external ledger would show.
+        #
+        # positions_value = shares still held × bar.close. Uses
+        # the close rather than last-trade or mid because daily
+        # OHLCV has no intra-bar fills; close is the canonical
+        # mark.
+
+        positions_value = 0.0
+        if open_position is not None:
+            total_entered = sum(f.shares for f in open_position.tranches_filled)
+            total_exited = sum(f.shares for f in open_position.exits_taken)
+            held_shares = total_entered - total_exited
+            if held_shares > 1e-9:
+                positions_value = held_shares * bar.close
+
+        cash = initial_capital + realized_pnl
+        if open_position is not None:
+            cash += _open_position_net_cash_impact(open_position)
+
+        equity = cash + positions_value
+        equity_points.append(
+            EquityPoint(
+                date=bar.date,
+                equity=equity,
+                cash=cash,
+                positions_value=positions_value,
+            )
+        )
 
         # ─── SECTION 2g: bar decisions trace ───────────────────────
-        # TODO(3a-iii-B/C): record_decisions-gated append of the
-        # dominant BarDecision for this bar (currently only SKIP
-        # on malformed bars, above).
+        #
+        # Record HOLD only when nothing earlier in this bar
+        # appended a decision. The snapshot taken after SECTION 2a
+        # is the comparison point — SKIP is already recorded in
+        # SECTION 2-PRE for malformed bars (those `continue` past
+        # this point anyway).
+
+        if record_decisions and len(bar_decisions) == _decisions_at_bar_start:
+            bar_decisions.append((bar.date, BarDecision.HOLD))
 
     # ─── SECTION 3: end-of-data force-close ────────────────────────
-    # TODO(3a-iii-D): if open_position is not None, synthesize an
-    # end_of_data_mark fill at the last bar's close, apply it,
-    # and emit the final trade.
+    #
+    # Any position still open after the final bar gets a synthetic
+    # exit at that bar's close. The fill is tagged
+    # ``fill_type="end_of_data_mark"`` and
+    # ``exit_reason="end_of_data"`` so downstream stats that want
+    # "what did the strategy's exit rules do?" can filter these
+    # out cleanly. No slippage and no fee are applied — this is a
+    # reporting mark, not a real market order.
 
-    # ─── SECTION 4: return ─────────────────────────────────────────
+    force_close_count = 0
+    if open_position is not None:
+        # Last real bar we processed. Walk backwards through
+        # prices until a sane row is found (guards against the
+        # theoretical case where the final bar was malformed; in
+        # practice SECTION 2-PRE would have continued past it and
+        # the position would still be open).
+        last_bar: Optional[Bar] = None
+        for idx in range(len(prices) - 1, -1, -1):
+            candidate = _row_to_bar(prices, idx)
+            if _bar_is_sane(candidate):
+                last_bar = candidate
+                break
+        if last_bar is None:
+            log.error(
+                "end-of-data force-close: no sane bar found in the frame",
+                extra={"ticker": ticker},
+            )
+        else:
+            total_entered = sum(f.shares for f in open_position.tranches_filled)
+            total_exited = sum(f.shares for f in open_position.exits_taken)
+            held = total_entered - total_exited
+            if held > 1e-9:
+                eod_notional = held * last_bar.close
+                eod_fill = FillRecord(
+                    side="exit",
+                    date=last_bar.date,
+                    price=float(last_bar.close),
+                    shares=held,
+                    notional=eod_notional,
+                    fee=0.0,
+                    slippage_applied_bps=0.0,
+                    fill_type="end_of_data_mark",
+                    leg_index=None,
+                    exit_reason="end_of_data",
+                )
+                open_position.exits_taken.append(eod_fill)
+                ctx = (
+                    ctx_hook(last_bar, open_position)
+                    if ctx_hook is not None
+                    else None
+                )
+                try:
+                    trade = _close_and_emit_trade(open_position, last_bar, ctx=ctx)
+                except BacktesterInvariantError as exc:
+                    log.error(
+                        "invariant violated force-closing end-of-data trade",
+                        extra={"ticker": ticker, "err": str(exc)},
+                    )
+                    raise
+                trades.append(trade)
+                realized_pnl += _trade_realized_pnl_dollars(trade)
+                force_close_count = 1
+                log.warning(
+                    "position force-closed at end of data",
+                    extra={
+                        "ticker": ticker,
+                        "entry_date": open_position.entry_date,
+                        "exit_date": last_bar.date,
+                        "exit_price": last_bar.close,
+                        "held_shares": held,
+                    },
+                )
+                # Patch the LAST equity point to reflect the
+                # force-close cash flow. Without this the terminal
+                # equity value would still show the deployed
+                # position as an unrealized mark instead of the
+                # realized end-of-data proceeds. No new point is
+                # added — section 2f already emitted one for the
+                # final bar.
+                if equity_points:
+                    final_cash = initial_capital + realized_pnl
+                    equity_points[-1] = EquityPoint(
+                        date=equity_points[-1].date,
+                        equity=final_cash,
+                        cash=final_cash,
+                        positions_value=0.0,
+                    )
+                open_position = None
 
+    # ─── SECTION 4: final return ───────────────────────────────────
+
+    final_equity = (
+        equity_points[-1].equity if equity_points else float(initial_capital)
+    )
     log.info(
         "backtest done",
         extra={
@@ -2427,6 +2600,8 @@ def run_backtest(
             "trades": len(trades),
             "skipped": len(skipped),
             "equity_points": len(equity_points),
+            "final_equity": final_equity,
+            "force_closed": force_close_count,
         },
     )
     return BacktestResult(
