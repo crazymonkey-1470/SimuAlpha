@@ -733,7 +733,6 @@ def resolve_same_bar_conflict(
 
 FillTypeLiteral = Literal["signal_close", "intraday_touch", "gap_fill", "end_of_data_mark"]
 
-
 # ─────────────────────────── pending-signal tranche-1 fill ───────────
 
 
@@ -805,6 +804,36 @@ def _try_tranche_1_fill_pending(
         leg_index=0,
         exit_reason=None,
     )
+
+
+# ─────────────────────────── exit-fill capper ────────────────────────
+
+
+def _cap_exit_fill_shares(
+    fill: FillRecord, max_shares: float, fee_bps: float
+) -> FillRecord:
+    """Return a copy of ``fill`` with shares/notional/fee scaled
+    down to ``max_shares`` if the original would over-sell.
+
+    Used in section 2e when applying ordered exits: evaluate_stop
+    returns a fill sized for the full remaining balance AT CALL
+    TIME, but TPs applied earlier in the same bar may have
+    already consumed some of that balance. Rather than duplicate
+    the arithmetic, we cap the stop fill to whatever's left.
+    Proportional scaling of fee; slippage is already baked into
+    price, so price is preserved verbatim.
+    """
+    from dataclasses import replace
+
+    if fill.shares <= max_shares + 1e-9:
+        return fill
+    if max_shares <= 0:
+        # Degenerate — caller should have short-circuited. Return
+        # a zero-share fill that downstream invariants can detect.
+        return replace(fill, shares=0.0, notional=0.0, fee=0.0)
+    capped_notional = max_shares * fill.price
+    capped_fee = apply_fee(capped_notional, fee_bps)
+    return replace(fill, shares=max_shares, notional=capped_notional, fee=capped_fee)
 
 
 # ─────────────────────────── result types ─────────────────────────────
@@ -2158,14 +2187,222 @@ def run_backtest(
                     )
 
         # ─── SECTION 2d: check open position for tranche adds ──────
-        # TODO(3a-iii-C): iterate tranche_queue in spec order,
-        # evaluate_tranche, first fill wins for this bar.
+        #
+        # One-tranche-per-bar ratchet. Iterate tranche_queue in
+        # spec order (which is numeric order by tranche_index),
+        # resolve each rule for THIS bar, and call evaluate_tranche.
+        # First fill wins — subsequent tranches wait for a later
+        # bar. Rationale: daily OHLC can't distinguish intra-bar
+        # order, so "one fill per bar" is the deterministic choice.
+        # If price gapped past multiple triggers on the same bar,
+        # the deeper ones will gap-fill on the NEXT bar.
 
-        # ─── SECTION 2e: check open position for exits ─────────────
-        # TODO(3a-iii-C): resolve stop + tp prices for this bar;
-        # evaluate_stop / evaluate_tp_legs / evaluate_time_stop;
-        # resolve_same_bar_conflict; apply exits; close position
-        # and emit trade when remaining_pct hits zero.
+        if open_position is not None and open_position.tranche_queue:
+            for tranche_idx, pct, rule in list(open_position.tranche_queue):
+                try:
+                    trigger = rule.price(bar, open_position)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "tranche rule resolve failed",
+                        extra={
+                            "ticker": ticker,
+                            "date": bar.date,
+                            "tranche_idx": tranche_idx,
+                            "err": str(exc),
+                        },
+                    )
+                    continue
+
+                if trigger is None or trigger <= 0:
+                    continue
+
+                fill = evaluate_tranche(
+                    bar=bar,
+                    position=open_position,
+                    tranche_index=tranche_idx,
+                    pct_of_position=pct,
+                    resolved_trigger=trigger,
+                    execution=spec.execution,
+                )
+                if fill is None:
+                    continue
+
+                open_position.tranches_filled.append(fill)
+                open_position.filled_capital += fill.notional
+                open_position.tranche_queue = [
+                    t for t in open_position.tranche_queue if t[0] != tranche_idx
+                ]
+                if record_decisions:
+                    bar_decisions.append((bar.date, BarDecision.ADD_TRANCHE))
+                break  # one-fill-per-bar
+
+        # ─── SECTION 2e: exit evaluation + same-bar conflict ───────
+        #
+        # Three exit sources per bar: stop, TP legs, time stop.
+        # Stop and TPs are resolved against the current bar's OHLC
+        # and fed to resolve_same_bar_conflict per
+        # spec.execution.same_bar_priority:
+        #   "stop": stop wins, TPs discarded
+        #   "tp":   TPs fire in spec order, stop fires for residual
+        # Time stop is evaluated separately and applied ONLY if
+        # stop/TP didn't already fully close the position
+        # (documented contract: time stop fires at close of the
+        # first qualifying bar, AFTER any market-driven exit).
+        #
+        # Stop/time exits as returned are sized for ALL remaining
+        # shares at call time — TPs earlier in the ordered list
+        # may have consumed some of that balance, so we cap via
+        # _cap_exit_fill_shares when applying.
+
+        if open_position is not None:
+            # Resolve stop price for this bar. Trailing stops read
+            # current_peak internally via the position_dynamic
+            # resolver; it was already ratcheted in SECTION 2a.
+            resolved_stop_price: Optional[float] = None
+            if open_position.stop_rule is not None:
+                try:
+                    resolved_stop_price = float(
+                        open_position.stop_rule.price(bar, open_position)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "stop rule resolve failed",
+                        extra={"ticker": ticker, "date": bar.date, "err": str(exc)},
+                    )
+
+            # Resolve TP prices. A leg whose rule can't resolve
+            # (e.g. an at_ma still warming up) is skipped for this
+            # bar — it'll be retried on the next.
+            resolved_tp_legs: list[tuple[int, float, float]] = []
+            for leg_idx, pct, rule in open_position.tp_queue:
+                try:
+                    tp_price = float(rule.price(bar, open_position))
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "tp rule resolve failed",
+                        extra={
+                            "ticker": ticker,
+                            "date": bar.date,
+                            "leg": leg_idx,
+                            "err": str(exc),
+                        },
+                    )
+                    continue
+                resolved_tp_legs.append((leg_idx, pct, tp_price))
+
+            # Evaluators.
+            stop_fill = (
+                evaluate_stop(
+                    bar, open_position, resolved_stop_price, spec.execution
+                )
+                if resolved_stop_price is not None
+                else None
+            )
+            tp_fills = evaluate_tp_legs(
+                bar, open_position, resolved_tp_legs, spec.execution
+            )
+            time_fill = evaluate_time_stop(
+                bar, open_position, open_position.time_stop_days, spec.execution
+            )
+
+            ordered_exits = resolve_same_bar_conflict(
+                stop_fill,
+                tp_fills,
+                spec.execution.same_bar_priority,
+            )
+
+            any_exit_fired = False
+            exit_decisions_this_bar: list[BarDecision] = []
+
+            total_entered_shares = sum(
+                f.shares for f in open_position.tranches_filled
+            )
+
+            def _remaining_shares() -> float:
+                return total_entered_shares - sum(
+                    f.shares for f in open_position.exits_taken
+                )
+
+            # Apply ordered exits (stop/TP per priority).
+            for exit_fill in ordered_exits:
+                remaining_before = _remaining_shares()
+                if remaining_before <= 1e-9:
+                    break  # already fully closed by earlier exit in list
+                capped = _cap_exit_fill_shares(
+                    exit_fill, remaining_before, spec.execution.fee_bps
+                )
+                if capped.shares <= 1e-9:
+                    continue
+
+                open_position.exits_taken.append(capped)
+                any_exit_fired = True
+
+                if capped.exit_reason == "take_profit":
+                    if capped.leg_index is not None:
+                        open_position.tp_queue = [
+                            t
+                            for t in open_position.tp_queue
+                            if t[0] != capped.leg_index
+                        ]
+                    exit_decisions_this_bar.append(BarDecision.TP_EXIT)
+                elif capped.exit_reason == "stop_loss":
+                    exit_decisions_this_bar.append(BarDecision.STOP_EXIT)
+
+                # Invariant: never over-exit.
+                if _remaining_shares() < -1e-6:
+                    raise BacktesterInvariantError(
+                        f"remaining shares went negative after applying "
+                        f"{capped.exit_reason} on {bar.date}: "
+                        f"entered={total_entered_shares} "
+                        f"taken={sum(f.shares for f in open_position.exits_taken)}"
+                    )
+
+            # Time stop: only if stop/TP left residual.
+            if time_fill is not None:
+                remaining_after_ordered = _remaining_shares()
+                if remaining_after_ordered > 1e-9:
+                    capped_time = _cap_exit_fill_shares(
+                        time_fill, remaining_after_ordered, spec.execution.fee_bps
+                    )
+                    if capped_time.shares > 1e-9:
+                        open_position.exits_taken.append(capped_time)
+                        any_exit_fired = True
+                        exit_decisions_this_bar.append(BarDecision.TIME_EXIT)
+                        if _remaining_shares() < -1e-6:
+                            raise BacktesterInvariantError(
+                                f"remaining shares went negative after time-stop "
+                                f"on {bar.date}"
+                            )
+
+            # Record the dominant decision for this bar. Priority
+            # for the trace: stop > tp > time (matches a reader's
+            # mental model of "worst news first").
+            if record_decisions and exit_decisions_this_bar:
+                if BarDecision.STOP_EXIT in exit_decisions_this_bar:
+                    dominant = BarDecision.STOP_EXIT
+                elif BarDecision.TP_EXIT in exit_decisions_this_bar:
+                    dominant = BarDecision.TP_EXIT
+                else:
+                    dominant = BarDecision.TIME_EXIT
+                bar_decisions.append((bar.date, dominant))
+
+            # Close the position if fully exited.
+            if any_exit_fired and _remaining_shares() <= 1e-9:
+                ctx = ctx_hook(bar, open_position) if ctx_hook is not None else None
+                try:
+                    trade = _close_and_emit_trade(open_position, bar, ctx=ctx)
+                except BacktesterInvariantError as exc:
+                    log.error(
+                        "invariant violated closing trade",
+                        extra={
+                            "ticker": ticker,
+                            "date": bar.date,
+                            "err": str(exc),
+                        },
+                    )
+                    raise
+                trades.append(trade)
+                open_position = None
 
         # ─── SECTION 2f: mark-to-market equity point ───────────────
         # TODO(3a-iii-D): compute cash + positions_value and emit
