@@ -32,9 +32,14 @@ from simualpha_quant.schemas.simulate import (
 
 
 FillType = Literal[
-    "signal_close",    # filled at signal bar's close (tranche 1 default)
-    "intraday_touch",  # later bar's range covered the trigger price
-    "gap_fill",        # bar opened past the trigger, filled at bar open
+    "signal_close",      # filled at signal bar's close (tranche 1 default)
+    "intraday_touch",    # later bar's range covered the trigger price
+    "gap_fill",          # bar opened past the trigger, filled at bar open
+    "end_of_data_mark",  # synthetic close for positions still open at the
+                         # end of the date range. NOT a market-driven exit —
+                         # downstream stats should filter these when asking
+                         # "did the strategy's exit rules work?" as opposed
+                         # to "what was the mark at the end of the window?".
 ]
 
 
