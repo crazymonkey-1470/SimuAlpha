@@ -124,6 +124,16 @@ class TradeRecord:
 
     context: TradeContext | None = None
 
+    # Diagnostic fields populated by the equity-backtester's
+    # _close_and_emit_trade helper. Both are derivable from
+    # ``fills`` but cached here so downstream analytics don't have
+    # to walk the fill log on every trade. ``exit_reason`` is the
+    # reason tag from the FINAL exit fill (stop_loss / take_profit
+    # / time_stop / end_of_data). ``holding_duration_days`` is the
+    # calendar days between entry_date and exit_date inclusive.
+    exit_reason: ExitReason | None = None
+    holding_duration_days: int | None = None
+
     @property
     def is_win(self) -> bool:
         return self.pct_return > 0.0

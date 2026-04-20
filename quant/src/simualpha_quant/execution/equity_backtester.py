@@ -1113,3 +1113,329 @@ def _resolve_stop(
         return max(initial_stop, ratcheted)
 
     return ResolvedRule.position_dynamic(trailing_resolver)
+
+
+# ─────────────────────────── invariants ───────────────────────────────
+
+
+class BacktesterInvariantError(RuntimeError):
+    """Internal consistency violation.
+
+    Raised when a ``_close_and_emit_trade`` / ``_open_position`` call
+    detects state that should be impossible — e.g. exit shares
+    exceed entry shares, an entry_fill with ``side != "entry"``, or
+    a closed position with no filled tranches. Always indicates a
+    bug in the backtester's own bookkeeping, never a user-strategy
+    issue. Should never fire in production; tests assert against it
+    to catch regressions.
+    """
+
+
+# ─────────────────────────── sizing helper ────────────────────────────
+
+
+def _planned_capital_for(spec) -> float:
+    """Per-position planned-total USD stake.
+
+    - ``fixed``:              exact ``params.stake_usd``.
+    - ``volatility_target`` / ``kelly_fraction``: fall back to
+                              ``initial_capital / max_open_positions``.
+                              The full vol-target / kelly math belongs
+                              in a dedicated sizing module, not in
+                              the backtester; the fallback lets
+                              specs that opt in to those sizing
+                              methods still run end-to-end with
+                              reasonable per-position budgets. A
+                              follow-up can replace the fallback
+                              with the actual formulas without
+                              touching the backtester.
+    """
+    method = spec.position_sizing.method
+    params = spec.position_sizing.params
+    if method == "fixed":
+        return float(params["stake_usd"])
+    if spec.max_open_positions <= 0:
+        return float(spec.initial_capital)
+    return float(spec.initial_capital) / float(spec.max_open_positions)
+
+
+# ─────────────────────────── _open_position ───────────────────────────
+
+
+def _open_position(
+    signal_date: date,
+    bar: Bar,
+    tranche_ladder: list[tuple[float, ResolvedRule]],
+    tp_legs: list[tuple[float, ResolvedRule, str]],
+    stop_rule: Optional[ResolvedRule],
+    time_stop_days: Optional[int],
+    spec,
+    entry_fill,
+    ticker: str,
+) -> PositionState:
+    """Construct a fresh PositionState after tranche-1 has filled.
+
+    Inputs:
+      signal_date        — date the entry signal fired (may ≠ entry_fill.date
+                           when wait-for-fill promoted the signal and
+                           tranche-1 filled on a later bar).
+      bar                — the bar on which tranche-1 filled.
+      tranche_ladder     — full (pct, ResolvedRule) list from
+                           _resolve_tranche_ladder; INCLUDES tranche 1.
+                           Index 0 is assumed already filled via
+                           entry_fill; the remainder populates
+                           tranche_queue.
+      tp_legs            — full (pct, ResolvedRule, label) list from
+                           _resolve_tp_legs. Labels are dropped in the
+                           queue (they're for chart annotation only).
+      stop_rule          — already-resolved stop (static/dynamic/
+                           trailing). None when the spec's stop could
+                           not resolve at entry; caller handles that
+                           edge case upstream.
+      time_stop_days     — as on spec.exit, may be None.
+      spec               — full StrategySpec; read for position sizing.
+      entry_fill         — the completed tranche-1 FillRecord.
+      ticker             — for PositionState.ticker and error messages.
+
+    Output: PositionState ready for the main loop to iterate.
+
+    Caller owns: logging the open, appending to the open-positions
+    tracker, and recording a BarDecision.ENTRY in the trace.
+    """
+    if entry_fill.side != "entry":
+        raise BacktesterInvariantError(
+            f"_open_position: entry_fill.side must be 'entry', got "
+            f"{entry_fill.side!r} (ticker={ticker})"
+        )
+    if entry_fill.shares <= 0:
+        raise BacktesterInvariantError(
+            f"_open_position: entry_fill.shares must be positive, got "
+            f"{entry_fill.shares} (ticker={ticker})"
+        )
+
+    planned_capital = _planned_capital_for(spec)
+
+    # Tranche 1 (index 0) already filled via entry_fill. Remaining
+    # tranches are the tail of the ladder, tagged with their spec
+    # indices so main-loop logs / skipped-signal records can
+    # reference them by number.
+    remaining_tranches: list[tuple[int, float, ResolvedRule]] = [
+        (i, pct, rule)
+        for i, (pct, rule) in enumerate(tranche_ladder)
+        if i > 0
+    ]
+    tp_queue: list[tuple[int, float, ResolvedRule]] = [
+        (i, pct, rule) for i, (pct, rule, _label) in enumerate(tp_legs)
+    ]
+
+    # current_peak seeded at max(entry_fill.price, bar.high). Using
+    # entry_fill.price covers the gap_fill case where bar.open is
+    # above bar.high would never happen but bar.high might be below
+    # a slippage-adjusted entry price in a degenerate bar. The max
+    # over both is always a valid "seen so far" mark.
+    seeded_peak = max(float(entry_fill.price), float(bar.high))
+
+    return PositionState(
+        ticker=ticker,
+        planned_capital=planned_capital,
+        entry_date=entry_fill.date,
+        entry_signal_date=signal_date,
+        entry_signal_close=float(bar.close),
+        filled_capital=float(entry_fill.notional),
+        tranches_filled=[entry_fill],
+        exits_taken=[],
+        tranche_queue=remaining_tranches,
+        tp_queue=tp_queue,
+        stop_rule=stop_rule,
+        time_stop_days=time_stop_days,
+        current_peak=seeded_peak,
+    )
+
+
+# ─────────────────────────── _close_and_emit_trade ────────────────────
+
+
+def _weighted_avg_price(fills: list) -> Optional[float]:
+    """Volume-weighted average fill price. None when no fills or
+    total shares is zero (degenerate; caller handles)."""
+    total_shares = sum(f.shares for f in fills)
+    if total_shares <= 0:
+        return None
+    total_notional = sum(f.notional for f in fills)
+    return total_notional / total_shares
+
+
+def _close_and_emit_trade(
+    position: PositionState,
+    last_bar: Bar,
+    ctx=None,
+):
+    """Transform a closed PositionState into a TradeRecord.
+
+    Called in two scenarios:
+
+    1. The position's ``remaining_pct`` has hit 0 — every entered
+       share has an offsetting exit.
+    2. End-of-data force-close — the last bar of the date range
+       reached while the position was still open. The main loop
+       appends a synthetic ``end_of_data_mark`` fill for the
+       residual before calling this, so from here it looks like
+       case (1).
+
+    Returns a TradeRecord carrying:
+
+      ticker, entry_date, exit_date  — exit_date is the latest exit
+                                       FillRecord's date, or
+                                       last_bar.date if the caller
+                                       passed us a position with no
+                                       exits (bug, raises).
+      entry_price, exit_price        — volume-weighted averages.
+      pct_return                     — NET of fees and slippage.
+                                       Slippage is already baked
+                                       into fill prices
+                                       (apply_slippage adjusts the
+                                       price before shares/notional
+                                       are computed). Fees are
+                                       subtracted explicitly:
+                                         cost_basis = entry_notional
+                                                      + entry_fees
+                                         proceeds   = exit_notional
+                                                      - exit_fees
+                                         pct_return = (proceeds -
+                                                       cost_basis) /
+                                                      cost_basis
+                                       A half-filled position's
+                                       pct_return is therefore
+                                       measured against the
+                                       ACTUAL DEPLOYED capital
+                                       (cost_basis), not the
+                                       planned capital — which is
+                                       what the user amendment
+                                       calls for.
+      planned_capital, filled_capital — copied from position.
+      fills                          — entries + exits, in bar order.
+      tranche_entries (legacy)       — (date, price, pct_of_planned)
+                                       tuples kept for the existing
+                                       chart-annotation code.
+      exit_reason                    — the final exit fill's reason.
+      holding_duration_days          — calendar days entry→exit.
+      context                        — ctx argument if it's a
+                                       TradeContext, else None.
+                                       The existing
+                                       enrich_trades_with_context
+                                       pass can still fill this
+                                       post-hoc if ctx was None
+                                       here.
+
+    Pure transformation. One DEBUG-level log; no other side
+    effects.
+    """
+    if not position.tranches_filled:
+        raise BacktesterInvariantError(
+            f"_close_and_emit_trade: {position.ticker} position has no "
+            f"filled tranches — _open_position should have rejected this"
+        )
+
+    total_entered_shares = sum(t.shares for t in position.tranches_filled)
+    total_exited_shares = sum(e.shares for e in position.exits_taken)
+
+    if total_entered_shares <= 0:
+        raise BacktesterInvariantError(
+            f"_close_and_emit_trade: {position.ticker} has zero entry shares "
+            f"despite {len(position.tranches_filled)} fill records"
+        )
+
+    # Allow a hair of floating-point slack when checking the
+    # exits-don't-exceed-entries invariant.
+    share_slack = max(total_entered_shares * 1e-9, 1e-9)
+    if total_exited_shares > total_entered_shares + share_slack:
+        raise BacktesterInvariantError(
+            f"_close_and_emit_trade: {position.ticker} exited "
+            f"{total_exited_shares:.6f} shares but only entered "
+            f"{total_entered_shares:.6f}"
+        )
+
+    entry_notional = sum(f.notional for f in position.tranches_filled)
+    entry_fee_total = sum(f.fee for f in position.tranches_filled)
+    exit_notional = sum(f.notional for f in position.exits_taken)
+    exit_fee_total = sum(f.fee for f in position.exits_taken)
+
+    avg_entry = _weighted_avg_price(position.tranches_filled)
+    avg_exit = _weighted_avg_price(position.exits_taken)
+
+    cost_basis = entry_notional + entry_fee_total
+    proceeds = exit_notional - exit_fee_total
+    pct_return = (proceeds - cost_basis) / cost_basis if cost_basis > 0 else 0.0
+
+    if position.exits_taken:
+        exit_date_: Optional[date] = max(f.date for f in position.exits_taken)
+        final_exit_reason = position.exits_taken[-1].exit_reason
+    else:
+        # Caller didn't append the force-close fill — treat as
+        # end-of-data mark for reporting but flag it with a log.
+        exit_date_ = last_bar.date
+        final_exit_reason = None
+        log.warning(
+            "closing trade with no exit fills; emitting with exit_date=last_bar",
+            extra={"ticker": position.ticker, "entry_date": position.entry_date},
+        )
+
+    holding_duration_days: Optional[int] = (
+        (exit_date_ - position.entry_date).days if exit_date_ is not None else None
+    )
+
+    # Legacy tranche_entries shape for chart-annotation back-compat.
+    # pct_of_planned_position = fill_notional / planned_capital
+    # (clamped at [0, 1] — a fill can't legitimately exceed planned).
+    tranche_entries_legacy: list[tuple[date, float, float]] = []
+    for f in position.tranches_filled:
+        if position.planned_capital > 0:
+            pct = min(1.0, max(0.0, f.notional / position.planned_capital))
+        else:
+            pct = 0.0
+        tranche_entries_legacy.append((f.date, float(f.price), pct))
+
+    all_fills = list(position.tranches_filled) + list(position.exits_taken)
+
+    # ctx passthrough. Only accept TradeContext-shaped objects;
+    # anything else is ignored and left for enrich_trades_with_context
+    # to fill post-hoc. Import deferred so the backtester module can
+    # be used without the full execution package installed.
+    if ctx is not None:
+        from simualpha_quant.execution.trade_log import TradeContext
+
+        context_attached = ctx if isinstance(ctx, TradeContext) else None
+    else:
+        context_attached = None
+
+    from simualpha_quant.execution.trade_log import TradeRecord
+
+    log.debug(
+        "trade closed",
+        extra={
+            "ticker": position.ticker,
+            "entry_date": position.entry_date,
+            "exit_date": exit_date_,
+            "pct_return": pct_return,
+            "planned_capital": position.planned_capital,
+            "filled_capital": position.filled_capital,
+            "final_exit_reason": final_exit_reason,
+            "holding_duration_days": holding_duration_days,
+        },
+    )
+
+    return TradeRecord(
+        ticker=position.ticker,
+        entry_date=position.entry_date,
+        exit_date=exit_date_,
+        entry_price=float(avg_entry) if avg_entry is not None else 0.0,
+        exit_price=float(avg_exit) if avg_exit is not None else None,
+        pct_return=float(pct_return),
+        planned_capital=float(position.planned_capital),
+        filled_capital=float(position.filled_capital),
+        fills=all_fills,
+        tranche_entries=tranche_entries_legacy,
+        context=context_attached,
+        exit_reason=final_exit_reason,
+        holding_duration_days=holding_duration_days,
+    )
