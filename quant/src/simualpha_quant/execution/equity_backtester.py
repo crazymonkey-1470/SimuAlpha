@@ -1560,3 +1560,255 @@ def _close_and_emit_trade(
         exit_reason=final_exit_reason,
         holding_duration_days=holding_duration_days,
     )
+
+
+# ─────────────────────────── bar row → Bar helper ─────────────────────
+
+
+def _row_to_bar(prices, bar_idx: int) -> Bar:
+    """Pull one OHLCV row out of a prices DataFrame by position.
+
+    Fails loud on missing columns — callers (primarily
+    ``run_backtest``) have already validated the DataFrame's
+    column set upfront, so a missing column here is a bug.
+
+    The frame's index supplies the date. Pandas Timestamps are
+    converted to native ``datetime.date`` so downstream primitives
+    compare cleanly against ``signal_set`` (which is a frozenset
+    of ``date``).
+    """
+    import pandas as pd
+
+    row = prices.iloc[bar_idx]
+    raw_date = prices.index[bar_idx]
+    bar_date = pd.Timestamp(raw_date).date()
+    return Bar(
+        date=bar_date,
+        open=float(row["open"]),
+        high=float(row["high"]),
+        low=float(row["low"]),
+        close=float(row["close"]),
+        volume=float(row["volume"]),
+    )
+
+
+# ─────────────────────────── run_backtest ─────────────────────────────
+
+
+_REQUIRED_PRICE_COLUMNS = ("open", "high", "low", "close", "volume")
+
+
+def run_backtest(
+    spec,
+    ticker: str,
+    prices,
+    *,
+    initial_capital: float = 100_000.0,
+    record_decisions: bool = False,
+    ctx_hook: Optional[Callable[["Bar", "PositionState"], dict]] = None,
+) -> BacktestResult:
+    """Run the single-ticker equity backtester end-to-end.
+
+    Iterates ``prices`` chronologically, detects entry signals via
+    the pattern detector or DSL encoded in ``spec.entry``, opens
+    at most one position at a time against this ticker, manages
+    the tranche ladder + TP legs + stop + time stop as bars
+    arrive, and force-closes at end-of-data with
+    ``fill_type="end_of_data_mark"`` if anything remains open.
+
+    ASSUMPTIONS (violations raise ``ValueError`` — bad data is a
+    caller bug, not a runtime fallback):
+
+    - ``prices`` is a pandas DataFrame with columns
+      ``open, high, low, close, volume``.
+    - Index is a DatetimeIndex (or anything Timestamp-parseable),
+      sorted ascending, with no duplicate dates.
+    - Prices are split- and dividend-adjusted (the module
+      docstring's contract).
+
+    Parameters
+    ----------
+    spec : StrategySpec
+        Fully-validated strategy; execution knobs read from
+        ``spec.execution``.
+    ticker : str
+        Symbol this run is operating on. Used only for logging
+        and the emitted records — the helper does not fetch
+        prices.
+    prices : pandas.DataFrame
+        The price frame described above.
+    initial_capital : float, default 100_000
+        Starting cash for the equity curve. Per-position sizing
+        is handled separately via ``spec.position_sizing``.
+    record_decisions : bool, default False
+        Enable the per-bar ``BarDecision`` trace on the
+        returned ``BacktestResult``. Off by default because
+        it's O(n_bars) memory that only a debugger / OpenClaw
+        post-mortem needs.
+    ctx_hook : callable or None
+        Optional hook invoked at trade-close time to attach a
+        chart / analytics context dict. Signature
+        ``(bar, position) -> dict``. Reserved for Stage 4.5
+        chart threading; unused here in 3a-iii-A.
+
+    Returns
+    -------
+    BacktestResult
+        Trades (fully-closed including end-of-data mark), skipped
+        signals, per-bar equity points, and the opt-in
+        bar-decision trace.
+
+    Notes
+    -----
+    The loop body is assembled across 3a-iii-A (shell + peak
+    ratcheting), 3a-iii-B (signal processing + entry),
+    3a-iii-C (tranche adds + exits + trade emission), and
+    3a-iii-D (equity marking + end-of-data force-close). THIS
+    commit ships the shell only — sections 2b through 2g are
+    deliberately stubbed.
+    """
+    import pandas as pd
+
+    # ─── SECTION 1: input validation ────────────────────────────────
+
+    if not hasattr(prices, "columns") or not hasattr(prices, "index"):
+        raise ValueError(
+            f"run_backtest({ticker}): prices must be a pandas DataFrame"
+        )
+    missing = [c for c in _REQUIRED_PRICE_COLUMNS if c not in prices.columns]
+    if missing:
+        raise ValueError(
+            f"run_backtest({ticker}): prices missing required columns: {missing}"
+        )
+    if len(prices) == 0:
+        raise ValueError(f"run_backtest({ticker}): prices is empty")
+
+    # Index must be Timestamp-parseable and sorted ascending with no
+    # duplicates. We don't insist on a DatetimeIndex specifically so
+    # ticker fixtures using a `date` column set as index also work.
+    try:
+        parsed_index = pd.DatetimeIndex(prices.index)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(
+            f"run_backtest({ticker}): prices index cannot be parsed as "
+            f"DatetimeIndex: {exc}"
+        ) from exc
+    if not parsed_index.is_monotonic_increasing:
+        raise ValueError(
+            f"run_backtest({ticker}): prices index must be sorted ascending"
+        )
+    if parsed_index.has_duplicates:
+        dupes = parsed_index[parsed_index.duplicated()]
+        raise ValueError(
+            f"run_backtest({ticker}): prices index has duplicate dates: "
+            f"{list(dupes[:5])}{' ...' if len(dupes) > 5 else ''}"
+        )
+
+    # ─── SECTION 1: signal-set + date-index precomputation ──────────
+
+    signal_dates = _build_signal_set(spec, ticker, prices)
+    date_idx = _date_to_index_map(prices)
+
+    # ─── SECTION 1: loop state initialization ───────────────────────
+
+    open_position: Optional[PositionState] = None
+    pending_signals: list[_PendingSignal] = []
+    trades: list = []
+    skipped: list = []
+    equity_points: list[EquityPoint] = []
+    bar_decisions: list[tuple[date, BarDecision]] = []
+
+    # Cash / realized-P&L accounting is filled in by 3a-iii-D
+    # alongside the equity-point emission. Kept in scope here so the
+    # main loop's state surface is explicit from the top.
+    cash: float = float(initial_capital)
+    realized_pnl: float = 0.0
+
+    log.info(
+        "backtest start",
+        extra={
+            "ticker": ticker,
+            "signal_count": len(signal_dates),
+            "bars": len(prices),
+            "window_start": str(parsed_index[0].date()),
+            "window_end": str(parsed_index[-1].date()),
+            "initial_capital": initial_capital,
+        },
+    )
+
+    # ─── SECTION 2: per-bar iteration ──────────────────────────────
+
+    for bar_idx in range(len(prices)):
+        bar = _row_to_bar(prices, bar_idx)
+
+        # ─── SECTION 2-PRE: bar sanity check ───────────────────────
+
+        if not _bar_is_sane(bar):
+            log.warning(
+                "malformed bar, skipping",
+                extra={"ticker": ticker, "bar_idx": bar_idx, "date": bar.date},
+            )
+            if record_decisions:
+                bar_decisions.append((bar.date, BarDecision.SKIP))
+            continue
+
+        # ─── SECTION 2a: update current_peak on open position ──────
+
+        if open_position is not None:
+            open_position.current_peak = updated_peak(
+                open_position.current_peak, bar
+            )
+
+        # ─── SECTION 2b: process pending signals ───────────────────
+        # TODO(3a-iii-B): iterate pending_signals; re-check
+        # tranche-1 trigger; decrement wait counter; promote to
+        # open position or emit tranche_1_unfilled_within_wait_cap
+        # skip when counter expires.
+
+        # ─── SECTION 2c: check for new signal on this bar ──────────
+        # TODO(3a-iii-B): resolve ladder / tp legs / stop at signal
+        # bar; attempt tranche-1 fill via evaluate_entry; open
+        # immediately or push onto pending_signals; emit
+        # same_ticker_already_open skip if slot is busy.
+
+        # ─── SECTION 2d: check open position for tranche adds ──────
+        # TODO(3a-iii-C): iterate tranche_queue in spec order,
+        # evaluate_tranche, first fill wins for this bar.
+
+        # ─── SECTION 2e: check open position for exits ─────────────
+        # TODO(3a-iii-C): resolve stop + tp prices for this bar;
+        # evaluate_stop / evaluate_tp_legs / evaluate_time_stop;
+        # resolve_same_bar_conflict; apply exits; close position
+        # and emit trade when remaining_pct hits zero.
+
+        # ─── SECTION 2f: mark-to-market equity point ───────────────
+        # TODO(3a-iii-D): compute cash + positions_value and emit
+        # an EquityPoint for this bar.
+
+        # ─── SECTION 2g: bar decisions trace ───────────────────────
+        # TODO(3a-iii-B/C): record_decisions-gated append of the
+        # dominant BarDecision for this bar (currently only SKIP
+        # on malformed bars, above).
+
+    # ─── SECTION 3: end-of-data force-close ────────────────────────
+    # TODO(3a-iii-D): if open_position is not None, synthesize an
+    # end_of_data_mark fill at the last bar's close, apply it,
+    # and emit the final trade.
+
+    # ─── SECTION 4: return ─────────────────────────────────────────
+
+    log.info(
+        "backtest done",
+        extra={
+            "ticker": ticker,
+            "trades": len(trades),
+            "skipped": len(skipped),
+            "equity_points": len(equity_points),
+        },
+    )
+    return BacktestResult(
+        trades=trades,
+        skipped=skipped,
+        equity_points=equity_points,
+        bar_decisions=bar_decisions,
+    )
