@@ -10,6 +10,7 @@ const { updateOutcomes } = require('./services/signalTracker');
 const { invoke: invokeSkill } = require('./skills');
 const supabase = require('./services/supabase');
 const { upsertMacroContext, getLatestMacroContext } = require('./services/macro');
+const { runWeeklyReport } = require('./cron/weekly_report_cron');
 
 /**
  * Run the full pipeline: Stage 1 → 2 → 3 → 4 sequentially.
@@ -260,6 +261,32 @@ function startCron() {
     }
   });
 
+  // ═══════════════════════════════════════════
+  // Weekly Market Report
+  // ═══════════════════════════════════════════
+
+  // Wednesday 12:00 EST (17:00 UTC)
+  // Analyzes all posts from past week, generates report, sends to Telegram
+  cron.schedule('0 17 * * 3', async () => {
+    log.info('Weekly report — Wednesday 12pm EST');
+    try {
+      await runWeeklyReport();
+    } catch (err) {
+      log.error({ err }, 'Weekly report (Wednesday) failed');
+    }
+  });
+
+  // Friday 16:00 EST (21:00 UTC)
+  // Second report of the week (captures Fri/Sat activity)
+  cron.schedule('0 21 * * 5', async () => {
+    log.info('Weekly report — Friday 4pm EST');
+    try {
+      await runWeeklyReport();
+    } catch (err) {
+      log.error({ err }, 'Weekly report (Friday) failed');
+    }
+  });
+
   log.info({
     schedules: {
       fullPipeline: 'Sunday 6am ET + Wednesday 6am ET',
@@ -271,6 +298,7 @@ function startCron() {
       xDailyScan: 'Daily 9am ET',
       xSpotlight: 'Mon/Wed/Fri 12pm ET',
       xMarketContext: 'Tue/Thu 11am ET',
+      weeklyReport: 'Wednesday 12pm EST + Friday 4pm EST',
     },
   }, 'Cron schedules active');
 }
