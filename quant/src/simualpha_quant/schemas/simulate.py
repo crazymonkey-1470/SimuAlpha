@@ -77,6 +77,30 @@ class TradeChart(BaseModel):
     chart_status: ChartStatus = "pending"
 
 
+SkippedReason = Literal[
+    "max_open_positions",  # engine already at the cap on this bar
+    "same_bar_duplicate",  # same ticker had an earlier signal same day
+    "price_rule_unresolvable",  # tranche 1 trigger couldn't resolve
+    "no_price_data",  # universe resolved but ticker had no bars
+]
+
+
+class SkippedSignalRecord(BaseModel):
+    """A signal that fired but did NOT open a trade.
+
+    Surfaced so OpenClaw can investigate ``total_signals -
+    total_trades`` gaps without the backtester having to be rerun
+    with verbose logging. Every signal the detector reports is
+    either in ``trade_log`` or in ``skipped_signals`` — the two
+    sets are disjoint and complete.
+    """
+
+    ticker: str
+    signal_date: date
+    reason: SkippedReason
+    detail: str | None = None
+
+
 class SimulateStrategyResponse(BaseModel):
     summary_stats: SimulationSummary
     per_horizon_outcomes: list[HorizonOutcome]
@@ -86,6 +110,10 @@ class SimulateStrategyResponse(BaseModel):
     # OHLC-style bucketed curve (open/high/low/close per bucket).
     equity_curve_ohlc: list[EquityOHLC]
     trade_log_sample: list[TradeChart]
+    # Signals that fired but produced no trade. Empty by default;
+    # populated whenever the backtester's signal-gating logic
+    # rejects a signal. Always disjoint with trade_log.
+    skipped_signals: list[SkippedSignalRecord] = Field(default_factory=list)
     charts_job_id: str | None = None
     cached: bool = False
     hash: str
