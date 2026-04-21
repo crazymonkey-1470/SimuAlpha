@@ -237,3 +237,306 @@ class MultiTickerState:
     realized_pnl: float = 0.0
     initial_capital: float = 100_000.0
     max_open_positions: int = 5
+
+
+# ─────────────────────────── preparation helpers ─────────────────────
+#
+# All functions below are PURE — they return values and never mutate
+# any external state. The only state constructor is
+# ``initialize_multi_ticker_state`` at the bottom; every other way to
+# build a ``MultiTickerState`` is considered an invariant break.
+#
+# Preparation failures raise ``ValueError`` with ticker-tagged
+# messages. Unlike signal-detection errors (which are data issues —
+# the detector might reasonably fail on a noisy frame), preparation
+# problems are caller bugs: a typo in the universe list, a missing
+# column in a price frame, a date index that isn't sorted. Silent
+# degradation would hide real bugs.
+
+
+_REQUIRED_PRICE_COLUMNS = ("open", "high", "low", "close", "volume")
+
+
+def _validate_price_frame(ticker: str, prices: pd.DataFrame) -> pd.DatetimeIndex:
+    """Mirrors run_backtest's validation for a single price frame.
+
+    Raises ``ValueError`` on column / emptiness / monotonicity /
+    duplicate-date violations. Returns the parsed DatetimeIndex
+    for downstream use (``_build_union_date_index`` re-uses it).
+    """
+    if not hasattr(prices, "columns") or not hasattr(prices, "index"):
+        raise ValueError(
+            f"orchestrator({ticker}): prices must be a pandas DataFrame"
+        )
+    missing = [c for c in _REQUIRED_PRICE_COLUMNS if c not in prices.columns]
+    if missing:
+        raise ValueError(
+            f"orchestrator({ticker}): prices missing required columns: {missing}"
+        )
+    if len(prices) == 0:
+        raise ValueError(f"orchestrator({ticker}): prices is empty")
+
+    try:
+        parsed = pd.DatetimeIndex(prices.index)
+    except Exception as exc:
+        raise ValueError(
+            f"orchestrator({ticker}): prices index cannot be parsed as "
+            f"DatetimeIndex: {exc}"
+        ) from exc
+    if not parsed.is_monotonic_increasing:
+        raise ValueError(
+            f"orchestrator({ticker}): prices index must be sorted ascending"
+        )
+    if parsed.has_duplicates:
+        dupes = parsed[parsed.duplicated()]
+        raise ValueError(
+            f"orchestrator({ticker}): prices index has duplicate dates: "
+            f"{list(dupes[:5])}{' ...' if len(dupes) > 5 else ''}"
+        )
+    return parsed
+
+
+def _build_universe_signal_sets(
+    spec, universe: list[str], prices_by_ticker: dict[str, pd.DataFrame]
+) -> dict[str, frozenset[date]]:
+    """Run ``_build_signal_set`` for every ticker and collect the
+    results into a single mapping.
+
+    Per-ticker detector failures are absorbed — the underlying
+    ``_build_signal_set`` already logs ERROR and returns an empty
+    frozenset for that ticker, so the aggregation keeps going. This
+    matches the single-ticker defensive pattern: one bad detector
+    shouldn't torpedo the whole universe.
+
+    Emits a single INFO log summarizing aggregate counts so a
+    low-total-trade outcome is diagnosable directly from the log.
+    """
+    out: dict[str, frozenset[date]] = {}
+    aggregate = 0
+    empty_tickers: list[str] = []
+    for ticker in universe:
+        prices = prices_by_ticker[ticker]
+        sig_set = _build_signal_set(spec, ticker, prices)
+        out[ticker] = sig_set
+        aggregate += len(sig_set)
+        if not sig_set:
+            empty_tickers.append(ticker)
+
+    log.info(
+        "universe signals built",
+        extra={
+            "universe_size": len(universe),
+            "aggregate_signals": aggregate,
+            "tickers_with_no_signals": empty_tickers,
+        },
+    )
+    return out
+
+
+def _build_union_date_index(
+    prices_by_ticker: dict[str, pd.DataFrame],
+) -> list[date]:
+    """Union of every ticker's trading dates, sorted ascending.
+
+    UNION rather than intersection: in a multi-ticker equity
+    backtest we want to process every day any ticker has data
+    for. A day where only some tickers have bars is a day where
+    the missing tickers simply don't get evaluated; they contribute
+    nothing to the per-date step but shouldn't drop the date
+    entirely, because other tickers DO have live signals there.
+
+    Emits a summary INFO log at the end: total unique dates,
+    window start/end, ticker count. No raise — an empty
+    ``prices_by_ticker`` returns an empty list and the downstream
+    loop simply does nothing.
+    """
+    all_dates: set[date] = set()
+    for ticker, prices in prices_by_ticker.items():
+        parsed = pd.DatetimeIndex(prices.index)
+        all_dates.update(pd.Timestamp(d).date() for d in parsed)
+
+    sorted_dates = sorted(all_dates)
+    log.info(
+        "union date index built",
+        extra={
+            "unique_dates": len(sorted_dates),
+            "window_start": str(sorted_dates[0]) if sorted_dates else None,
+            "window_end": str(sorted_dates[-1]) if sorted_dates else None,
+            "ticker_count": len(prices_by_ticker),
+        },
+    )
+    return sorted_dates
+
+
+def _build_ticker_date_index(prices: pd.DataFrame) -> dict[date, int]:
+    """Per-ticker date → integer bar index. Wraps equity_backtester's
+    ``_date_to_index_map`` so this module's preparation surface has
+    a named, documented helper for symmetry with the other
+    _build_* functions. O(1) lookups thereafter.
+    """
+    return _date_to_index_map(prices)
+
+
+def _build_price_pivot_cache(prices: pd.DataFrame, ticker: str) -> list:
+    """Wave-pivot detection run once per ticker at startup.
+
+    Delegates to ``_detect_pivots_cached`` from equity_backtester,
+    which uses the "intermediate" sensitivity the Stage-3 patterns
+    are calibrated against. Per-date rule resolution reads this
+    cached result; nothing recomputes pivots inside the main loop.
+
+    Defensive: if pivot detection raises, log a WARNING tagged
+    with the ticker and return an empty list. An empty pivot list
+    means ``at_fib`` rules will fail to resolve, which the main
+    loop handles as ``price_rule_unresolvable`` skips — one bad
+    ticker should not kill the whole universe.
+    """
+    try:
+        return _detect_pivots_cached(prices)
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "pivot detection failed, treating as no pivots",
+            extra={"ticker": ticker, "err": str(exc)},
+        )
+        return []
+
+
+def _get_bar_for_ticker(
+    state: MultiTickerState, ticker: str, current_date: date
+) -> Optional[Bar]:
+    """Return the Bar for ``ticker`` on ``current_date``, or None.
+
+    Used by the per-date step (3b-i-C) to check presence before
+    attempting any per-ticker logic. ``None`` means "this ticker
+    simply has no bar on this date" — holiday, listing gap,
+    calendar mismatch across the universe, etc. Caller skips this
+    ticker for this date and moves on.
+
+    Does NOT apply the ``_bar_is_sane`` check — that's the per-
+    date step's responsibility (the single-ticker backtester does
+    its sanity check AFTER pulling the bar, and we mirror that).
+    """
+    idx = state.date_to_idx.get(ticker, {}).get(current_date)
+    if idx is None:
+        return None
+    prices = state.price_frames.get(ticker)
+    if prices is None:
+        return None
+    return _row_to_bar(prices, idx)
+
+
+# ─────────────────────────── state constructor ───────────────────────
+
+
+def initialize_multi_ticker_state(
+    spec,
+    universe: list[str],
+    prices_by_ticker: dict[str, pd.DataFrame],
+    initial_capital: float,
+    max_open_positions: int,
+) -> MultiTickerState:
+    """Single canonical constructor for ``MultiTickerState``.
+
+    Direct ``MultiTickerState(...)`` construction elsewhere is an
+    invariant break — the per-ticker dicts must be populated
+    consistently, which is what this function guarantees. Every
+    code path in the orchestrator's public surface (3b-i-D)
+    starts from here.
+
+    VALIDATION
+
+    * Every ticker in ``universe`` must have a matching entry in
+      ``prices_by_ticker``. A missing ticker raises ``ValueError``
+      naming the specific offender. Extra tickers in
+      ``prices_by_ticker`` that aren't in ``universe`` are logged
+      (INFO) and ignored — the universe defines the run.
+    * Each price frame is validated via ``_validate_price_frame``
+      (columns / parseable index / sorted / unique). Failures
+      raise ``ValueError`` with a ticker-tagged message.
+    * ``initial_capital`` must be positive; ``max_open_positions``
+      must be positive. Violations raise ``ValueError``.
+
+    STATE POPULATION
+
+    After validation, calls the four preparation helpers in order:
+    universe-wide signal sets, per-ticker date indices, per-ticker
+    pivots, and a final MultiTickerState construction with empty
+    pending/open/trade/skipped/equity/decision collections plus the
+    cash and realized-P&L accumulators initialized to their
+    starting values.
+
+    Emits one INFO summary log at the end so a reader of the
+    Railway / CI output sees the run's shape at a glance.
+    """
+    if initial_capital <= 0:
+        raise ValueError(
+            f"orchestrator: initial_capital must be positive, got {initial_capital}"
+        )
+    if max_open_positions <= 0:
+        raise ValueError(
+            f"orchestrator: max_open_positions must be positive, got {max_open_positions}"
+        )
+
+    missing_tickers = [t for t in universe if t not in prices_by_ticker]
+    if missing_tickers:
+        raise ValueError(
+            f"orchestrator: universe tickers missing from prices_by_ticker: "
+            f"{missing_tickers}"
+        )
+
+    extra_tickers = [t for t in prices_by_ticker if t not in universe]
+    if extra_tickers:
+        log.info(
+            "orchestrator: extra tickers in prices_by_ticker ignored",
+            extra={"extra_tickers": extra_tickers},
+        )
+
+    # Validate each frame AND collect a trimmed dict containing
+    # only the universe tickers (the state never references extras).
+    validated_frames: dict[str, pd.DataFrame] = {}
+    for ticker in universe:
+        _validate_price_frame(ticker, prices_by_ticker[ticker])
+        validated_frames[ticker] = prices_by_ticker[ticker]
+
+    signal_sets = _build_universe_signal_sets(spec, universe, validated_frames)
+    date_to_idx = {
+        ticker: _build_ticker_date_index(validated_frames[ticker])
+        for ticker in universe
+    }
+    pivots = {
+        ticker: _build_price_pivot_cache(validated_frames[ticker], ticker)
+        for ticker in universe
+    }
+
+    state = MultiTickerState(
+        open_positions={},
+        pending_signals={ticker: [] for ticker in universe},
+        signal_sets=signal_sets,
+        price_frames=validated_frames,
+        date_to_idx=date_to_idx,
+        pivots=pivots,
+        last_close={},
+        trades=[],
+        skipped=[],
+        equity_points=[],
+        bar_decisions=[],
+        cash=float(initial_capital),
+        realized_pnl=0.0,
+        initial_capital=float(initial_capital),
+        max_open_positions=int(max_open_positions),
+    )
+
+    union_dates = _build_union_date_index(validated_frames)
+    log.info(
+        "orchestrator state initialized",
+        extra={
+            "universe_size": len(universe),
+            "initial_capital": initial_capital,
+            "max_open_positions": max_open_positions,
+            "aggregate_signals": sum(len(s) for s in signal_sets.values()),
+            "window_start": str(union_dates[0]) if union_dates else None,
+            "window_end": str(union_dates[-1]) if union_dates else None,
+            "total_dates": len(union_dates),
+        },
+    )
+    return state
