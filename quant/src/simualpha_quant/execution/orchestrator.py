@@ -106,6 +106,7 @@ import pandas as pd
 from simualpha_quant.execution.equity_backtester import (
     Bar,
     BacktestResult,
+    BacktesterInvariantError,
     BarDecision,
     EntryContext,
     EquityPoint,
@@ -932,4 +933,323 @@ def _advance_ticker_one_day(
                         signal_bar_close=float(bar.close),
                         signal_bar_idx=bar_idx,
                     )
+                )
+
+
+# ─────────────────────────── outer per-date sweep ────────────────────
+#
+# Advances EVERY ticker by one day, in four phases. The per-ticker
+# inner step (_advance_ticker_one_day) handles new-signal decisions
+# under the global cap; this outer step wraps it with tranche adds,
+# exits, and one aggregate equity emission.
+#
+# Phase ordering rationale (mirrors run_backtest's SECTION ordering
+# but adapted for multi-ticker):
+#
+#   PHASE 1 — new-signal evaluation PER TICKER (via
+#             _advance_ticker_one_day), in tie-break order. The
+#             global cap is visible to every ticker based on the
+#             state of open_positions at THIS moment — a ticker
+#             evaluated later in the order sees any slots opened
+#             earlier the same bar.
+#
+#   PHASE 2 — tranche adds on already-open positions. One-tranche-
+#             per-bar per position.
+#
+#   PHASE 3 — exits on already-open positions. Close trades when
+#             remaining_shares hits zero.
+#
+#   PHASE 4 — aggregate EquityPoint emission. Single cross-sectional
+#             snapshot at the close of the current date.
+#
+# Phases 2 and 3 run AFTER Phase 1 by design: a position closing
+# today shouldn't retroactively free a slot for a signal that was
+# already rejected under the cap. End-of-day is the clean boundary;
+# the slot opens up for TOMORROW, not for earlier-in-today. The
+# same logic applies to the stop/TP cascade itself — today's stops
+# don't free slots for today's new signals.
+
+
+def _advance_all_tickers_one_day(
+    state: MultiTickerState,
+    current_date: date,
+    spec,
+    record_decisions: bool,
+    tie_breaker: Callable[[list[str]], list[str]],
+    ctx_hook: Optional[Callable] = None,
+) -> None:
+    """Advance every ticker in ``state`` by one day.
+
+    Mutates state in place. Returns None. Raises
+    ``BacktesterInvariantError`` on cash/position bookkeeping
+    violations that should never happen in production (negative
+    cash beyond floating-point noise, closed trade with no fills,
+    etc.) — these are bugs in the backtester itself, not data
+    issues.
+    """
+    # Snapshot for Phase 5 HOLD detection — records appended across
+    # phases 1-3 are compared against this to figure out which
+    # tickers didn't get a decision today.
+    decisions_start = len(state.bar_decisions)
+
+    # Precompute: which tickers have a (sane) bar today? Used by
+    # Phase 4 mark-to-market and Phase 5 HOLD backfill.
+    tickers_with_bars_today: list[str] = []
+    for ticker in state.signal_sets.keys():
+        bar = _get_bar_for_ticker(state, ticker, current_date)
+        if bar is None or not _bar_is_sane(bar):
+            continue
+        tickers_with_bars_today.append(ticker)
+
+    # ─── PHASE 1: per-ticker new-signal evaluation ─────────────────
+
+    universe_list = list(state.signal_sets.keys())
+    try:
+        ordered_tickers = tie_breaker(universe_list)
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "tie_breaker raised; falling back to alphabetical",
+            extra={"err": str(exc)},
+        )
+        ordered_tickers = sorted(universe_list)
+
+    for ticker in ordered_tickers:
+        _advance_ticker_one_day(
+            state, ticker, current_date, spec, record_decisions
+        )
+
+    # ─── PHASE 2: tranche adds on already-open positions ───────────
+
+    for ticker, pos in list(state.open_positions.items()):
+        if not pos.tranche_queue:
+            continue
+        bar = _get_bar_for_ticker(state, ticker, current_date)
+        if bar is None or not _bar_is_sane(bar):
+            continue
+
+        for tranche_idx, pct, rule in list(pos.tranche_queue):
+            try:
+                trigger = rule.price(bar, pos)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "tranche rule resolve failed",
+                    extra={
+                        "ticker": ticker,
+                        "date": current_date,
+                        "tranche_idx": tranche_idx,
+                        "err": str(exc),
+                    },
+                )
+                continue
+            if trigger is None or trigger <= 0:
+                continue
+
+            fill = evaluate_tranche(
+                bar=bar,
+                position=pos,
+                tranche_index=tranche_idx,
+                pct_of_position=pct,
+                resolved_trigger=trigger,
+                execution=spec.execution,
+            )
+            if fill is None:
+                continue
+
+            pos.tranches_filled.append(fill)
+            pos.filled_capital += fill.notional
+            pos.tranche_queue = [
+                t for t in pos.tranche_queue if t[0] != tranche_idx
+            ]
+            state.cash -= fill.notional + fill.fee
+            if record_decisions:
+                state.bar_decisions.append(
+                    (current_date, ticker, BarDecision.ADD_TRANCHE)
+                )
+            break  # one-fill-per-bar per position
+
+    # ─── PHASE 3: exits on already-open positions ──────────────────
+
+    for ticker, pos in list(state.open_positions.items()):
+        bar = _get_bar_for_ticker(state, ticker, current_date)
+        if bar is None or not _bar_is_sane(bar):
+            continue
+
+        # Resolve stop (trailing reads current_peak internally;
+        # Phase 1's _advance_ticker_one_day already ratcheted it).
+        resolved_stop_price: Optional[float] = None
+        if pos.stop_rule is not None:
+            try:
+                resolved_stop_price = float(pos.stop_rule.price(bar, pos))
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "stop rule resolve failed",
+                    extra={"ticker": ticker, "date": current_date, "err": str(exc)},
+                )
+
+        resolved_tp_legs: list[tuple[int, float, float]] = []
+        for leg_idx, pct, rule in pos.tp_queue:
+            try:
+                tp_price = float(rule.price(bar, pos))
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "tp rule resolve failed",
+                    extra={
+                        "ticker": ticker,
+                        "date": current_date,
+                        "leg": leg_idx,
+                        "err": str(exc),
+                    },
+                )
+                continue
+            resolved_tp_legs.append((leg_idx, pct, tp_price))
+
+        stop_fill = (
+            evaluate_stop(bar, pos, resolved_stop_price, spec.execution)
+            if resolved_stop_price is not None
+            else None
+        )
+        tp_fills = evaluate_tp_legs(bar, pos, resolved_tp_legs, spec.execution)
+        time_fill = evaluate_time_stop(
+            bar, pos, pos.time_stop_days, spec.execution
+        )
+
+        ordered_exits = resolve_same_bar_conflict(
+            stop_fill, tp_fills, spec.execution.same_bar_priority
+        )
+
+        total_entered_shares = sum(f.shares for f in pos.tranches_filled)
+
+        def _remaining() -> float:
+            return total_entered_shares - sum(f.shares for f in pos.exits_taken)
+
+        any_exit_fired = False
+        exit_decisions_this_bar: list[BarDecision] = []
+
+        for exit_fill in ordered_exits:
+            remaining_before = _remaining()
+            if remaining_before <= 1e-9:
+                break
+            capped = _cap_exit_fill_shares(
+                exit_fill, remaining_before, spec.execution.fee_bps
+            )
+            if capped.shares <= 1e-9:
+                continue
+
+            pos.exits_taken.append(capped)
+            state.cash += capped.notional - capped.fee
+            any_exit_fired = True
+
+            if capped.exit_reason == "take_profit":
+                if capped.leg_index is not None:
+                    pos.tp_queue = [
+                        t for t in pos.tp_queue if t[0] != capped.leg_index
+                    ]
+                exit_decisions_this_bar.append(BarDecision.TP_EXIT)
+            elif capped.exit_reason == "stop_loss":
+                exit_decisions_this_bar.append(BarDecision.STOP_EXIT)
+
+            if _remaining() < -1e-6:
+                raise BacktesterInvariantError(
+                    f"remaining shares went negative after "
+                    f"{capped.exit_reason} on {ticker}/{current_date}: "
+                    f"entered={total_entered_shares} "
+                    f"taken={sum(f.shares for f in pos.exits_taken)}"
+                )
+
+        # Time stop applies only if stop/TP left residual.
+        if time_fill is not None:
+            remaining_after = _remaining()
+            if remaining_after > 1e-9:
+                capped_time = _cap_exit_fill_shares(
+                    time_fill, remaining_after, spec.execution.fee_bps
+                )
+                if capped_time.shares > 1e-9:
+                    pos.exits_taken.append(capped_time)
+                    state.cash += capped_time.notional - capped_time.fee
+                    any_exit_fired = True
+                    exit_decisions_this_bar.append(BarDecision.TIME_EXIT)
+
+        if record_decisions and exit_decisions_this_bar:
+            if BarDecision.STOP_EXIT in exit_decisions_this_bar:
+                dominant = BarDecision.STOP_EXIT
+            elif BarDecision.TP_EXIT in exit_decisions_this_bar:
+                dominant = BarDecision.TP_EXIT
+            else:
+                dominant = BarDecision.TIME_EXIT
+            state.bar_decisions.append((current_date, ticker, dominant))
+
+        if any_exit_fired and _remaining() <= 1e-9:
+            ctx = ctx_hook(bar, pos) if ctx_hook is not None else None
+            try:
+                trade = _close_and_emit_trade(pos, bar, ctx=ctx)
+            except BacktesterInvariantError as exc:
+                log.error(
+                    "invariant violated closing trade",
+                    extra={"ticker": ticker, "date": current_date, "err": str(exc)},
+                )
+                raise
+            state.trades.append(trade)
+            state.realized_pnl += _trade_realized_pnl_dollars(trade)
+            del state.open_positions[ticker]
+
+    # ─── PHASE 4: aggregate mark-to-market ────────────────────────
+
+    positions_value = 0.0
+    for ticker, pos in state.open_positions.items():
+        total_entered = sum(f.shares for f in pos.tranches_filled)
+        total_exited = sum(f.shares for f in pos.exits_taken)
+        held = total_entered - total_exited
+        if held <= 1e-9:
+            continue
+        # Prefer today's close, fall back to most recent observed
+        # close for tickers with sparse / mismatched calendars.
+        bar = _get_bar_for_ticker(state, ticker, current_date)
+        if bar is not None and _bar_is_sane(bar):
+            mark = float(bar.close)
+        else:
+            mark = state.last_close.get(ticker)
+            if mark is None:
+                continue
+        positions_value += held * mark
+
+    if not (state.cash == state.cash) or state.cash > 1e18 or state.cash < -1e18:
+        # NaN / inf guard — the ``x == x`` idiom catches NaN which
+        # compares unequal to itself. State like this means a fill
+        # arithmetic bug upstream.
+        raise BacktesterInvariantError(
+            f"cash is non-finite on {current_date}: {state.cash}"
+        )
+    if state.cash < -1e-6:
+        raise BacktesterInvariantError(
+            f"cash went negative on {current_date}: {state.cash:.6f} "
+            f"(open_positions={list(state.open_positions.keys())})"
+        )
+
+    equity = state.cash + positions_value
+    state.equity_points.append(
+        EquityPoint(
+            date=current_date,
+            equity=equity,
+            cash=state.cash,
+            positions_value=positions_value,
+        )
+    )
+
+    # ─── PHASE 5: HOLD backfill (opt-in, sparse) ──────────────────
+    #
+    # Multi-ticker × multi-bar HOLD recording is num_tickers ×
+    # num_bars worth of entries, which is a lot on large universes.
+    # To keep the trace useful without blowing up memory, we only
+    # append HOLD for tickers that HAD a (sane) bar today but
+    # didn't get any other decision across phases 1-3. Tickers
+    # with no bar today contribute nothing to the trace at all.
+
+    if record_decisions:
+        decided_today = {
+            t for (_, t, _) in state.bar_decisions[decisions_start:]
+        }
+        for ticker in tickers_with_bars_today:
+            if ticker not in decided_today:
+                state.bar_decisions.append(
+                    (current_date, ticker, BarDecision.HOLD)
                 )
