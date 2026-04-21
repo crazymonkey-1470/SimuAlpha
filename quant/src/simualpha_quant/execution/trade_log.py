@@ -1,9 +1,9 @@
 """Trade-record + per-horizon outcome computation.
 
-Kept decoupled from freqtrade so the aggregation pipeline can be unit-
-tested without the Stage-4 extras. The freqtrade adapter in
-``simulate.py`` converts freqtrade's internal trade objects into the
-``TradeRecord`` dataclass this module operates on.
+Kept decoupled from the execution engine so the aggregation pipeline
+can be unit-tested in isolation. The pure-Python equity backtester in
+``execution/equity_backtester.py`` populates ``TradeRecord`` rows;
+this module consumes them.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Sequence
+from typing import Literal, Sequence
 
 import numpy as np
 
@@ -20,6 +20,61 @@ from simualpha_quant.schemas.simulate import (
     HorizonOutcome,
     SimulationSummary,
 )
+
+
+# ─────────────────────────── fill-level records ──────────────────────
+#
+# Per-tranche and per-exit-leg fills are logged on TradeRecord so
+# OpenClaw (or a human debugger) can trace exactly which tranches
+# filled, at what price, via which fill mechanic, and when. This
+# replaces the less-structured ``tranche_entries`` field of the
+# freqtrade-era TradeRecord.
+
+
+FillType = Literal[
+    "signal_close",      # filled at signal bar's close (tranche 1 default)
+    "intraday_touch",    # later bar's range covered the trigger price
+    "gap_fill",          # bar opened past the trigger, filled at bar open
+    "end_of_data_mark",  # synthetic close for positions still open at the
+                         # end of the date range. NOT a market-driven exit —
+                         # downstream stats should filter these when asking
+                         # "did the strategy's exit rules work?" as opposed
+                         # to "what was the mark at the end of the window?".
+]
+
+
+FillSide = Literal["entry", "exit"]
+
+
+ExitReason = Literal[
+    "take_profit",     # one of the take_profit legs hit
+    "stop_loss",       # stop-loss triggered
+    "time_stop",       # time_stop_days exceeded
+    "end_of_data",     # ran off the end of the date range still open
+]
+
+
+@dataclass
+class FillRecord:
+    """One tranche entry OR one exit leg, recorded at fill time.
+
+    Dollar math kept explicit (price + shares + notional) so the
+    aggregation layer doesn't need to redo sizing arithmetic when
+    computing pct_return.
+    """
+    side: FillSide
+    date: date
+    price: float
+    shares: float
+    notional: float           # shares * price; gross, pre-fee
+    fee: float                # absolute dollars deducted from cash
+    slippage_applied_bps: float
+    fill_type: FillType
+    # Cross-ref back to the spec — for entries this is the tranche
+    # index (0-based); for exits it's the take_profit leg index, or
+    # None for stop_loss / time_stop / end_of_data exits.
+    leg_index: int | None = None
+    exit_reason: ExitReason | None = None
 
 
 @dataclass
@@ -46,17 +101,56 @@ class TradeRecord:
     ticker: str
     entry_date: date
     exit_date: date | None
-    entry_price: float
-    exit_price: float | None
-    pct_return: float                 # net; negative = loss
+    entry_price: float        # volume-weighted avg entry across filled tranches
+    exit_price: float | None  # volume-weighted avg exit across filled legs
+    pct_return: float         # net of fees + slippage; negative = loss
+
+    # Capital accounting (populated by the backtester; zero-defaults
+    # keep existing fixtures / tests that construct bare TradeRecords
+    # compatible).
+    planned_capital: float = 0.0   # sizing decision at trade open
+    filled_capital: float = 0.0    # sum of FillRecord.notional for entries
+
+    # Granular fill log — the backtester writes one FillRecord per
+    # tranche or exit leg. The legacy ``tranche_entries`` list is
+    # derived from this for backward compatibility with existing
+    # chart-annotation code.
+    fills: list[FillRecord] = field(default_factory=list)
+
+    # Legacy chart-annotation shape: list of (date, price,
+    # pct_of_planned_position) for every FILLED entry tranche. Still
+    # read by execution.chart_annotations.
     tranche_entries: list[tuple[date, float, float]] = field(default_factory=list)
-    # List of (date, price, pct_of_planned_position) tuples used for chart annotation.
+
     context: TradeContext | None = None
-    # Optional snapshot for annotated-chart rendering (Stage 4.5).
+
+    # Diagnostic fields populated by the equity-backtester's
+    # _close_and_emit_trade helper. Both are derivable from
+    # ``fills`` but cached here so downstream analytics don't have
+    # to walk the fill log on every trade. ``exit_reason`` is the
+    # reason tag from the FINAL exit fill (stop_loss / take_profit
+    # / time_stop / end_of_data). ``holding_duration_days`` is the
+    # calendar days between entry_date and exit_date inclusive.
+    exit_reason: ExitReason | None = None
+    holding_duration_days: int | None = None
 
     @property
     def is_win(self) -> bool:
         return self.pct_return > 0.0
+
+    @property
+    def fill_ratio(self) -> float:
+        """Fraction of planned capital that actually filled.
+
+        0.0 → no tranche beyond #1 ever filled (rare edge case).
+        1.0 → every tranche filled.
+        In between → some deeper tranches never triggered before the
+        position exited. OpenClaw inspects this to flag "the ladder
+        didn't work" trades.
+        """
+        if self.planned_capital <= 0:
+            return 0.0
+        return min(self.filled_capital / self.planned_capital, 1.0)
 
 
 # ─────────────────────────── summary stats ──────────────────────────

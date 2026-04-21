@@ -15,10 +15,12 @@ from simualpha_quant.schemas.simulate import (
     SimulateStrategyRequest,
     SimulateStrategyResponse,
     SimulationSummary,
+    SkippedSignalRecord,
     TradeChart,
 )
 from simualpha_quant.schemas.strategy import (
     EntryRules,
+    ExecutionConfig,
     ExitLeg,
     ExitRules,
     PositionSizing,

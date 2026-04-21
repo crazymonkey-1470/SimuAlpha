@@ -199,17 +199,143 @@ class PositionSizing(BaseModel):
             if stake is None or float(stake) <= 0:
                 raise ValueError("fixed sizing requires params.stake_usd > 0")
         elif self.method == "volatility_target":
-            tv = self.params.get("target_vol_pct")
-            ap = self.params.get("atr_period")
+            # Annualized target vol (e.g. 0.15 = 15%). Required.
+            tv = self.params.get("target_volatility")
             if tv is None or float(tv) <= 0:
-                raise ValueError("volatility_target requires params.target_vol_pct > 0")
-            if ap is None or int(ap) <= 0:
-                raise ValueError("volatility_target requires params.atr_period > 0")
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.target_volatility > 0 (annualized, e.g. 0.15)"
+                )
+            # Trailing window in bars. Optional (default 60).
+            lb = self.params.get("lookback_days", 60)
+            if int(lb) <= 1:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.lookback_days > 1 (default 60)"
+                )
+            # Optional cap / floor on the sizing multiplier.
+            max_lev = self.params.get("max_leverage_multiplier", 2.0)
+            if float(max_lev) <= 0:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.max_leverage_multiplier > 0 (default 2.0)"
+                )
+            min_size = self.params.get("min_size_fraction", 0.1)
+            if float(min_size) < 0:
+                raise ValueError(
+                    "volatility_target sizing requires "
+                    "params.min_size_fraction >= 0 (default 0.1)"
+                )
         elif self.method == "kelly_fraction":
+            # User supplies the Kelly fraction directly — naive by
+            # design. Edge estimation is OpenClaw's job, not the
+            # backtester's.
             kf = self.params.get("kelly_fraction")
             if kf is None or not (0.0 < float(kf) <= 1.0):
-                raise ValueError("kelly_fraction requires params.kelly_fraction in (0, 1]")
+                raise ValueError(
+                    "kelly_fraction sizing requires "
+                    "params.kelly_fraction in (0, 1]"
+                )
         return self
+
+
+# ─────────────────────────── execution config ───────────────────────
+#
+# The pure-Python equity backtester (replacing freqtrade as of Stage
+# 4.x-rewrite) reads a small ExecutionConfig block off StrategySpec
+# to parameterize three things that used to be freqtrade-implicit:
+# slippage, fees, and same-bar exit tie-breaking.
+#
+# All fields have defaults that preserve the semantics every existing
+# StrategySpec was validated against. A spec that omits ``execution``
+# entirely still parses and runs identically to the freqtrade-era
+# behavior for the matching surfaces (zero slippage, zero fees,
+# stop-wins when stop and TP trigger on the same bar).
+#
+# THREE-WAY DISTINCTION (spread / slippage / fees) — not modeled
+# individually; collapsed to a single ``slippage_bps`` knob applied
+# adversely (adds to buys, subtracts from sells) and a single
+# ``fee_bps`` knob applied to gross notional. Spread is implicitly
+# folded into slippage for equity daily-bar backtests; we don't have
+# bid/ask in daily OHLCV, so modeling spread separately would be
+# pseudo-precision. See docs/strategy-dsl.md for the full treatment.
+
+
+class ExecutionConfig(BaseModel):
+    """Execution-layer knobs for the pure-Python equity backtester.
+
+    Every field has a default that produces the simplest possible
+    backtest (zero friction, stop-wins-on-ties), matching the
+    freqtrade-era defaults. Specs without an ``execution`` block
+    validate and run identically.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slippage_bps: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=500.0,
+        description=(
+            "Slippage applied ADVERSELY per fill in basis points "
+            "(0.01% each). Buys add, sells subtract. NOT symmetric "
+            "noise — it always hurts the strategy. A buy at a "
+            "trigger price of $100 with slippage_bps=10 fills at "
+            "$100.10. A sell at $200 with the same slippage fills "
+            "at $199.80. Zero default is defensible for daily-bar "
+            "equity backtests; add 3-10 bps for a realism pass."
+        ),
+    )
+    fee_bps: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=500.0,
+        description=(
+            "Commission / fees as basis points of gross notional, "
+            "applied on both entry and exit fills. Zero default "
+            "matches US retail commission-free trading. Apply "
+            "~2 bps to model SEC/FINRA round-trip fees; higher "
+            "values approximate professional / non-US brokers."
+        ),
+    )
+    same_bar_priority: Literal["stop", "tp"] = Field(
+        default="stop",
+        description=(
+            "Tie-breaker when a stop and a take-profit both "
+            "trigger on the same daily bar. 'stop' assumes the "
+            "stop was hit first (conservative, avoids over- "
+            "reporting wins). 'tp' assumes TP fills first, stop "
+            "exits any residual; use when the stop sits "
+            "structurally far from entry (TLI strategies where "
+            "the stop is a 0.786 Wave-1 fib and TPs are Wave-3 "
+            "extensions). Reserved future value: 'time_weighted' "
+            "(prorate by distance from entry — not yet "
+            "implemented; adding it will extend this Literal)."
+        ),
+    )
+    entry_wait_bars: int = Field(
+        default=20,
+        ge=0,
+        le=500,
+        description=(
+            "How many bars the main loop will wait for tranche-1 "
+            "to fill after a signal fires, if the signal bar "
+            "itself didn't touch the tranche-1 trigger. Each "
+            "subsequent bar re-checks the trigger against the "
+            "bar's OHLC; a hit fills at the trigger "
+            "(intraday_touch) or bar.open (gap_fill). If the "
+            "counter reaches zero without a fill, the signal is "
+            "discarded and a SkippedSignalRecord with reason "
+            "'tranche_1_unfilled_within_wait_cap' is emitted. "
+            "Setting entry_wait_bars=0 degrades to skip-on-unfill "
+            "(signal bar is the only chance to fill). Default 20 "
+            "bars ≈ one trading month — long enough for a "
+            "pullback to reach an 0.382/0.5/0.618 fib without "
+            "letting stale signals linger indefinitely. Tranche-1 "
+            "rules of type 'at_signal' fill on the signal bar by "
+            "construction and don't consume the wait cap."
+        ),
+    )
 
 
 # ─────────────────────────── top-level spec ──────────────────────────
@@ -231,6 +357,7 @@ class StrategySpec(BaseModel):
 
     initial_capital: float = Field(default=100_000.0, gt=0)
     max_open_positions: int = Field(default=10, gt=0, le=200)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
     @field_validator("horizons")
     @classmethod
