@@ -138,6 +138,7 @@ from simualpha_quant.execution.equity_backtester import (
     run_backtest,
     updated_peak,
 )
+from simualpha_quant.execution.price_rules import UnresolvablePriceRule
 from simualpha_quant.execution.trade_log import FillRecord, TradeRecord
 from simualpha_quant.schemas.simulate import SkippedSignalRecord
 
@@ -540,3 +541,395 @@ def initialize_multi_ticker_state(
         },
     )
     return state
+
+
+# ─────────────────────────── per-ticker per-date step ────────────────
+#
+# One pass through SECTIONS 2a / 2b / 2c of run_backtest for a
+# single (ticker, date) pair. Designed to be called by the outer
+# per-date loop (3b-i-C-2) once per ticker in tie-break order BEFORE
+# any exits or tranche adds are processed.
+#
+# Tranche adds and exits land in 3b-i-C-2, and they run AFTER every
+# ticker has made its new-signal decision for the day. Rationale:
+# the global ``max_open_positions`` cap must be evaluated
+# consistently. A position closing this same date shouldn't free up
+# a slot for a new signal that was already evaluated (or rejected)
+# earlier in the iteration. End-of-day exits are the clean
+# boundary — they free slots for TOMORROW, not for later-in-today.
+
+
+def _advance_ticker_one_day(
+    state: MultiTickerState,
+    ticker: str,
+    current_date: date,
+    spec,
+    record_decisions: bool,
+) -> None:
+    """Advance one ticker's state by one day.
+
+    Mirrors the single-ticker ``run_backtest`` SECTION 2a + 2b + 2c
+    for this (ticker, date) pair, adapted for per-ticker dicts
+    and the global-cap enforcement.
+
+    Mutates ``state`` in place:
+      * ``state.open_positions[ticker]``  peak ratchet, new entry,
+                                         entry from pending fill
+      * ``state.pending_signals[ticker]``  drained on fill or
+                                          expiry, appended on new
+                                          signal that doesn't fill
+                                          immediately
+      * ``state.skipped``                append on cap-breach, on
+                                         same_ticker_already_open,
+                                         on expiry, on resolver
+                                         failures
+      * ``state.bar_decisions``          append SKIP on malformed
+                                         bar or ENTRY on
+                                         open-position (record_
+                                         decisions gated)
+      * ``state.cash``                    decremented by
+                                         (notional + fee) on every
+                                         entry fill; symmetric
+                                         exit-side update happens
+                                         in 3b-i-C-2.
+      * ``state.last_close[ticker]``     updated to bar.close so
+                                         3b-i-C-2 can mark open
+                                         positions on dates where
+                                         a ticker has no bar.
+
+    Tranche adds and exits intentionally omitted — they belong to
+    the second pass in 3b-i-C-2.
+
+    Returns None. Silent when the ticker has no bar on this date
+    (common case when universe tickers have mismatched calendars).
+    """
+    # Step (a): presence check.
+    bar = _get_bar_for_ticker(state, ticker, current_date)
+    if bar is None:
+        return
+
+    # Step (b): sanity.
+    if not _bar_is_sane(bar):
+        log.warning(
+            "orchestrator: malformed bar, skipping",
+            extra={"ticker": ticker, "date": current_date},
+        )
+        if record_decisions:
+            state.bar_decisions.append((current_date, ticker, BarDecision.SKIP))
+        return
+
+    state.last_close[ticker] = float(bar.close)
+
+    # Step (c): peak ratchet on open position.
+    open_pos = state.open_positions.get(ticker)
+    if open_pos is not None:
+        open_pos.current_peak = updated_peak(open_pos.current_peak, bar)
+
+    # Step (d): process pending signals for this ticker.
+    pending_list = state.pending_signals.get(ticker, [])
+    if pending_list:
+        still_pending: list[_PendingSignal] = []
+        for pending in pending_list:
+            fill = _try_tranche_1_fill_pending(bar, pending, ticker, spec.execution)
+
+            if fill is None:
+                # No fill today — decrement or expire.
+                pending.remaining_wait_bars -= 1
+                if pending.remaining_wait_bars <= 0:
+                    state.skipped.append(
+                        SkippedSignalRecord(
+                            ticker=ticker,
+                            signal_date=pending.signal_date,
+                            reason="tranche_1_unfilled_within_wait_cap",
+                            detail=(
+                                f"entry_wait_bars="
+                                f"{spec.execution.entry_wait_bars} elapsed "
+                                f"without tranche-1 fill"
+                            ),
+                        )
+                    )
+                else:
+                    still_pending.append(pending)
+                continue
+
+            # Fill landed. Two gating conditions before we open:
+            # ticker-already-open (from an earlier pending this same
+            # bar or a held-over position) and the global cap.
+
+            if ticker in state.open_positions:
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=pending.signal_date,
+                        reason="same_ticker_already_open",
+                        detail=(
+                            "pending tranche-1 fill blocked by open "
+                            f"position entered "
+                            f"{state.open_positions[ticker].entry_date}"
+                        ),
+                    )
+                )
+                continue  # drop the pending
+
+            if len(state.open_positions) >= state.max_open_positions:
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=pending.signal_date,
+                        reason="max_open_positions",
+                        detail=(
+                            f"global cap={state.max_open_positions} "
+                            "reached; pending discarded "
+                            "(fire-and-forget on cap breach)"
+                        ),
+                    )
+                )
+                continue  # drop the pending — don't re-queue
+
+            # Slot available. Resolve stop against the real
+            # entry_price, then open.
+            stop_rule = _resolve_stop(
+                spec,
+                state.price_frames[ticker],
+                pending.signal_bar_idx,
+                fill.price,
+                pivots=state.pivots[ticker],
+                date_idx=state.date_to_idx[ticker],
+            )
+            if stop_rule is None:
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=pending.signal_date,
+                        reason="price_rule_unresolvable",
+                        detail="stop rule could not resolve at fill time",
+                    )
+                )
+                continue
+
+            try:
+                new_pos = _open_position(
+                    signal_date=pending.signal_date,
+                    bar=bar,
+                    tranche_ladder=pending.tranche_ladder,
+                    tp_legs=pending.tp_legs,
+                    stop_rule=stop_rule,
+                    time_stop_days=pending.time_stop_days,
+                    planned_capital=pending.planned_capital,
+                    entry_fill=fill,
+                    ticker=ticker,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    "invariant violated opening pending signal",
+                    extra={
+                        "ticker": ticker,
+                        "signal_date": pending.signal_date,
+                        "err": str(exc),
+                    },
+                )
+                continue
+
+            state.open_positions[ticker] = new_pos
+            state.cash -= fill.notional + fill.fee
+            if record_decisions:
+                state.bar_decisions.append(
+                    (current_date, ticker, BarDecision.ENTRY)
+                )
+            # Drop from pending — new_pos owns the lifecycle now.
+
+        state.pending_signals[ticker] = still_pending
+
+    # Step (e): new-signal check for this bar.
+    if current_date in state.signal_sets.get(ticker, frozenset()):
+        # Cheap early exits for the two gating conditions.
+        if ticker in state.open_positions:
+            state.skipped.append(
+                SkippedSignalRecord(
+                    ticker=ticker,
+                    signal_date=current_date,
+                    reason="same_ticker_already_open",
+                    detail=(
+                        f"position opened on "
+                        f"{state.open_positions[ticker].entry_date} still active"
+                    ),
+                )
+            )
+            return
+
+        if len(state.open_positions) >= state.max_open_positions:
+            state.skipped.append(
+                SkippedSignalRecord(
+                    ticker=ticker,
+                    signal_date=current_date,
+                    reason="max_open_positions",
+                    detail=(
+                        f"global cap={state.max_open_positions} "
+                        "reached; signal discarded "
+                        "(fire-and-forget on cap breach)"
+                    ),
+                )
+            )
+            return
+
+        # Resolve ladder + TPs at the signal bar.
+        bar_idx = state.date_to_idx[ticker][current_date]
+        try:
+            tranche_ladder = _resolve_tranche_ladder(
+                spec,
+                state.price_frames[ticker],
+                bar_idx,
+                pivots=state.pivots[ticker],
+                date_idx=state.date_to_idx[ticker],
+            )
+            tp_legs = _resolve_tp_legs(
+                spec,
+                state.price_frames[ticker],
+                bar_idx,
+                pivots=state.pivots[ticker],
+                date_idx=state.date_to_idx[ticker],
+            )
+        except UnresolvablePriceRule as exc:
+            state.skipped.append(
+                SkippedSignalRecord(
+                    ticker=ticker,
+                    signal_date=current_date,
+                    reason="price_rule_unresolvable",
+                    detail=f"ladder/TPs: {exc}",
+                )
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "rule resolution errored at signal",
+                extra={"ticker": ticker, "date": current_date, "err": str(exc)},
+            )
+            state.skipped.append(
+                SkippedSignalRecord(
+                    ticker=ticker,
+                    signal_date=current_date,
+                    reason="price_rule_unresolvable",
+                    detail=str(exc),
+                )
+            )
+            return
+
+        planned_capital = _planned_capital_for(
+            spec, prices=state.price_frames[ticker], signal_idx=bar_idx
+        )
+
+        tranche_1_pct, tranche_1_rule = tranche_ladder[0]
+        first_tranche_spec = spec.entry.tranches[0]
+        is_at_signal = first_tranche_spec.price_rule.type == "at_signal"
+        first_trigger: Optional[float] = None
+        if not is_at_signal:
+            try:
+                first_trigger = tranche_1_rule.price(bar, position=None)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "tranche-1 trigger resolve failed at signal",
+                    extra={"ticker": ticker, "err": str(exc)},
+                )
+                first_trigger = None
+
+        entry_ctx = EntryContext(
+            first_tranche_trigger=first_trigger,
+            first_tranche_pct=float(tranche_1_pct),
+            first_tranche_index=0,
+            is_at_signal_rule=is_at_signal,
+        )
+
+        entry_fill = evaluate_entry(
+            bar=bar,
+            ticker=ticker,
+            planned_capital=planned_capital,
+            ctx=entry_ctx,
+            signal_set=frozenset([current_date]),
+            execution=spec.execution,
+        )
+
+        if entry_fill is not None:
+            # Immediate fill.
+            stop_rule = _resolve_stop(
+                spec,
+                state.price_frames[ticker],
+                bar_idx,
+                entry_fill.price,
+                pivots=state.pivots[ticker],
+                date_idx=state.date_to_idx[ticker],
+            )
+            if stop_rule is None:
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=current_date,
+                        reason="price_rule_unresolvable",
+                        detail="stop rule unresolvable at entry",
+                    )
+                )
+                return
+
+            try:
+                new_pos = _open_position(
+                    signal_date=current_date,
+                    bar=bar,
+                    tranche_ladder=tranche_ladder,
+                    tp_legs=tp_legs,
+                    stop_rule=stop_rule,
+                    time_stop_days=spec.exit.time_stop_days,
+                    planned_capital=planned_capital,
+                    entry_fill=entry_fill,
+                    ticker=ticker,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    "invariant violated opening new signal",
+                    extra={
+                        "ticker": ticker,
+                        "signal_date": current_date,
+                        "err": str(exc),
+                    },
+                )
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=current_date,
+                        reason="price_rule_unresolvable",
+                        detail=f"invariant: {exc}",
+                    )
+                )
+                return
+
+            state.open_positions[ticker] = new_pos
+            state.cash -= entry_fill.notional + entry_fill.fee
+            if record_decisions:
+                state.bar_decisions.append(
+                    (current_date, ticker, BarDecision.ENTRY)
+                )
+        else:
+            # No fill this bar — push pending or immediate skip.
+            if spec.execution.entry_wait_bars == 0:
+                state.skipped.append(
+                    SkippedSignalRecord(
+                        ticker=ticker,
+                        signal_date=current_date,
+                        reason="tranche_1_unfilled_within_wait_cap",
+                        detail="entry_wait_bars=0, no grace period",
+                    )
+                )
+            else:
+                state.pending_signals[ticker].append(
+                    _PendingSignal(
+                        signal_date=current_date,
+                        remaining_wait_bars=spec.execution.entry_wait_bars,
+                        tranche_1_rule=tranche_1_rule,
+                        tranche_1_pct=float(tranche_1_pct),
+                        entry_ctx=entry_ctx,
+                        tranche_ladder=tranche_ladder,
+                        tp_legs=tp_legs,
+                        time_stop_days=spec.exit.time_stop_days,
+                        planned_capital=planned_capital,
+                        signal_bar_close=float(bar.close),
+                        signal_bar_idx=bar_idx,
+                    )
+                )
