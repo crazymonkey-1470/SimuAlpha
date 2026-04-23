@@ -121,7 +121,7 @@ function buildFields(acc, tweet) {
     'Content': tweet.text,
     'Key Insight': tweet.text.split('\n')[0].slice(0, 200),
     'Post ID': tweet.id,
-    'Source': source,  // ← always set regardless of table
+    // Note: Source field handling is per-table below (singleSelect vs prefix)
   };
 
   switch (acc.table) {
@@ -135,16 +135,32 @@ function buildFields(acc, tweet) {
       return { ...base, 'Actionable': false, ...(tickers ? { 'Ticker': tickers } : {}) };
 
     case 'Politician Trades':
-      // Source is a restricted singleSelect in this table — skip that field,
-      // Source (text) field added Apr 21 covers it
-      return { ...base, 'Actionable': false, ...(tickers ? { 'Ticker': tickers } : {}) };
+      // Source is a restricted singleSelect (API can't add new options).
+      // Prefix Content with source to maintain traceability.
+      const ptContent = `[@${acc.handle}] ${tweet.text}`;
+      return { 
+        'Date Posted': base['Date Posted'],
+        'Content': ptContent,
+        'Key Insight': base['Key Insight'],
+        'Post ID': base['Post ID'],
+        'Actionable': false,
+        ...(tickers ? { 'Ticker': tickers } : {})
+      };
 
     case 'Heinsenberg':
       return { ...base, 'Actionable': false, ...(tickers ? { 'Ticker': tickers } : {}) };
 
     case 'Macro & Markets':
-      // Source is a restricted singleSelect — our plain-text Source field covers it
-      return { ...base, 'Actionable': false };
+      // Source is a restricted singleSelect (API can't add new options).
+      // Prefix Content with source to maintain traceability.
+      const mmContent = `[@${acc.handle}] ${tweet.text}`;
+      return {
+        'Date Posted': base['Date Posted'],
+        'Content': mmContent,
+        'Key Insight': base['Key Insight'],
+        'Post ID': base['Post ID'],
+        'Actionable': false,
+      };
 
     default:
       return base;
