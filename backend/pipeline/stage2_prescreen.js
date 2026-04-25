@@ -28,6 +28,13 @@ async function runPrescreen() {
 }
 
 async function _runPrescreen() {
+  // Graceful fallback if scraper is not configured
+  const isScraperConfigured = SCRAPER_URL && !SCRAPER_URL.includes('localhost');
+  if (!isScraperConfigured) {
+    log.warn('SCRAPER_URL not configured — deploy the scraper service on Railway and set SCRAPER_URL env var to enable Stage 2.');
+    return 0;
+  }
+
   log.info('Starting pre-screen of universe');
   const startTime = Date.now();
 
