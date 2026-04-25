@@ -1,0 +1,7 @@
+{
+  "agents": {
+    "openclaw": {
+      "command": "env OPENCLAW_HIDE_BANNER=1 OPENCLAW_SUPPRESS_NOTES=1 openclaw acp --url wss://YOUR_GATEWAY_URL --token-file ~/.openclaw/gateway.token --session agent:main:main"
+    }
+  }
+}
