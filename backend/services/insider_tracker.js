@@ -97,7 +97,7 @@ async function getRecentInsiderBuys(ticker, days = 30) {
     query,
     include_domains: ['sec.gov', 'openinsider.com'],
     num_results: 5,
-    type: 'news',
+    type: 'auto',
   });
 
   const { data, error } = await makeExaRequest(requestBody);
