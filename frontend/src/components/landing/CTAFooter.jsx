@@ -6,151 +6,229 @@ const tiers = [
   {
     name: 'Free',
     price: '$0',
-    features: ['Top 10 scored stocks', 'Basic screener access', 'Weekly digest', 'Signal hierarchy view'],
-    cta: 'Get Started',
-    highlight: false,
+    period: '/ forever',
+    tag: 'See the system work. No card required.',
+    features: [
+      { ok: true,  text: 'Daily top-5 Load-the-Boat signals' },
+      { ok: true,  text: 'TLI score for 50 tickers' },
+      { ok: true,  text: 'Market risk banner' },
+      { ok: false, text: 'Full screener access' },
+      { ok: false, text: 'Full-Stack Consensus alerts' },
+    ],
+    featured: false,
   },
   {
-    name: 'Pro',
+    name: 'Patreon',
     price: '$10',
-    period: '/mo',
-    features: ['Full screener — 500+ stocks', 'SAIN 4-layer consensus', 'Super investor tracking', 'AI-written theses', 'Unlimited watchlist', 'Custom alerts'],
-    cta: 'Join on Patreon',
-    highlight: true,
+    period: '/ month',
+    tag: 'Everything. For the price of a sandwich.',
+    features: [
+      { ok: true, text: 'Full screener · all 500 tickers' },
+      { ok: true, text: 'All 4 intelligence layers' },
+      { ok: true, text: 'Full-Stack Consensus alerts' },
+      { ok: true, text: 'AI deep-dive on any ticker' },
+      { ok: true, text: 'Backtest any signal · 10 yrs' },
+    ],
+    featured: true,
   },
   {
     name: 'Institutional',
-    price: 'Pro Rata',
+    price: 'Talk',
     period: '',
-    features: ['Everything in Pro', 'API access', 'Backtesting dashboard', 'Priority agent analysis', 'PDF report export'],
-    cta: 'Contact Us',
-    highlight: false,
+    tag: 'API, custom universe, white-label.',
+    features: [
+      { ok: true, text: 'Everything in Patreon' },
+      { ok: true, text: 'REST + WebSocket API' },
+      { ok: true, text: 'Custom ticker universe' },
+      { ok: true, text: 'Private Slack channel' },
+      { ok: true, text: 'Dedicated analyst' },
+    ],
+    featured: false,
   },
 ];
+
+const s = {
+  pricingSection: { padding: '0 24px 96px' },
+  inner: { maxWidth: 1100, margin: '0 auto' },
+  title: {
+    fontFamily: 'Cormorant Garamond', fontSize: 'clamp(32px, 5vw, 48px)',
+    fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1,
+    margin: '0 0 12px', textAlign: 'center',
+  },
+  accent: { color: 'var(--signal-green)', fontStyle: 'italic' },
+  subtitle: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, color: 'var(--text-secondary)',
+    textAlign: 'center', maxWidth: 560, margin: '0 auto 56px', lineHeight: 1.8,
+  },
+  pricing: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: 16,
+  },
+  tier: {
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    padding: '32px 28px',
+    display: 'flex', flexDirection: 'column', gap: 18,
+    position: 'relative',
+  },
+  tierFeatured: {
+    background: 'var(--bg-card)',
+    border: '2px solid var(--signal-green)',
+    borderRadius: 12,
+    padding: '32px 28px',
+    display: 'flex', flexDirection: 'column', gap: 18,
+    position: 'relative',
+  },
+  featureBadge: {
+    position: 'absolute', top: -10, left: 24,
+    fontFamily: 'IBM Plex Mono', fontSize: 9, letterSpacing: '0.14em',
+    textTransform: 'uppercase', color: '#0c0c0e',
+    background: 'var(--signal-green)',
+    padding: '3px 10px', borderRadius: 3,
+  },
+  tierName: {
+    fontFamily: 'IBM Plex Mono', fontSize: 10, letterSpacing: '0.14em',
+    textTransform: 'uppercase', color: 'var(--text-dim)',
+  },
+  tierPrice: { display: 'flex', alignItems: 'baseline', gap: 6 },
+  tierPriceN: {
+    fontFamily: 'Cormorant Garamond', fontSize: 56, fontWeight: 300,
+    color: 'var(--text-primary)', lineHeight: 1,
+  },
+  tierPriceP: {
+    fontFamily: 'IBM Plex Mono', fontSize: 11, color: 'var(--text-secondary)',
+  },
+  tierTag: {
+    fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--text-secondary)',
+    lineHeight: 1.7, paddingBottom: 14,
+    borderBottom: '1px solid var(--border)',
+  },
+  features: {
+    listStyle: 'none', padding: 0, margin: '0 0 14px',
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  featureLi: {
+    fontFamily: 'IBM Plex Mono', fontSize: 11, color: 'var(--text-secondary)',
+    display: 'flex', gap: 10, lineHeight: 1.5,
+  },
+  check: { color: 'var(--signal-green)', flexShrink: 0 },
+  dash: { color: 'var(--text-dim)', flexShrink: 0 },
+
+  footerCta: {
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 12, padding: '64px 40px', textAlign: 'center',
+    margin: '0 24px 48px', maxWidth: 1100,
+  },
+  footerWrap: { maxWidth: 1100, margin: '0 auto', padding: '0 24px' },
+  footerCtaTitle: {
+    fontFamily: 'Cormorant Garamond', fontSize: 'clamp(36px, 6vw, 64px)',
+    fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1,
+    margin: '0 0 18px',
+  },
+  footerCtaSub: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, color: 'var(--text-secondary)',
+    margin: '0 0 32px',
+  },
+  ctaBtn: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, fontWeight: 600,
+    padding: '14px 32px', borderRadius: 8, letterSpacing: '0.05em',
+    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 10,
+    background: 'var(--signal-green)', color: '#0c0c0e', border: 'none',
+    cursor: 'pointer',
+  },
+
+  footer: {
+    borderTop: '1px solid var(--border)',
+    padding: '32px 24px',
+    fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--text-dim)',
+    display: 'flex', justifyContent: 'space-between',
+    gap: 16, flexWrap: 'wrap',
+    maxWidth: 1100, margin: '0 auto',
+  },
+  disclaim: { maxWidth: 560, lineHeight: 1.7 },
+};
 
 export default function CTAFooter() {
   return (
     <>
-      {/* Pricing */}
-      <section id="pricing" style={{ padding: '96px 24px', background: 'var(--bg-secondary)' }}>
-        <div style={{ maxWidth: 960, margin: '0 auto' }}>
-          <motion.div
+      {/* ── Pricing ──────────────────────────────────────────── */}
+      <section id="pricing" style={s.pricingSection}>
+        <div style={s.inner}>
+          <motion.h2
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            style={{ textAlign: 'center', marginBottom: 48 }}
+            style={s.title}
           >
-            <h2 style={{
-              fontFamily: 'Cormorant Garamond', fontSize: 'clamp(28px, 4vw, 52px)',
-              fontWeight: 300, color: 'var(--text-primary)', marginBottom: 10,
-            }}>
-              Plans
-            </h2>
-            <p style={{
-              fontFamily: 'IBM Plex Mono', fontSize: 11,
-              color: 'var(--text-dim)', letterSpacing: '0.04em',
-            }}>
-              Bloomberg charges $2,000/mo. SimuAlpha is $10.
-            </p>
-          </motion.div>
+            Pricing
+          </motion.h2>
+          <p style={s.subtitle}>
+            Start free. Upgrade when the conviction signals earn their keep.
+          </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-            {tiers.map((tier, i) => (
+          <div style={s.pricing} className="card-grid">
+            {tiers.map((t, i) => (
               <motion.div
-                key={tier.name}
+                key={t.name}
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.07 }}
-                style={{
-                  background: 'var(--bg-card)',
-                  border: tier.highlight ? '2px solid var(--signal-green)' : '1px solid var(--border)',
-                  borderRadius: 8, padding: '28px 22px',
-                  display: 'flex', flexDirection: 'column', position: 'relative',
-                }}
+                transition={{ duration: 0.4, delay: i * 0.06 }}
+                style={t.featured ? s.tierFeatured : s.tier}
               >
-                {tier.highlight && (
-                  <div style={{
-                    position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)',
-                    background: 'var(--signal-green)', color: '#0c0c0e',
-                    fontFamily: 'IBM Plex Mono', fontSize: 9, fontWeight: 700,
-                    letterSpacing: '0.12em', padding: '3px 12px', borderRadius: 10,
-                  }}>
-                    MOST POPULAR
-                  </div>
-                )}
-                <div style={{ fontFamily: 'Cormorant Garamond', fontSize: 20, color: 'var(--text-primary)', marginBottom: 6 }}>{tier.name}</div>
-                <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: 'Cormorant Garamond', fontSize: tier.price.length > 6 ? 26 : 40, fontWeight: 300, color: 'var(--text-primary)' }}>{tier.price}</span>
-                  {tier.period && <span style={{ fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--text-dim)' }}>{tier.period}</span>}
+                {t.featured && <span style={s.featureBadge}>Most Popular</span>}
+                <div style={s.tierName}>{t.name}</div>
+                <div style={s.tierPrice}>
+                  <span style={s.tierPriceN}>{t.price}</span>
+                  {t.period && <span style={s.tierPriceP}>{t.period}</span>}
                 </div>
-                <div style={{ flex: 1, marginBottom: 20 }}>
-                  {tier.features.map(f => (
-                    <div key={f} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 0' }}>
-                      <span style={{ color: 'var(--signal-green)', fontSize: 10, fontFamily: 'IBM Plex Mono' }}>✓</span>
-                      <span style={{ fontFamily: 'IBM Plex Mono', fontSize: 11, color: 'var(--text-secondary)' }}>{f}</span>
-                    </div>
+                <div style={s.tierTag}>{t.tag}</div>
+                <ul style={s.features}>
+                  {t.features.map((f, j) => (
+                    <li key={j} style={s.featureLi}>
+                      <span style={f.ok ? s.check : s.dash}>{f.ok ? '✓' : '—'}</span>
+                      {f.text}
+                    </li>
                   ))}
-                </div>
-                <a
-                  href={PATREON_URL} target="_blank" rel="noopener noreferrer"
-                  style={{
-                    display: 'block', textAlign: 'center', padding: '11px',
-                    fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 600,
-                    letterSpacing: '0.08em', textTransform: 'uppercase',
-                    textDecoration: 'none', borderRadius: 6,
-                    background: tier.highlight ? 'var(--signal-green)' : 'transparent',
-                    color: tier.highlight ? '#0c0c0e' : 'var(--text-secondary)',
-                    border: tier.highlight ? 'none' : '1px solid var(--border)',
-                  }}
-                >
-                  {tier.cta}
-                </a>
+                </ul>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <motion.section
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
-        style={{ textAlign: 'center', padding: '80px 24px', borderTop: '1px solid var(--border)' }}
-      >
-        <div style={{
-          fontFamily: 'Cormorant Garamond', fontSize: 'clamp(28px, 4vw, 52px)',
-          fontWeight: 300, color: 'var(--text-primary)', marginBottom: 28,
-        }}>
-          Ready to find your next opportunity?
-        </div>
-        <a
-          href={PATREON_URL} target="_blank" rel="noopener noreferrer"
-          style={{
-            display: 'inline-block', background: 'var(--signal-green)', color: '#0c0c0e',
-            fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 700,
-            letterSpacing: '0.1em', textTransform: 'uppercase',
-            textDecoration: 'none', padding: '14px 40px', borderRadius: 6,
-          }}
+      {/* ── Footer CTA ──────────────────────────────────────── */}
+      <div style={s.footerWrap}>
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          style={{ ...s.footerCta, margin: '0 0 48px' }}
         >
-          Join on Patreon
-        </a>
-      </motion.section>
+          <h2 style={s.footerCtaTitle}>
+            Ready to find your<br />
+            next <span style={s.accent}>opportunity?</span>
+          </h2>
+          <p style={s.footerCtaSub}>
+            Start with the free tier. Upgrade when the first Load-the-Boat signal pays for the year.
+          </p>
+          <a href={PATREON_URL} target="_blank" rel="noopener noreferrer" style={s.ctaBtn}>
+            Open Screener →
+          </a>
+        </motion.section>
+      </div>
 
-      {/* Footer */}
-      <footer style={{
-        borderTop: '1px solid var(--border)',
-        padding: '24px',
-        textAlign: 'center',
-        fontFamily: 'IBM Plex Mono', fontSize: 10,
-        color: 'var(--text-dim)', letterSpacing: '0.04em',
-        lineHeight: 1.8,
-      }}>
-        <div>Built by <span style={{ color: 'var(--text-secondary)' }}>TheSmallBusinessAI</span> · Powered by Claude AI</div>
-        <div style={{ marginTop: 4 }}>Not financial advice. Past performance does not guarantee future results. Do your own research.</div>
+      {/* ── Footer ───────────────────────────────────────────── */}
+      <footer style={s.footer}>
+        <div>© {new Date().getFullYear()} SimuAlpha · Built by retail, for retail</div>
+        <div style={s.disclaim}>
+          Not financial advice. AI-generated analysis for educational purposes only.
+          Do your own research before investing.
+        </div>
       </footer>
     </>
   );

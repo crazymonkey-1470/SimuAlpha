@@ -1,15 +1,14 @@
 import { useEffect } from 'react';
 import NavHero from '../components/landing/NavHero';
-import SocialProof from '../components/landing/SocialProof';
+import TickerTape from '../components/landing/TickerTape';
 import Features from '../components/landing/Features';
 import CompareTable from '../components/landing/CompareTable';
-import FAQ from '../components/landing/FAQ';
 import CTAFooter from '../components/landing/CTAFooter';
 
 export default function LandingPage() {
   useEffect(() => {
     const prev = document.title;
-    document.title = 'SimuAlpha — The Long Investor\'s Edge';
+    document.title = 'SimuAlpha — Cutting edge AI for Everyone';
     return () => { document.title = prev; };
   }, []);
 
@@ -21,10 +20,9 @@ export default function LandingPage() {
       overflowX: 'hidden',
     }}>
       <NavHero />
-      <SocialProof />
+      <TickerTape />
       <Features />
       <CompareTable />
-      <FAQ />
       <CTAFooter />
     </div>
   );

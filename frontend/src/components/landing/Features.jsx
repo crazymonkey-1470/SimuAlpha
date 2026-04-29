@@ -1,94 +1,102 @@
 import { motion } from 'framer-motion';
 
-const cards = [
+const layers = [
   {
-    label: 'Layer 1 — Conviction Scoring',
-    body: 'Every stock gets a single number. One score. One verdict. The system decides what\'s worth your time so you don\'t have to.',
-    accent: 'var(--signal-green)',
-    symbol: '01',
+    num: 'LAYER 01 — 🏷️',
+    title: 'Super Investors',
+    body: 'Eight legendary managers tracked in real time via SEC 13F filings. Buffett, Ackman, Burry, Klarman, Marks, and more. We show you when their positions converge.',
+    tag: '13F · Quarterly · 8 managers',
   },
   {
-    label: 'Layer 2 — Intelligence Network',
-    body: '30+ independent data sources. When they agree, conviction is highest. When they disagree, you stay out.',
-    accent: 'var(--blue)',
-    symbol: '02',
+    num: 'LAYER 02 — 🏛',
+    title: 'Politicians',
+    body: 'Every congressional STOCK Act disclosure, aggregated and ranked. Net-buys by committee, chamber, and trade size — because access is alpha.',
+    tag: 'STOCK Act · 535 members · 30-day rolling',
   },
   {
-    label: 'Layer 3 — Timing Engine',
-    body: 'Knows where to enter, where to take profit, and where to walk away. Every signal comes with a plan.',
-    accent: 'var(--gold)',
-    symbol: '03',
+    num: 'LAYER 03 — 🤖',
+    title: 'AI Model Portfolios',
+    body: 'Five leading LLMs run a live paper portfolio on our data. Their collective allocation serves as a cross-check on human intuition.',
+    tag: 'GPT-5 · Claude Opus · Gemini · Llama · Grok',
   },
   {
-    label: 'Layer 4 — AI Analyst',
-    body: 'Writes the thesis. Stress-tests it. Tells you what could go wrong. Institutional-grade research on every opportunity.',
-    accent: '#a855f7',
-    symbol: '04',
+    num: 'LAYER 04 — 📊',
+    title: 'TLI Score (v2)',
+    body: 'Our proprietary 0–100 score: 50pts fundamentals (DCF + EV/Sales + EV/EBITDA composite) + 50pts technical position vs the 200-week and monthly moving averages.',
+    tag: 'Updated daily · 500 stocks',
   },
 ];
 
+const styles = {
+  section: { padding: '0 24px 96px', maxWidth: 1100, margin: '0 auto' },
+  title: {
+    fontFamily: 'Cormorant Garamond',
+    fontSize: 'clamp(32px, 5vw, 48px)',
+    fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1,
+    margin: '0 0 12px', textAlign: 'center',
+  },
+  accent: { color: 'var(--signal-green)', fontStyle: 'italic' },
+  subtitle: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, color: 'var(--text-secondary)',
+    textAlign: 'center', maxWidth: 560, margin: '0 auto 56px', lineHeight: 1.8,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 16,
+  },
+  card: {
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 12, padding: 28, transition: 'all 0.15s ease',
+  },
+  num: {
+    fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--signal-green)',
+    letterSpacing: '0.14em', marginBottom: 18, display: 'block',
+  },
+  cardTitle: {
+    fontFamily: 'Cormorant Garamond', fontSize: 26, fontWeight: 400,
+    color: 'var(--text-primary)', margin: '0 0 10px', lineHeight: 1.1,
+  },
+  body: {
+    fontFamily: 'IBM Plex Mono', fontSize: 11, color: 'var(--text-secondary)',
+    lineHeight: 1.8, margin: '0 0 18px',
+  },
+  tag: {
+    fontFamily: 'IBM Plex Mono', fontSize: 9, letterSpacing: '0.12em',
+    textTransform: 'uppercase', color: 'var(--text-dim)',
+  },
+};
+
 export default function Features() {
   return (
-    <section id="features" style={{ padding: '96px 24px', maxWidth: 1100, margin: '0 auto' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5 }}
-        style={{ textAlign: 'center', marginBottom: 52 }}
-      >
-        <h2 style={{
-          fontFamily: 'Cormorant Garamond', fontSize: 'clamp(32px, 5vw, 56px)',
-          fontWeight: 300, color: 'var(--text-primary)', marginBottom: 12,
-        }}>
-          Four Layers of Intelligence.<br />
-          <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>One Clear Answer.</span>
-        </h2>
-        <p style={{
-          fontFamily: 'IBM Plex Mono', fontSize: 12, color: 'var(--text-dim)',
-          letterSpacing: '0.04em', maxWidth: 480, margin: '0 auto',
-        }}>
-          Most platforms give you data. SimuAlpha gives you a verdict.
-        </p>
-      </motion.div>
+    <section id="features" style={styles.section}>
+      <h2 style={styles.title}>
+        Four Layers of Intelligence.<br />
+        <span style={styles.accent}>One Clear Answer.</span>
+      </h2>
+      <p style={styles.subtitle}>
+        Every verdict is the intersection of four independent signals. When all four agree,
+        the Full-Stack Consensus fires — the rarest and highest-conviction state in the system.
+      </p>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
-        gap: 16,
-      }}>
-        {cards.map((c, i) => (
+      <div style={styles.grid} className="card-grid">
+        {layers.map((l, i) => (
           <motion.div
-            key={c.label}
+            key={l.title}
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.4, delay: i * 0.07 }}
-            style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: '28px 24px',
+            transition={{ duration: 0.4, delay: i * 0.06 }}
+            style={styles.card}
+            whileHover={{
+              borderColor: 'var(--border-light)',
+              backgroundColor: 'var(--bg-card-hover)',
             }}
           >
-            <div style={{
-              fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 500,
-              letterSpacing: '0.12em', color: c.accent, marginBottom: 12,
-            }}>
-              {c.symbol}
-            </div>
-            <div style={{
-              fontFamily: 'Cormorant Garamond', fontSize: 20, fontWeight: 500,
-              color: 'var(--text-primary)', marginBottom: 10,
-            }}>
-              {c.label}
-            </div>
-            <div style={{
-              fontFamily: 'IBM Plex Mono', fontSize: 11,
-              color: 'var(--text-secondary)', lineHeight: 1.75,
-            }}>
-              {c.body}
-            </div>
+            <span style={styles.num}>{l.num}</span>
+            <h3 style={styles.cardTitle}>{l.title}</h3>
+            <p style={styles.body}>{l.body}</p>
+            <span style={styles.tag}>{l.tag}</span>
           </motion.div>
         ))}
       </div>

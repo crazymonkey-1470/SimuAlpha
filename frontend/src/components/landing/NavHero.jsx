@@ -1,77 +1,89 @@
-import { motion } from 'framer-motion';
+import CapitalFlowGlobe from './CapitalFlowGlobe';
 
 const PATREON_URL = import.meta.env.VITE_PATREON_URL || 'https://www.patreon.com/simualpha';
 
 const s = {
   nav: {
-    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-    background: 'rgba(12,12,14,0.85)', backdropFilter: 'blur(12px)',
+    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+    height: 52,
+    background: 'rgba(12,12,14,0.85)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     borderBottom: '1px solid var(--border)',
-    fontFamily: 'IBM Plex Mono',
+    display: 'flex', alignItems: 'center',
   },
   navInner: {
-    maxWidth: 1100, margin: '0 auto', padding: '0 20px',
-    height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    gap: 12,
+    maxWidth: 1100, margin: '0 auto', width: '100%',
+    padding: '0 24px',
+    display: 'flex', alignItems: 'center', gap: 32,
   },
-  logo: {
-    fontFamily: 'Cormorant Garamond', fontSize: 22, fontWeight: 500,
-    color: 'var(--text-primary)', letterSpacing: '0.02em', textDecoration: 'none',
-    flexShrink: 0,
+  wm: {
+    fontFamily: 'Cormorant Garamond', fontSize: 22, fontWeight: 400,
+    color: 'var(--text-primary)', lineHeight: 1, textDecoration: 'none',
   },
-  logoAccent: { color: 'var(--signal-green)', fontStyle: 'italic' },
-  navLinks: { display: 'flex', gap: 20, listStyle: 'none', margin: 0, padding: 0, alignItems: 'center' },
+  wmAccent: { color: 'var(--signal-green)', fontStyle: 'italic' },
+  navLinks: { display: 'flex', gap: 24, marginLeft: 'auto', alignItems: 'center' },
   navLink: {
-    fontSize: 11, color: 'var(--text-secondary)', textDecoration: 'none',
-    letterSpacing: '0.08em', textTransform: 'uppercase',
-    transition: 'color 0.15s', whiteSpace: 'nowrap',
+    fontFamily: 'IBM Plex Mono', fontSize: 12, color: 'var(--text-secondary)',
+    textDecoration: 'none', letterSpacing: '0.03em', transition: 'color 0.15s ease',
   },
-  ctaBtn: {
-    background: 'var(--signal-green)', color: '#0c0c0e',
-    border: 'none', borderRadius: 6, padding: '8px 16px',
-    fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 700,
-    letterSpacing: '0.08em', textTransform: 'uppercase',
-    cursor: 'pointer', textDecoration: 'none', display: 'inline-block',
-    whiteSpace: 'nowrap', flexShrink: 0,
+  navCta: {
+    fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 600,
+    color: '#0c0c0e', background: 'var(--signal-green)',
+    padding: '8px 16px', borderRadius: 6, letterSpacing: '0.05em',
+    textDecoration: 'none', whiteSpace: 'nowrap',
   },
+
+  page: { maxWidth: 1100, margin: '0 auto', padding: '0 24px' },
+
   hero: {
-    minHeight: '100vh', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center',
-    textAlign: 'center', padding: '120px 20px 80px',
+    position: 'relative',
+    padding: '112px 0 48px',
+    minHeight: 720,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 40,
+    alignItems: 'center',
   },
+  heroText: { position: 'relative', zIndex: 2 },
   eyebrow: {
-    fontFamily: 'IBM Plex Mono', fontSize: 10, letterSpacing: '0.2em',
-    textTransform: 'uppercase', color: 'var(--signal-green)',
-    marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'IBM Plex Mono', fontSize: 10, color: 'var(--signal-green)',
+    letterSpacing: '0.2em', textTransform: 'uppercase',
+    display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 28,
   },
-  dot: {
+  eyebrowDot: {
     width: 6, height: 6, borderRadius: '50%',
-    background: 'var(--signal-green)', animation: 'pulse-green 2s infinite', flexShrink: 0,
+    background: 'var(--signal-green)', animation: 'pulse-green 2s infinite',
   },
-  headline: {
+  h1: {
     fontFamily: 'Cormorant Garamond', fontWeight: 300,
-    fontSize: 'clamp(44px, 12vw, 112px)', lineHeight: 0.9,
-    color: 'var(--text-primary)', marginBottom: 28,
+    fontSize: 'clamp(44px, 6.5vw, 88px)', lineHeight: 0.92,
+    color: 'var(--text-primary)', margin: '0 0 22px',
+    textAlign: 'left',
   },
-  accent: { color: 'var(--signal-green)', fontStyle: 'italic' },
+  h1Accent: { color: 'var(--signal-green)', fontStyle: 'italic' },
   sub: {
-    fontFamily: 'IBM Plex Mono', fontSize: 'clamp(11px, 2.5vw, 13px)', lineHeight: 1.9,
-    color: 'var(--text-secondary)', maxWidth: 560, margin: '0 auto 36px',
+    fontFamily: 'IBM Plex Mono', fontSize: 13, lineHeight: 1.9,
+    color: 'var(--text-secondary)', maxWidth: 480, margin: '0 0 32px',
+    textAlign: 'left',
   },
-  btns: { display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' },
-  outlineBtn: {
-    background: 'transparent', color: 'var(--text-secondary)',
-    border: '1px solid var(--border)', borderRadius: 6, padding: '12px 24px',
-    fontFamily: 'IBM Plex Mono', fontSize: 11, letterSpacing: '0.08em',
-    textTransform: 'uppercase', cursor: 'pointer', textDecoration: 'none',
-    display: 'inline-block', transition: 'border-color 0.15s',
-  },
-  primaryBtn: {
+  ctas: { display: 'flex', gap: 14, justifyContent: 'flex-start', flexWrap: 'wrap' },
+  btnPrimary: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, fontWeight: 600,
+    padding: '14px 32px', borderRadius: 8, letterSpacing: '0.05em',
+    cursor: 'pointer', textDecoration: 'none',
+    display: 'inline-flex', alignItems: 'center', gap: 10,
+    transition: 'all 0.15s ease', border: 'none',
     background: 'var(--signal-green)', color: '#0c0c0e',
-    border: 'none', borderRadius: 6, padding: '12px 24px',
-    fontFamily: 'IBM Plex Mono', fontSize: 11, fontWeight: 700,
-    letterSpacing: '0.08em', textTransform: 'uppercase',
-    cursor: 'pointer', textDecoration: 'none', display: 'inline-block',
+  },
+  btnSecondary: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, fontWeight: 600,
+    padding: '13px 31px', borderRadius: 8, letterSpacing: '0.05em',
+    cursor: 'pointer', textDecoration: 'none',
+    display: 'inline-flex', alignItems: 'center', gap: 10,
+    transition: 'all 0.15s ease',
+    background: 'transparent', color: 'var(--text-primary)',
+    border: '1px solid var(--border-light)',
   },
 };
 
@@ -80,50 +92,57 @@ export default function NavHero() {
     <>
       <nav style={s.nav}>
         <div style={s.navInner}>
-          <a href="#top" style={s.logo}>
-            Simu<span style={s.logoAccent}>Alpha</span>
+          <a href="#top" style={s.wm}>
+            Simu<span style={s.wmAccent}>Alpha</span>
           </a>
-          {/* Nav links hidden on mobile — no JS needed, CSS handles it */}
-          <ul style={s.navLinks} className="hide-mobile">
-            <li><a href="#features" style={s.navLink}>Features</a></li>
-            <li><a href="#compare" style={s.navLink}>Compare</a></li>
-            <li><a href="#faq" style={s.navLink}>FAQ</a></li>
-            <li><a href="#pricing" style={s.navLink}>Pricing</a></li>
-          </ul>
-          <a href={PATREON_URL} target="_blank" rel="noopener noreferrer" style={s.ctaBtn}>
-            Get Access
-          </a>
+          <div style={s.navLinks} className="hide-mobile landing-nav-links">
+            <a className="nav-link" style={s.navLink} href="#features">Features</a>
+            <a className="nav-link" style={s.navLink} href="#compare">Compare</a>
+            <a className="nav-link" style={s.navLink} href="#pricing">Pricing</a>
+            <a className="nav-link" style={s.navLink} href={PATREON_URL} target="_blank" rel="noopener noreferrer">Sign in</a>
+            <a style={s.navCta} href="/dashboard">Open Screener →</a>
+          </div>
         </div>
       </nav>
 
-      <section id="top" className="landing-hero" style={s.hero}>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <div style={s.eyebrow}>
-            <span style={s.dot} />
-            AI-Powered Stock Discovery — Scanning Now
+      <div style={s.page} id="top">
+        <section className="hero-v2 landing-hero" style={s.hero}>
+          <div className="hero-text" style={s.heroText}>
+            <div style={s.eyebrow}>
+              <span style={s.eyebrowDot} />
+              Now scanning — 512 stocks · 19+ sources
+            </div>
+            <h1 style={s.h1}>
+              <span className="w" style={{ '--i': 0 }}>Cutting</span>
+              <span className="w" style={{ '--i': 1 }}>edge</span>
+              <span className="w" style={{ '--i': 2, ...s.h1Accent }}>AI</span>
+              <br />
+              <span className="w" style={{ '--i': 3 }}>for</span>
+              <span className="w letters sweep" style={{ '--i': 4 }}>
+                {['E','v','e','r','y','o','n','e'].map((ch, j) => (
+                  <span key={j} className="l" style={{ '--j': j }}>{ch}</span>
+                ))}
+              </span>
+            </h1>
+            <p style={s.sub}>
+              An autonomous system powered by cutting-edge AI — built on decades of
+              investing wisdom from history's greatest investors and combined with
+              multiple layers of market intelligence to find the opportunities worth
+              your attention.
+            </p>
+            <div className="ctas" style={s.ctas}>
+              <a style={s.btnPrimary} href={PATREON_URL} target="_blank" rel="noopener noreferrer">
+                Join Patreon →
+              </a>
+              <a style={s.btnSecondary} href="#features">
+                See How It Works
+              </a>
+            </div>
           </div>
 
-          <h1 style={s.headline}>
-            Democratizing<br />
-            <span style={s.accent}>Alpha</span>
-          </h1>
-
-          <p style={s.sub}>
-            An autonomous system powered by cutting-edge AI — built on decades of investing wisdom
-            from history's greatest investors and combined with multiple layers of market
-            intelligence to find the opportunities worth your attention.
-          </p>
-
-          <div style={s.btns}>
-            <a href={PATREON_URL} target="_blank" rel="noopener noreferrer" style={s.primaryBtn}>
-              Join on Patreon
-            </a>
-            <a href="#features" style={s.outlineBtn}>
-              See How It Works
-            </a>
-          </div>
-        </motion.div>
-      </section>
+          <CapitalFlowGlobe />
+        </section>
+      </div>
     </>
   );
 }
