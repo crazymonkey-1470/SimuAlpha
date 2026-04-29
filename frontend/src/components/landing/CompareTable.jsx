@@ -1,113 +1,121 @@
 import { motion } from 'framer-motion';
 
-const cols = ['Bloomberg', 'Seeking Alpha', 'DIY Research', 'SimuAlpha'];
 const rows = [
-  { label: 'Full S&P 500 scored daily',       vals: ['✓', '—', '—', '✓'] },
-  { label: 'Proprietary 0–100 score',          vals: ['—', 'Analyst ratings', '—', '✓'] },
-  { label: 'Super Investors tracked',          vals: ['Manual', '—', 'Manual', 'Automated'] },
-  { label: 'Congressional trade monitoring',   vals: ['—', '—', '—', 'Committee-weighted'] },
-  { label: 'AI-written investment theses',     vals: ['—', 'Human opinions', '—', 'Per stock'] },
-  { label: 'Multi-layer consensus signal',     vals: ['—', '—', '—', '4-layer'] },
-  { label: 'Elliott Wave auto-detection',      vals: ['—', '—', '—', '✓'] },
-  { label: 'Position sizing + DCA plan',       vals: ['—', '—', '—', '5-tranche'] },
+  { label: 'Proprietary 0–100 verdict score',  bb: '—',     sa: '—',           us: '✓ TLI v2' },
+  { label: '4-layer cross-source consensus',   bb: '—',     sa: '—',           us: '✓ Full-Stack' },
+  { label: 'Elliott Wave entry detection',     bb: 'Manual', sa: '—',           us: '✓ Automated' },
+  { label: 'AI-generated investment thesis',   bb: '—',     sa: 'Per-article', us: '✓ Per-ticker' },
+  { label: 'Monthly cost',                     bb: '$2,000', sa: '$239',        us: '$10' },
 ];
-const costs = ['$2,000+/mo', '$25/mo', 'Your time', '$10/mo'];
+
+const s = {
+  section: { padding: '0 24px 96px' },
+  inner: { maxWidth: 1100, margin: '0 auto' },
+  title: {
+    fontFamily: 'Cormorant Garamond', fontSize: 'clamp(32px, 5vw, 48px)',
+    fontWeight: 300, color: 'var(--text-primary)', lineHeight: 1,
+    margin: '0 0 12px', textAlign: 'center',
+  },
+  accent: { color: 'var(--signal-green)', fontStyle: 'italic' },
+  subtitle: {
+    fontFamily: 'IBM Plex Mono', fontSize: 13, color: 'var(--text-secondary)',
+    textAlign: 'center', maxWidth: 560, margin: '0 auto 56px', lineHeight: 1.8,
+  },
+  wrap: {
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 12, overflow: 'hidden',
+  },
+  scroll: { overflowX: 'auto', WebkitOverflowScrolling: 'touch' },
+  table: {
+    width: '100%', borderCollapse: 'collapse',
+    fontFamily: 'IBM Plex Mono', minWidth: 640,
+  },
+  th: {
+    textAlign: 'left', padding: '18px 24px',
+    borderBottom: '1px solid var(--border)',
+    fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+    color: 'var(--text-dim)', fontWeight: 400,
+    background: 'var(--bg-secondary)',
+  },
+  thUs: {
+    textAlign: 'left', padding: '18px 24px',
+    borderBottom: '1px solid var(--border)',
+    fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+    fontWeight: 400,
+    background: 'rgba(0,232,122,0.08)', color: 'var(--signal-green)',
+  },
+  td: {
+    textAlign: 'left', padding: '18px 24px',
+    borderBottom: '1px solid var(--border)', fontSize: 12,
+    color: 'var(--text-primary)',
+  },
+  tdNo: {
+    textAlign: 'left', padding: '18px 24px',
+    borderBottom: '1px solid var(--border)', fontSize: 12,
+    color: 'var(--text-dim)',
+  },
+  tdUs: {
+    textAlign: 'left', padding: '18px 24px',
+    borderBottom: '1px solid var(--border)', fontSize: 12,
+    color: 'var(--signal-green)', background: 'rgba(0,232,122,0.04)',
+  },
+};
 
 export default function CompareTable() {
   return (
-    <section id="compare" style={{ padding: '80px 24px', background: 'var(--bg-secondary)' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <motion.div
+    <section id="compare" style={s.section}>
+      <div style={s.inner}>
+        <motion.h2
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          style={{ textAlign: 'center', marginBottom: 44 }}
+          style={s.title}
         >
-          <h2 style={{
-            fontFamily: 'Cormorant Garamond', fontSize: 'clamp(28px, 4vw, 48px)',
-            fontWeight: 300, color: 'var(--text-primary)', marginBottom: 10,
-          }}>
-            How Does It Stack Up?
-          </h2>
-          <p style={{
-            fontFamily: 'IBM Plex Mono', fontSize: 11,
-            color: 'var(--text-dim)', letterSpacing: '0.04em',
-          }}>
-            Side-by-side with what professional and retail investors actually use.
-          </p>
-        </motion.div>
+          Bloomberg charges $2,000.<br />
+          <span style={s.accent}>SimuAlpha is $10.</span>
+        </motion.h2>
+        <p style={s.subtitle}>
+          Not a terminal. Not a newsletter. A verdict engine built for retail.
+        </p>
 
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+          style={s.wrap}
         >
-          <table style={{
-            width: '100%', borderCollapse: 'collapse', minWidth: 640,
-            fontFamily: 'IBM Plex Mono', fontSize: 11,
-          }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, textAlign: 'left', width: '32%' }}>Capability</th>
-                {cols.map((c, i) => (
-                  <th key={c} style={{ ...th, color: i === 3 ? 'var(--signal-green)' : 'var(--text-dim)',
-                    background: i === 3 ? 'rgba(0,232,122,0.04)' : 'transparent',
-                    borderLeft: i === 3 ? '1px solid rgba(0,232,122,0.2)' : undefined,
-                    borderRight: i === 3 ? '1px solid rgba(0,232,122,0.2)' : undefined,
-                  }}>
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, ri) => (
-                <tr key={row.label} style={{ background: ri % 2 === 0 ? 'var(--bg-card)' : 'transparent' }}>
-                  <td style={{ ...td, color: 'var(--text-secondary)' }}>{row.label}</td>
-                  {row.vals.map((v, vi) => (
-                    <td key={vi} style={{
-                      ...td, textAlign: 'center',
-                      color: vi === 3 ? 'var(--signal-green)' : v === '✓' ? 'var(--text-secondary)' : 'var(--text-dim)',
-                      background: vi === 3 ? 'rgba(0,232,122,0.03)' : 'transparent',
-                      borderLeft: vi === 3 ? '1px solid rgba(0,232,122,0.15)' : undefined,
-                      borderRight: vi === 3 ? '1px solid rgba(0,232,122,0.15)' : undefined,
-                      fontWeight: vi === 3 ? 500 : 400,
-                    }}>
-                      {v}
-                    </td>
-                  ))}
+          <div style={s.scroll} className="table-wrap">
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Capability</th>
+                  <th style={s.th}>Bloomberg</th>
+                  <th style={s.th}>Seeking Alpha</th>
+                  <th style={s.thUs}>SimuAlpha</th>
                 </tr>
-              ))}
-              <tr style={{ borderTop: '1px solid var(--border-light)' }}>
-                <td style={{ ...td, color: 'var(--text-primary)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: 10 }}>Monthly Cost</td>
-                {costs.map((c, i) => (
-                  <td key={i} style={{
-                    ...td, textAlign: 'center', fontWeight: 600,
-                    color: i === 3 ? 'var(--signal-green)' : 'var(--text-secondary)',
-                    background: i === 3 ? 'rgba(0,232,122,0.05)' : 'transparent',
-                    borderLeft: i === 3 ? '1px solid rgba(0,232,122,0.2)' : undefined,
-                    borderRight: i === 3 ? '1px solid rgba(0,232,122,0.2)' : undefined,
-                    fontSize: i === 3 ? 14 : 11,
-                    fontFamily: i === 3 ? 'Cormorant Garamond' : 'IBM Plex Mono',
-                  }}>
-                    {c}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const isLast = i === rows.length - 1;
+                  const baseTd = { ...s.td, ...(isLast ? { borderBottom: 'none' } : {}) };
+                  const baseNo = { ...s.tdNo, ...(isLast ? { borderBottom: 'none' } : {}) };
+                  const baseUs = { ...s.tdUs, ...(isLast ? { borderBottom: 'none' } : {}) };
+                  return (
+                    <tr key={r.label}>
+                      <td style={baseTd}>{r.label}</td>
+                      <td style={baseNo}>{r.bb}</td>
+                      <td style={baseNo}>{r.sa}</td>
+                      <td style={baseUs}>{r.us}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </motion.div>
       </div>
     </section>
   );
 }
-
-const th = {
-  padding: '12px 16px', borderBottom: '1px solid var(--border)',
-  letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: 10,
-  color: 'var(--text-dim)', fontWeight: 500,
-};
-const td = { padding: '11px 16px', borderBottom: '1px solid var(--border)' };
