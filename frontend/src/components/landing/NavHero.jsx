@@ -1,5 +1,3 @@
-import CapitalFlowGlobe from './CapitalFlowGlobe';
-
 const PATREON_URL = import.meta.env.VITE_PATREON_URL || 'https://www.patreon.com/simualpha';
 
 const s = {
@@ -40,9 +38,7 @@ const s = {
     position: 'relative',
     padding: '112px 0 48px',
     minHeight: 720,
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 40,
+    display: 'flex',
     alignItems: 'center',
   },
   heroText: { position: 'relative', zIndex: 2 },
@@ -139,8 +135,6 @@ export default function NavHero() {
               </a>
             </div>
           </div>
-
-          <CapitalFlowGlobe />
         </section>
       </div>
     </>
