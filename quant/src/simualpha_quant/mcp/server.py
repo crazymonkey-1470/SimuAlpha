@@ -35,6 +35,16 @@ SERVER_VERSION = "0.1.0"
 def build_server() -> Server:
     server: Server = Server(SERVER_NAME, version=SERVER_VERSION)
 
+    # MCP gating choice: registry-marked unavailable tools are filtered out
+    # of `list_tools` rather than advertised-then-failed. MCP has no
+    # standard "tool exists but is unavailable" status, and OpenClaw
+    # honors the discovery surface — leaving an unavailable tool in the
+    # list would trigger noisy "tool unavailable" failures on every
+    # call attempt. The HTTP layer keeps unavailable tools registered
+    # (with a 503 short-circuit) because OpenAPI discovery and the
+    # `/v1/tools` enumeration both want the full surface. If a client
+    # hand-rolls a `call_tool` for an unavailable name anyway, we
+    # short-circuit with a clear RuntimeError rather than running it.
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [
@@ -44,11 +54,20 @@ def build_server() -> Server:
                 inputSchema=spec.request_model.model_json_schema(),
             )
             for spec in TOOLS
+            if spec.status == "available"
         ]
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         spec = by_name(name)
+        if spec.status == "unavailable":
+            log.warning(
+                "mcp tool call refused (unavailable)",
+                extra={"tool": spec.name, "reason": spec.unavailable_reason},
+            )
+            raise RuntimeError(
+                f"{spec.name} unavailable: {spec.unavailable_reason or 'tool is temporarily disabled'}"
+            )
         log.info("mcp tool call", extra={"tool": spec.name})
         req = spec.request_model.model_validate(arguments or {})
         try:
@@ -86,8 +105,20 @@ def _run_sse(host: str, port: int) -> None:
             await server.run(streams[0], streams[1], server.create_initialization_options())
 
     async def health(_request):
+        available = [t.name for t in TOOLS if t.status == "available"]
+        unavailable = {
+            t.name: t.unavailable_reason or "Tool is temporarily unavailable."
+            for t in TOOLS
+            if t.status == "unavailable"
+        }
         return JSONResponse(
-            {"status": "ok", "service": SERVER_NAME, "tools": [t.name for t in TOOLS]}
+            {
+                "status": "ok",
+                "service": SERVER_NAME,
+                "tools": [t.name for t in TOOLS],
+                "tools_available": available,
+                "tools_unavailable": unavailable,
+            }
         )
 
     app = Starlette(
