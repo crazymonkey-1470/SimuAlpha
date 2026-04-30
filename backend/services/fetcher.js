@@ -1,7 +1,11 @@
 const log = require('./logger').child({ module: 'fetcher' });
 
 const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:8000';
-const FETCH_TIMEOUT_MS = parseInt(process.env.SCRAPER_TIMEOUT_MS || '15000', 10);
+// Scraper endpoints can take time when Polygon rate-limits us — historical
+// hits 2 endpoints, fundamentals hits 4, and a single 429 forces a 30s
+// backoff (see scraper/services/polygon_source.py _BACKOFF_SCHEDULE).
+// 60s leaves headroom for one full retry cycle without aborting mid-recover.
+const FETCH_TIMEOUT_MS = parseInt(process.env.SCRAPER_TIMEOUT_MS || '60000', 10);
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
