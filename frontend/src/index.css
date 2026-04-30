@@ -142,6 +142,71 @@ body::before {
 }
 
 /* ── Globe + flow ticker shared styles ─────────────────────────── */
+.hero-globe {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  isolation: isolate;
+  width: 100%;
+  max-width: 560px;
+  justify-self: end;
+  align-self: center;
+}
+#globe:active { cursor: grabbing !important; }
+
+.hero-globe::before {
+  content: '';
+  position: absolute;
+  inset: -8% -12%;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(0,232,122,0.18) 0%, rgba(0,232,122,0.08) 22%, rgba(201,168,76,0.05) 42%, transparent 62%),
+    radial-gradient(circle at 50% 50%, rgba(10,18,22,1) 0%, rgba(10,18,22,0.6) 40%, transparent 72%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+.hero-globe::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,0.45), transparent 50%),
+    radial-gradient(1px 1px at 82% 24%, rgba(255,255,255,0.32), transparent 50%),
+    radial-gradient(1px 1px at 28% 70%, rgba(255,255,255,0.38), transparent 50%),
+    radial-gradient(1px 1px at 72% 82%, rgba(255,255,255,0.28), transparent 50%),
+    radial-gradient(1px 1px at 56% 12%, rgba(255,255,255,0.42), transparent 50%),
+    radial-gradient(1px 1px at 8% 54%, rgba(255,255,255,0.26), transparent 50%),
+    radial-gradient(1px 1px at 92% 60%, rgba(255,255,255,0.3), transparent 50%),
+    radial-gradient(1px 1px at 44% 92%, rgba(255,255,255,0.24), transparent 50%),
+    radial-gradient(1px 1px at 38% 38%, rgba(255,255,255,0.2), transparent 50%),
+    radial-gradient(1px 1px at 66% 46%, rgba(255,255,255,0.22), transparent 50%);
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.flow-ticker {
+  position: absolute;
+  left: 0; right: 0; bottom: -4px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: rgba(12,12,14,0.78);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  white-space: nowrap; overflow: hidden;
+  transition: opacity 0.3s ease;
+  z-index: 3;
+}
+.flow-ticker .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.flow-ticker .pair, .flow-ticker .tk { color: var(--text-primary); font-weight: 500; }
+.flow-ticker .arrow { color: var(--text-dim); margin: 0 2px; }
+.flow-ticker .label { color: var(--text-secondary); }
+.flow-ticker .meta { margin-left: auto; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); flex-shrink: 0; }
+
 /* ── Ticker tape ────────────────────────────────────────────── */
 .ticker-tape {
   position: relative;
@@ -161,7 +226,7 @@ body::before {
   gap: 48px;
   padding-left: 48px;
   white-space: nowrap;
-  animation: ticker-slide 180s linear infinite;
+  animation: ticker-slide 80s linear infinite;
   will-change: transform;
 }
 .ticker-tape:hover .lane { animation-play-state: paused; }
@@ -243,6 +308,11 @@ body::before {
   .hero-v2 .hero-text p { text-align: center !important; }
   .hero-v2 .hero-text p { margin-left: auto !important; margin-right: auto !important; }
   .hero-v2 .hero-text .ctas { justify-content: center !important; }
+  .hero-v2 .hero-globe {
+    max-width: 420px !important;
+    margin: 0 auto !important;
+    justify-self: center !important;
+  }
 
   /* Responsive layout padding */
   .app-main {
