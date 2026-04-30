@@ -47,13 +47,20 @@ def _cache_key(path: str, params: dict | None) -> str | None:
 
 
 async def _rate_limit():
-    """Serialize calls and honor any in-flight 429 pause."""
+    """Serialize calls and honor any in-flight 429 pause.
+
+    Re-checks `_pause_until` after each sleep — if a peer caller signals a
+    backoff while we're already waiting, we extend our wait instead of
+    racing past the pause and triggering another 429.
+    """
     global _last_call
     async with _lock:
-        loop_now = asyncio.get_event_loop().time()
-        target = max(_last_call + _current_delay, _pause_until)
-        wait = target - loop_now
-        if wait > 0:
+        while True:
+            loop_now = asyncio.get_event_loop().time()
+            target = max(_last_call + _current_delay, _pause_until)
+            wait = target - loop_now
+            if wait <= 0:
+                break
             await asyncio.sleep(wait)
         _last_call = asyncio.get_event_loop().time()
 
