@@ -11,12 +11,14 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Core install. Services that also run simulate_strategy add
-# requirements-stage4.txt on top (freqtrade + pandas-ta).
+# Core install plus Stage 4 (freqtrade + pandas-ta) so simulate_strategy
+# is actually callable in this image. The two-file split is preserved so
+# a downstream service that only needs the lightweight tools can drop the
+# second install — but on the deployed quant-api / quant-mcp services we
+# always want both.
 COPY requirements.txt requirements-stage4.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-# Uncomment the next line on the simulate-strategy Railway service only:
-#   RUN pip install --no-cache-dir -r requirements-stage4.txt
+RUN pip install --no-cache-dir -r requirements-stage4.txt
 
 COPY . .
 

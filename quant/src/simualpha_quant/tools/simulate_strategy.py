@@ -1,22 +1,5 @@
 """Tool: simulate_strategy — cache-first full-strategy simulation.
 
-⚠ GATED AT THE API LAYER. The implementation in this module is intact and
-correct, but the HTTP route in ``api/app.py`` and the MCP ``list_tools``
-filter in ``mcp/server.py`` both refuse to dispatch to it. The registry
-(``tools/registry.py``) marks this tool ``status="unavailable"``. Three
-follow-up patches must land before flipping it back to ``available``:
-
-1. Cherry-pick freqtrade 2026.3 compat work from
-   ``claude/quant-research-service-v1CCV`` (``build_config`` needs
-   ``entry_pricing`` / ``exit_pricing`` / ``order_types`` /
-   ``order_time_in_force`` blocks plus the strategy-resolver patch).
-2. Apply the ``allow_inactive: True`` pairlist fix from
-   ``claude/code-review-refactor-KHIzx`` so stock pairs survive
-   freqtrade's live-exchange whitelist filter.
-3. Uncomment the ``RUN pip install --no-cache-dir -r
-   requirements-stage4.txt`` line in ``quant/Dockerfile`` so freqtrade
-   is actually installed in the deployed image.
-
 Decision tree mirrors backtest_pattern:
 
 1. Hash the request.
@@ -45,6 +28,7 @@ from simualpha_quant.execution.chart_annotations import (
     build_chart_request,
     inputs_from_context,
 )
+from simualpha_quant.execution.simulate import SimulationError
 from simualpha_quant.execution.simulate import run_simulation
 from simualpha_quant.execution.trade_log import TradeRecord
 from simualpha_quant.logging_config import get_logger
@@ -54,6 +38,7 @@ from simualpha_quant.schemas.simulate import (
     HorizonOutcome,
     SimulateStrategyRequest,
     SimulateStrategyResponse,
+    SimulationSummary,
     TradeChart,
 )
 
@@ -250,6 +235,21 @@ def _patch_cached_trade_log(sim_hash: str, rendered: list[TradeChart]) -> None:
 # ─────────────────────────── public tool ────────────────────────────
 
 
+def _empty_summary() -> SimulationSummary:
+    """Zero-valued summary used inside error responses only."""
+    return SimulationSummary(
+        total_trades=0,
+        win_rate=0.0,
+        avg_win_pct=0.0,
+        avg_loss_pct=0.0,
+        profit_factor=0.0,
+        sharpe=0.0,
+        sortino=0.0,
+        max_drawdown_pct=0.0,
+        calmar=0.0,
+    )
+
+
 def simulate_strategy(
     req: SimulateStrategyRequest,
     *,
@@ -270,7 +270,35 @@ def simulate_strategy(
     if cached is not None:
         return cached.model_copy(update={"cached": True, "hash": h})
 
-    engine = run_simulation(req.strategy, chart_samples=req.chart_samples)
+    # Bug-1 fix: engine errors (freqtrade init / runtime failures)
+    # MUST NOT masquerade as empty-but-successful simulations. Catch
+    # SimulationError here and return a response with status='error'
+    # so the HTTP layer can 5xx and the caller sees the truth.
+    try:
+        engine = run_simulation(req.strategy, chart_samples=req.chart_samples)
+    except SimulationError as exc:
+        log.error(
+            "simulate_strategy engine error",
+            extra={"hash": h, "error_type": exc.error_type, "detail": exc.detail},
+        )
+        err = SimulateStrategyResponse(
+            status="error",
+            error_type=exc.error_type,
+            error_detail=exc.detail,
+            summary_stats=_empty_summary(),
+            per_horizon_outcomes=[],
+            equity_curve=[],
+            equity_curve_dates=[],
+            equity_curve_ohlc=[],
+            trade_log_sample=[],
+            charts_job_id=None,
+            cached=False,
+            hash=h,
+            computed_at=datetime.now(tz=timezone.utc),
+        )
+        # Do NOT write errors to the Supabase cache — next caller
+        # should get a fresh attempt, not a stale error row.
+        return err
 
     render_fn = renderer or _default_renderer()
 

@@ -34,6 +34,7 @@ from simualpha_quant.execution.freqtrade_adapter import (
     build_config,
     build_strategy_class,
     make_data_provider,
+    register_dynamic_strategy,
 )
 from simualpha_quant.execution.trade_context import enrich_trades_with_context
 from simualpha_quant.execution.trade_log import (
@@ -54,6 +55,27 @@ from simualpha_quant.schemas.simulate import (
 from simualpha_quant.schemas.strategy import StrategySpec
 
 log = get_logger(__name__)
+
+
+# ─────────────────────────── errors ─────────────────────────────────
+
+
+class SimulationError(RuntimeError):
+    """Raised when the simulation could not run to completion.
+
+    Distinct from "simulation ran, produced zero trades" — that
+    returns a normal ``SimulationEngineResult`` with an empty trade
+    list. A ``SimulationError`` means freqtrade (or an upstream step)
+    failed to initialize or raised mid-run.
+
+    Carries machine-readable ``error_type`` so the tool layer can
+    surface it in the HTTP response.
+    """
+
+    def __init__(self, error_type: str, detail: str) -> None:
+        super().__init__(f"{error_type}: {detail}")
+        self.error_type = error_type
+        self.detail = detail
 
 
 # ─────────────────────────── result type ────────────────────────────
@@ -201,18 +223,30 @@ def _run_freqtrade(
             ft_config.update(config)
             ft_config.setdefault("user_data_dir", user_data)
 
+        # freqtrade 2026.3's Backtesting.__init__ resolves the
+        # strategy from config["strategy"] via filesystem discovery.
+        # register_dynamic_strategy installs a scoped monkey-patch on
+        # StrategyResolver._load_strategy that returns our closure-
+        # based StrategyCls by name. The patch is reverted on exit
+        # whether init succeeds or raises.
         try:
-            backtesting = Backtesting(ft_config)
+            with register_dynamic_strategy(StrategyCls):
+                backtesting = Backtesting(ft_config)
         except Exception as exc:
             log.exception("freqtrade Backtesting init failed", extra={"err": str(exc)})
-            return [], []
+            raise SimulationError(
+                "freqtrade_init_failure",
+                f"{type(exc).__name__}: {exc}",
+            ) from exc
         backtesting.dataprovider = provider  # type: ignore[attr-defined]
         try:
-            backtesting.strategylist = [StrategyCls(ft_config)]  # type: ignore[arg-type]
             backtesting.start()
         except Exception as exc:
             log.exception("freqtrade backtesting raised", extra={"err": str(exc)})
-            return [], []
+            raise SimulationError(
+                "freqtrade_runtime_failure",
+                f"{type(exc).__name__}: {exc}",
+            ) from exc
 
         results_payload = getattr(backtesting, "results", {}) or {}
         first_strategy = next(iter(results_payload.values()), {}) if results_payload else {}

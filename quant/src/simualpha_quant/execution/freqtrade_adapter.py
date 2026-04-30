@@ -1,29 +1,12 @@
 """Freqtrade integration — library mode (Approach A).
 
-⚠ THIS MODULE BACKS THE GATED ``simulate_strategy`` TOOL. The code is
-intact and importable (lazy freqtrade import keeps it safe even when
-freqtrade isn't installed), but the simulate route is currently refused
-at the API layer with HTTP 503 and filtered out of MCP discovery. Three
-follow-up patches must land before un-gating:
-
-1. ``build_config`` needs the freqtrade 2026.3 required-keys set —
-   ``entry_pricing`` / ``exit_pricing`` blocks, ``order_types`` /
-   ``order_time_in_force`` defaults, and the dynamic-strategy-resolver
-   patch — sitting on ``claude/quant-research-service-v1CCV``.
-2. The pairlists block needs ``allow_inactive: True`` so stock pairs
-   (AAPL/USD, …) survive freqtrade's Binance-shim whitelist filter —
-   sitting on ``claude/code-review-refactor-KHIzx``.
-3. ``quant/Dockerfile`` needs to actually install
-   ``requirements-stage4.txt`` (the ``RUN pip install`` line is
-   currently commented out).
-
 Builds a freqtrade ``IStrategy`` subclass dynamically from a
 ``StrategySpec`` and wires it into freqtrade's in-process
 ``Backtesting`` engine with an in-process data provider that reads
 from our qlib binary store.
 
 We deliberately depend on freqtrade internals, which vary across
-minor releases. The pin is ``freqtrade==2024.11`` (see
+minor releases. The pin is ``freqtrade==2026.3`` (see
 ``requirements-stage4.txt``). If freqtrade is upgraded, re-read the
 version's release notes for the three surface areas we touch:
 
@@ -42,10 +25,11 @@ CONVENTIONS:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import pandas as pd
 
@@ -68,6 +52,14 @@ log = get_logger(__name__)
 PAIR_QUOTE = "USD"
 TIMEFRAME = "1d"
 
+# Every dynamically-built IStrategy subclass registers under this
+# name with freqtrade's resolver. freqtrade 2026.3's Backtesting
+# init REQUIRES config["strategy"] to be a string; the
+# ``register_dynamic_strategy`` context manager below patches
+# StrategyResolver._load_strategy so lookups of this name return
+# our closure class instead of doing filesystem discovery.
+STRATEGY_NAME = "TLIStrategy"
+
 
 # ─────────────────────────── config builder ────────────────────────────
 
@@ -89,12 +81,62 @@ def _pair_to_ticker(pair: str) -> str:
 SHIMMED_EXCHANGE = "binance"
 
 
+# Freqtrade 2026.3 ``Exchange.validate_config`` demands these keys
+# exist with specific shapes even in backtest mode — missing any of
+# them raises ``KeyError`` deep inside exchange init. Sourced from
+# ``freqtrade.config_schema.config_schema.SCHEMA_TRADE_REQUIRED``
+# and runtime tracing of ``validate_config`` /
+# ``validate_pricing`` / ``check_exchange``.
+#
+# A unit test in ``tests/execution/test_freqtrade_config.py``
+# calls ``freqtrade.optimize.backtesting.Backtesting(build_config(...))``
+# so any new required key surfaces at CI time, not deploy time.
+
+
+def _default_pricing_block() -> dict[str, Any]:
+    """Minimal pricing block freqtrade's validator accepts."""
+    return {
+        "price_side": "same",        # ask / bid / same / other; 'same' = safe default
+        "use_order_book": False,
+        "price_last_balance": 0.0,
+    }
+
+
+def _default_order_types_block() -> dict[str, Any]:
+    return {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "market",
+        "force_entry": "market",
+        "force_exit": "market",
+        "stoploss": "market",
+        "stoploss_on_exchange": False,
+    }
+
+
+def _default_order_tif_block() -> dict[str, Any]:
+    return {"entry": "GTC", "exit": "GTC"}
+
+
 def build_config(spec: StrategySpec) -> dict[str, Any]:
-    """Equity-realistic freqtrade config dict (in-memory; no JSON on disk)."""
+    """Equity-realistic freqtrade config dict (in-memory; no JSON on disk).
+
+    Targets freqtrade 2026.3. If a future freqtrade release adds new
+    required keys, the integration test in
+    ``tests/execution/test_freqtrade_config.py`` will fail before
+    production does.
+    """
     tickers = universes.resolve(spec.universe_spec)
     pairs = [_ticker_to_pair(t) for t in tickers]
     return {
         "runmode": "backtest",
+        # freqtrade 2026.3's Backtesting.__init__ calls
+        # StrategyResolver.load_strategy(config) and requires
+        # config["strategy"] to be a non-empty string. We fill in the
+        # fixed TLIStrategy name and pair it with the
+        # register_dynamic_strategy() context manager wrapped around
+        # the Backtesting(config) call in simulate.py.
+        "strategy": STRATEGY_NAME,
         "exchange": {
             "name": SHIMMED_EXCHANGE,
             "pair_whitelist": pairs,
@@ -106,10 +148,11 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
         },
         "stake_currency": PAIR_QUOTE,
         "stake_amount": "unlimited",
+        "tradable_balance_ratio": 1.0,
+        "last_stake_amount_min_ratio": 0.5,
         "dry_run": True,
         "dry_run_wallet": spec.initial_capital,
-        "fee": 0.0,  # commission-free equity defaults; override per-broker
-        "tradable_balance_ratio": 1.0,
+        "fee": 0.0,
         "max_open_trades": spec.max_open_positions,
         "timeframe": TIMEFRAME,
         "timerange": f"{spec.date_range.start:%Y%m%d}-{spec.date_range.end:%Y%m%d}",
@@ -127,6 +170,23 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
         "process_only_new_candles": True,
         "position_adjustment_enable": True,
         "strategy_path": "",
+        # freqtrade 2026.3 additions — previously missing, caused
+        # KeyError: 'exit_pricing' at Backtesting init.
+        "entry_pricing": _default_pricing_block(),
+        "exit_pricing": _default_pricing_block(),
+        "order_types": _default_order_types_block(),
+        "order_time_in_force": _default_order_tif_block(),
+        # Placeholder stop + ROI. Real logic lives in custom_stoploss /
+        # custom_exit. freqtrade will ignore these as long as
+        # position_adjustment_enable is True and custom_* hooks are
+        # implemented on the strategy.
+        "stoploss": -0.99,
+        "minimal_roi": {"0": 10.0},
+        # Data format — the on-disk cache shape. feather is the 2026.x
+        # default and what our DataProvider returns, so this matches.
+        "dataformat_ohlcv": "feather",
+        "dataformat_trades": "feather",
+        "internals": {},
     }
 
 
@@ -359,9 +419,70 @@ def build_strategy_class(spec: StrategySpec, *, runtime_state: dict | None = Non
                 return max(stop_pct, trailing_pct)
             return stop_pct
 
-    _TLIStrategy.__name__ = "TLIStrategy"
-    _TLIStrategy.__qualname__ = "TLIStrategy"
+    _TLIStrategy.__name__ = STRATEGY_NAME
+    _TLIStrategy.__qualname__ = STRATEGY_NAME
     return _TLIStrategy
+
+
+# ─────────────────────────── dynamic-strategy registration ─────────────
+#
+# Freqtrade 2026.3's ``Backtesting.__init__`` calls
+# ``StrategyResolver.load_strategy(self.config)`` which:
+#
+#   1. Reads the string name from ``config["strategy"]``.
+#   2. Calls ``StrategyResolver._load_strategy(strategy_name, config,
+#      extra_dir=config.get("strategy_path"))``.
+#   3. That in turn walks ``abs_paths`` (built from ``user_data_dir``,
+#      ``strategy_path``, and recursive subdirs) and for each ``.py``
+#      file text-matches ``class <strategy_name>(`` and imports the
+#      module to pull the class out. It then calls ``ClassName(config=
+#      config)`` to instantiate.
+#
+# There is NO mechanism to pass a class object directly through the
+# config — every path assumes on-disk discovery. Writing our dynamic
+# class out to a tempfile would lose the closure over ``spec`` and
+# ``runtime_state`` that ``build_strategy_class`` sets up.
+#
+# The surgical fix: inside a context manager, swap in a replacement
+# for ``StrategyResolver._load_strategy`` that recognizes our
+# well-known name (``TLIStrategy``) and returns the instantiated
+# closure class, then delegates everything else to the original
+# implementation. ``load_strategy`` (the public caller) still runs
+# its attribute-override / sanity-validation pipeline on whatever
+# ``_load_strategy`` returns, so nothing else in freqtrade's init
+# path needs to change.
+#
+# Restore is guaranteed by the context manager — future Backtesting
+# calls in the same process see the stock resolver.
+
+
+@contextmanager
+def register_dynamic_strategy(
+    strategy_cls: type,
+    name: str = STRATEGY_NAME,
+) -> Iterator[None]:
+    """Register ``strategy_cls`` with freqtrade's StrategyResolver
+    under ``name`` for the lifetime of the ``with`` block.
+
+    Use this around ``Backtesting(config)`` when ``config["strategy"]
+    == name``. Outside the block, freqtrade's resolver behaves
+    exactly as before.
+    """
+    from freqtrade.resolvers.strategy_resolver import StrategyResolver
+
+    original_load_strategy = StrategyResolver._load_strategy
+
+    def patched(strategy_name: str, config: dict, extra_dir: str | None = None):
+        if strategy_name == name:
+            instance = strategy_cls(config=config)
+            return StrategyResolver.validate_strategy(instance)
+        return original_load_strategy(strategy_name, config, extra_dir)
+
+    StrategyResolver._load_strategy = staticmethod(patched)
+    try:
+        yield
+    finally:
+        StrategyResolver._load_strategy = staticmethod(original_load_strategy)
 
 
 # ─────────────────────────── sizing math ──────────────────────────────
