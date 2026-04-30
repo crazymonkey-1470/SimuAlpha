@@ -96,7 +96,15 @@ def build_config(spec: StrategySpec) -> dict[str, Any]:
         "max_open_trades": spec.max_open_positions,
         "timeframe": TIMEFRAME,
         "timerange": f"{spec.date_range.start:%Y%m%d}-{spec.date_range.end:%Y%m%d}",
-        "pairlists": [{"method": "StaticPairList"}],
+        # `allow_inactive` keeps pairs that aren't in the live exchange's
+        # market list. We're shimming Binance to backtest equities — stock
+        # pairs (AAPL/USD, MSFT/USD …) don't exist on Binance, so without
+        # this flag StaticPairList calls _whitelist_for_active_markets()
+        # and strips every pair, leaving the whitelist empty and crashing
+        # Backtesting.__init__() with "No pair in whitelist". OHLCV comes
+        # from EquityOHLCStore (real Polygon data via the in-process data
+        # provider), so the live-market check is always meaningless here.
+        "pairlists": [{"method": "StaticPairList", "allow_inactive": True}],
         "trading_mode": "spot",
         "margin_mode": "",
         "process_only_new_candles": True,
