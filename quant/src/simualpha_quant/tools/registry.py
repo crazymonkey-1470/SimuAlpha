@@ -36,16 +36,8 @@ from simualpha_quant.tools.simulate_strategy import simulate_strategy
 
 
 ToolStatus = Literal["available", "unavailable"]
-
-# Reason string for the one currently-gated tool. Surfaced verbatim in
-# the HTTP 503 body, the /health and /v1/tools enumerations, and the
-# MCP server's tool list. When un-gating, drop both this constant and
-# the unavailable=True marker on the ToolSpec entry below.
-SIMULATE_STRATEGY_UNAVAILABLE_REASON = (
-    "simulate_strategy is temporarily disabled pending Stage 4 freqtrade "
-    "compatibility fixes. Use backtest_pattern for pattern-level "
-    "validation in the meantime."
-)
+# The status / unavailable_reason fields stay in the spec so future gating
+# (e.g. another tool that depends on a flaky upstream) is a 1-line change.
 
 
 @dataclass(frozen=True)
@@ -126,8 +118,6 @@ TOOLS: tuple[ToolSpec, ...] = (
         request_model=SimulateStrategyRequest,
         response_model=SimulateStrategyResponse,
         handler=simulate_strategy,
-        status="unavailable",
-        unavailable_reason=SIMULATE_STRATEGY_UNAVAILABLE_REASON,
     ),
     ToolSpec(
         name="render_tli_chart",

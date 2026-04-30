@@ -1,22 +1,5 @@
 """Tool: simulate_strategy — cache-first full-strategy simulation.
 
-⚠ GATED AT THE API LAYER. The implementation in this module is intact and
-correct, but the HTTP route in ``api/app.py`` and the MCP ``list_tools``
-filter in ``mcp/server.py`` both refuse to dispatch to it. The registry
-(``tools/registry.py``) marks this tool ``status="unavailable"``. Three
-follow-up patches must land before flipping it back to ``available``:
-
-1. Cherry-pick freqtrade 2026.3 compat work from
-   ``claude/quant-research-service-v1CCV`` (``build_config`` needs
-   ``entry_pricing`` / ``exit_pricing`` / ``order_types`` /
-   ``order_time_in_force`` blocks plus the strategy-resolver patch).
-2. Apply the ``allow_inactive: True`` pairlist fix from
-   ``claude/code-review-refactor-KHIzx`` so stock pairs survive
-   freqtrade's live-exchange whitelist filter.
-3. Uncomment the ``RUN pip install --no-cache-dir -r
-   requirements-stage4.txt`` line in ``quant/Dockerfile`` so freqtrade
-   is actually installed in the deployed image.
-
 Decision tree mirrors backtest_pattern:
 
 1. Hash the request.
