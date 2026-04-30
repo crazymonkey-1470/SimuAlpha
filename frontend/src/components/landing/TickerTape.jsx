@@ -1,21 +1,13 @@
 import { useMemo } from 'react';
 import { useTickerData } from '../../hooks/useTickerData';
 
-// Fallback data — only used when Supabase has no rows / is unreachable.
-// Real tickers, plausible price stamps, no signal (rendered as "—").
+// Placeholder shown only while live data is loading / unavailable.
+// Tickers only — no fabricated prices (formatPrice renders null as "—").
 const FALLBACK_TICKERS = [
-  { ticker: 'NVDA',  price: 142.87 }, { ticker: 'AAPL',  price: 228.51 },
-  { ticker: 'MSFT',  price: 438.12 }, { ticker: 'TSLA',  price: 352.94 },
-  { ticker: 'META',  price: 592.03 }, { ticker: 'GOOGL', price: 191.45 },
-  { ticker: 'AMZN',  price: 224.68 }, { ticker: 'BRK.B', price: 462.10 },
-  { ticker: 'JPM',   price: 241.77 }, { ticker: 'UNH',   price: 498.32 },
-  { ticker: 'XOM',   price: 114.90 }, { ticker: 'V',     price: 306.21 },
-  { ticker: 'LLY',   price: 786.44 }, { ticker: 'AVGO',  price: 166.29 },
-  { ticker: 'COST',  price: 908.55 }, { ticker: 'WMT',   price:  88.17 },
-  { ticker: 'ORCL',  price: 181.62 }, { ticker: 'MA',    price: 528.04 },
-  { ticker: 'HD',    price: 398.73 }, { ticker: 'PG',    price: 168.40 },
-  { ticker: 'NFLX',  price: 780.11 }, { ticker: 'AMD',   price: 136.92 },
-].map(t => ({ ...t, signal: '', tag: '—', tone: 'dim', score: null }));
+  'NVDA', 'AAPL', 'MSFT', 'TSLA', 'META', 'GOOGL', 'AMZN', 'BRK.B',
+  'JPM',  'UNH',  'XOM',  'V',    'LLY',  'AVGO',  'COST', 'WMT',
+  'ORCL', 'MA',   'HD',   'PG',   'NFLX', 'AMD',
+].map(ticker => ({ ticker, price: null, signal: '', tag: '—', tone: 'dim', score: null }));
 
 function makeKpis(totalCount) {
   // Live count when we have one, otherwise the marketing default.

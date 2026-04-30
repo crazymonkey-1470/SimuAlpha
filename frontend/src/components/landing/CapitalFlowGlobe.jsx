@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { LAND_MASK_PNG, LAND_MASK_W, LAND_MASK_H } from './land-mask.js';
 
@@ -10,10 +10,6 @@ const COLORS = {
   wire2: new THREE.Color('#2a2a32'),
   atmos: new THREE.Color('#00e87a'),
   city:  new THREE.Color('#f0ede8'),
-};
-
-const SIGNAL_COLORS = {
-  green: '#00e87a', amber: '#f0a500', blue: '#4a9eff', gold: '#c9a84c',
 };
 
 const CITIES = [
@@ -76,10 +72,6 @@ function makeGlowTexture() {
 
 export default function CapitalFlowGlobe() {
   const containerRef = useRef(null);
-  const [flow, setFlow] = useState({
-    signal: 'green', from: 'NYC', to: 'TYO', ticker: 'NVDA', label: 'Load-the-Boat flow',
-  });
-  const [tickerVisible, setTickerVisible] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -278,13 +270,6 @@ export default function CapitalFlowGlobe() {
       arc.duration = 2.4 + Math.random() * 0.8;
       arcs.push(arc);
 
-      // Update React state for the flow ticker
-      setTickerVisible(false);
-      setTimeout(() => {
-        setFlow(f);
-        setTickerVisible(true);
-      }, 180);
-
       for (const ring of cityRings) {
         if (ring.userData.city === f.from || ring.userData.city === f.to) {
           ring.material.color = COLORS[f.signal];
@@ -402,18 +387,6 @@ export default function CapitalFlowGlobe() {
         id="globe"
         style={{ position: 'absolute', inset: 0, cursor: 'grab', zIndex: 2 }}
       />
-      <div
-        className="flow-ticker"
-        style={{ opacity: tickerVisible ? 1 : 0 }}
-      >
-        <span className="dot" style={{ background: SIGNAL_COLORS[flow.signal] }} />
-        <span className="pair">
-          {flow.from}<span className="arrow">→</span>{flow.to}
-        </span>
-        <span className="tk">{flow.ticker}</span>
-        <span className="label">· {flow.label}</span>
-        <span className="meta">Live</span>
-      </div>
     </div>
   );
 }

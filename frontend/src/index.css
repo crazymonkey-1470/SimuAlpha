@@ -141,7 +141,7 @@ body::before {
   }
 }
 
-/* ── Globe + flow ticker shared styles ─────────────────────────── */
+/* ── Globe styles ──────────────────────────────────────────────── */
 .hero-globe {
   position: relative;
   aspect-ratio: 1 / 1;
@@ -184,29 +184,6 @@ body::before {
   opacity: 0.7;
 }
 
-.flow-ticker {
-  position: absolute;
-  left: 0; right: 0; bottom: -4px;
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
-  background: rgba(12,12,14,0.78);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  backdrop-filter: blur(8px);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
-  white-space: nowrap; overflow: hidden;
-  transition: opacity 0.3s ease;
-  z-index: 3;
-}
-.flow-ticker .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.flow-ticker .pair, .flow-ticker .tk { color: var(--text-primary); font-weight: 500; }
-.flow-ticker .arrow { color: var(--text-dim); margin: 0 2px; }
-.flow-ticker .label { color: var(--text-secondary); }
-.flow-ticker .meta { margin-left: auto; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); flex-shrink: 0; }
-
 /* ── Ticker tape ────────────────────────────────────────────── */
 .ticker-tape {
   position: relative;
@@ -226,7 +203,7 @@ body::before {
   gap: 48px;
   padding-left: 48px;
   white-space: nowrap;
-  animation: ticker-slide 80s linear infinite;
+  animation: ticker-slide 180s linear infinite;
   will-change: transform;
 }
 .ticker-tape:hover .lane { animation-play-state: paused; }
