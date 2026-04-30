@@ -5,6 +5,7 @@ Clean REST API, reliable, no scraping needed.
 
 import os
 import asyncio
+import time
 from datetime import datetime, timedelta
 
 import httpx
@@ -14,34 +15,70 @@ BASE = "https://api.polygon.io"
 
 # Rate limiting: Polygon free tier = 5 req/min = 12s between requests.
 # Paid tiers can lower this via POLYGON_RATE_DELAY env var (e.g. "1.5").
-_last_call = 0.0
-_lock = asyncio.Lock()
-
 RATE_LIMIT_DELAY = float(os.environ.get("POLYGON_RATE_DELAY", "12"))
+_MAX_THROTTLE_DELAY = 15.0  # ceiling for adaptive throttling
 
-# Track 429s to auto-throttle if delay is set too low
+# Shared limiter state. `_pause_until` is set when any request gets a 429 so
+# all queued callers wait for the same backoff window — without this, every
+# concurrent request fires its own 429 and triggers redundant retries.
+_lock = asyncio.Lock()
+_last_call = 0.0
+_pause_until = 0.0
+_current_delay = RATE_LIMIT_DELAY
 _consecutive_429s = 0
+
+# Per-endpoint result cache. Keyed by full path+params (excluding apiKey).
+# Useful for static endpoints like /v3/reference/tickers/{T}, where a single
+# batch run hits the same path multiple times (universe + fundamentals).
+_endpoint_cache: dict[str, tuple[float, dict | None]] = {}
+_STATIC_PREFIXES = ("/v3/reference/tickers/",)
+_STATIC_TTL = 6 * 60 * 60  # 6 hours
+
+
+def _cache_key(path: str, params: dict | None) -> str | None:
+    if not path.startswith(_STATIC_PREFIXES):
+        return None
+    if not params:
+        return path
+    parts = sorted((k, v) for k, v in params.items() if k != "apiKey")
+    if not parts:
+        return path
+    return path + "?" + "&".join(f"{k}={v}" for k, v in parts)
 
 
 async def _rate_limit():
+    """Serialize calls and honor any in-flight 429 pause."""
     global _last_call
     async with _lock:
-        now = asyncio.get_event_loop().time()
-        wait = RATE_LIMIT_DELAY - (now - _last_call)
+        loop_now = asyncio.get_event_loop().time()
+        target = max(_last_call + _current_delay, _pause_until)
+        wait = target - loop_now
         if wait > 0:
             await asyncio.sleep(wait)
         _last_call = asyncio.get_event_loop().time()
 
 
+def _signal_backoff(seconds: float):
+    """All future _rate_limit() acquires will block until this deadline."""
+    global _pause_until
+    deadline = asyncio.get_event_loop().time() + seconds
+    if deadline > _pause_until:
+        _pause_until = deadline
+
+
 async def _get(path: str, params: dict = None) -> dict | None:
     """Make a rate-limited GET request to Polygon API with exponential backoff."""
-    global RATE_LIMIT_DELAY, _consecutive_429s
+    global _current_delay, _consecutive_429s
 
     if not API_KEY:
         print("  [Polygon] POLYGON_API_KEY not set!")
         return None
 
-    await _rate_limit()
+    cache_key = _cache_key(path, params)
+    if cache_key is not None:
+        entry = _endpoint_cache.get(cache_key)
+        if entry and (time.time() - entry[0]) < _STATIC_TTL:
+            return entry[1]
 
     url = f"{BASE}{path}"
     if params is None:
@@ -50,27 +87,35 @@ async def _get(path: str, params: dict = None) -> dict | None:
 
     max_retries = 3
     for attempt in range(max_retries):
+        await _rate_limit()
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 r = await client.get(url, params=params)
-                if r.status_code == 200:
-                    _consecutive_429s = 0
-                    return r.json()
-                elif r.status_code == 429:
-                    _consecutive_429s += 1
-                    backoff = min(15 * (2 ** attempt), 65)  # 15s, 30s, 60s
-                    print(f"  [Polygon] Rate limited on {path}, backoff {backoff}s (attempt {attempt + 1}/{max_retries})")
-
-                    # Auto-throttle: if we keep hitting 429s, increase base delay
-                    if _consecutive_429s >= 3 and RATE_LIMIT_DELAY < 12:
-                        RATE_LIMIT_DELAY = 12.0
-                        print(f"  [Polygon] Auto-throttled: delay increased to {RATE_LIMIT_DELAY}s")
-
-                    await asyncio.sleep(backoff)
-                    continue
-                else:
-                    print(f"  [Polygon] {path} returned {r.status_code}")
-                    return None
+            if r.status_code == 200:
+                _consecutive_429s = 0
+                data = r.json()
+                if cache_key is not None:
+                    _endpoint_cache[cache_key] = (time.time(), data)
+                return data
+            if r.status_code == 429:
+                _consecutive_429s += 1
+                # Prefer server's Retry-After when present, else exponential
+                retry_after = r.headers.get("retry-after")
+                try:
+                    backoff = float(retry_after) if retry_after else min(15 * (2 ** attempt), 60)
+                except (TypeError, ValueError):
+                    backoff = min(15 * (2 ** attempt), 60)
+                print(f"  [Polygon] Rate limited on {path}, backoff {backoff:.0f}s (attempt {attempt + 1}/{max_retries})")
+                _signal_backoff(backoff)
+                # Adaptive throttle: bump base delay so subsequent batches pace themselves
+                if _consecutive_429s >= 3 and _current_delay < _MAX_THROTTLE_DELAY:
+                    new_delay = min(_current_delay + 1.5, _MAX_THROTTLE_DELAY)
+                    if new_delay > _current_delay:
+                        _current_delay = new_delay
+                        print(f"  [Polygon] Auto-throttled: delay increased to {_current_delay:.1f}s")
+                continue
+            print(f"  [Polygon] {path} returned {r.status_code}")
+            return None
         except Exception as e:
             print(f"  [Polygon] {path} error: {e}")
             return None
