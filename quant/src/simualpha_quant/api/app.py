@@ -12,6 +12,7 @@ import time
 from typing import Callable
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from simualpha_quant.api.auth import AuthError, AuthedKey, require_auth
@@ -40,11 +41,42 @@ SIMULATE_SYNC_TIME_LIMIT_SECONDS: float = 10.0
 # ─────────────────────────── generic tool handler ──────────────────────
 
 
+def _unavailable_response(spec: ToolSpec) -> JSONResponse:
+    """503 body for tools the registry has marked unavailable.
+
+    Shape is intentionally NOT the standard SuccessResponse / ErrorResponse
+    envelope — OpenClaw's tool-availability handling reads this exact
+    structured body to distinguish "tool was rejected" from "tool ran and
+    failed". When un-gating, drop the status="unavailable" marker on the
+    ToolSpec and this branch becomes unreachable.
+    """
+    return JSONResponse(
+        {
+            "status": "error",
+            "error_type": "tool_unavailable",
+            "error_detail": spec.unavailable_reason or "Tool is temporarily unavailable.",
+            "tool": spec.name,
+        },
+        status_code=503,
+    )
+
+
 def _make_handler(spec: ToolSpec) -> Callable:
     """Bind a tool spec to an async FastAPI handler closure."""
 
     async def handler(request: Request, auth: AuthedKey = Depends(require_auth)):
         started = time.time()
+
+        # Gate: registry-declared unavailable tools short-circuit here
+        # AFTER auth (so unauth callers can't probe gating state) but
+        # BEFORE body parsing (we don't need a valid request to refuse).
+        if spec.status == "unavailable":
+            log.info(
+                "tool call refused (unavailable)",
+                extra={"tool": spec.name, "auth": auth.name, "reason": spec.unavailable_reason},
+            )
+            return _unavailable_response(spec)
+
         try:
             body = await request.json()
         except Exception:
@@ -258,10 +290,22 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict:
         snap = universes.snapshot("tracked_8500")
+        # `tools` keeps the legacy full-list contract (every registered tool).
+        # `tools_available` / `tools_unavailable` give callers a clean discovery
+        # surface so they can route only to currently-callable tools without
+        # probing each one for a 503.
+        available = [t.name for t in TOOLS if t.status == "available"]
+        unavailable = {
+            t.name: t.unavailable_reason or "Tool is temporarily unavailable."
+            for t in TOOLS
+            if t.status == "unavailable"
+        }
         return {
             "status": "ok",
             "service": "simualpha-quant-api",
             "tools": [t.name for t in TOOLS],
+            "tools_available": available,
+            "tools_unavailable": unavailable,
             "tracked_8500_count": len(snap.tickers),
             "tracked_8500_refreshed_at": snap.refreshed_at,
         }
@@ -274,6 +318,8 @@ def create_app() -> FastAPI:
                     "name": t.name,
                     "route": t.http_route,
                     "description": t.description,
+                    "status": t.status,
+                    "unavailable_reason": t.unavailable_reason,
                     "request_schema": t.request_model.model_json_schema(),
                     "response_schema": t.response_model.model_json_schema(),
                 }

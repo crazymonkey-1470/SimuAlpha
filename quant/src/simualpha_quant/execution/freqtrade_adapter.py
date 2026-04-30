@@ -1,5 +1,22 @@
 """Freqtrade integration — library mode (Approach A).
 
+⚠ THIS MODULE BACKS THE GATED ``simulate_strategy`` TOOL. The code is
+intact and importable (lazy freqtrade import keeps it safe even when
+freqtrade isn't installed), but the simulate route is currently refused
+at the API layer with HTTP 503 and filtered out of MCP discovery. Three
+follow-up patches must land before un-gating:
+
+1. ``build_config`` needs the freqtrade 2026.3 required-keys set —
+   ``entry_pricing`` / ``exit_pricing`` blocks, ``order_types`` /
+   ``order_time_in_force`` defaults, and the dynamic-strategy-resolver
+   patch — sitting on ``claude/quant-research-service-v1CCV``.
+2. The pairlists block needs ``allow_inactive: True`` so stock pairs
+   (AAPL/USD, …) survive freqtrade's Binance-shim whitelist filter —
+   sitting on ``claude/code-review-refactor-KHIzx``.
+3. ``quant/Dockerfile`` needs to actually install
+   ``requirements-stage4.txt`` (the ``RUN pip install`` line is
+   currently commented out).
+
 Builds a freqtrade ``IStrategy`` subclass dynamically from a
 ``StrategySpec`` and wires it into freqtrade's in-process
 ``Backtesting`` engine with an in-process data provider that reads

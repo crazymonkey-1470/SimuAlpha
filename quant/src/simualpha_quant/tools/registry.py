@@ -13,7 +13,7 @@ transport-specific wiring elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Literal
 
 from pydantic import BaseModel
 
@@ -35,6 +35,19 @@ from simualpha_quant.tools.render_chart import render_tli_chart
 from simualpha_quant.tools.simulate_strategy import simulate_strategy
 
 
+ToolStatus = Literal["available", "unavailable"]
+
+# Reason string for the one currently-gated tool. Surfaced verbatim in
+# the HTTP 503 body, the /health and /v1/tools enumerations, and the
+# MCP server's tool list. When un-gating, drop both this constant and
+# the unavailable=True marker on the ToolSpec entry below.
+SIMULATE_STRATEGY_UNAVAILABLE_REASON = (
+    "simulate_strategy is temporarily disabled pending Stage 4 freqtrade "
+    "compatibility fixes. Use backtest_pattern for pattern-level "
+    "validation in the meantime."
+)
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -44,6 +57,8 @@ class ToolSpec:
     request_model: type[BaseModel]
     response_model: type[BaseModel]
     handler: Callable[[BaseModel], BaseModel]
+    status: ToolStatus = "available"
+    unavailable_reason: str | None = None
 
 
 TOOLS: tuple[ToolSpec, ...] = (
@@ -111,6 +126,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         request_model=SimulateStrategyRequest,
         response_model=SimulateStrategyResponse,
         handler=simulate_strategy,
+        status="unavailable",
+        unavailable_reason=SIMULATE_STRATEGY_UNAVAILABLE_REASON,
     ),
     ToolSpec(
         name="render_tli_chart",
