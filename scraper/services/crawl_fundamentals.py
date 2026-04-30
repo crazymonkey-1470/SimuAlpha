@@ -1,5 +1,3 @@
-import asyncio
-
 from .polygon_source import get_ticker_details, get_previous_close, get_financials, get_week_52_high
 from cache.store import fundamentals_cache
 
@@ -46,26 +44,25 @@ async def get_fundamentals(ticker: str) -> dict:
         "source": None,
     }
 
-    # Run all 4 Polygon calls concurrently (rate limiter serializes them,
-    # but this avoids wasted time between calls)
-    raw = await asyncio.gather(
-        get_ticker_details(ticker),
-        get_previous_close(ticker),
-        get_week_52_high(ticker),
-        get_financials(ticker),
-        return_exceptions=True,
-    )
+    # Sequential calls: the rate limiter already serializes, but firing them
+    # back-to-back via gather batches 4 requests onto the limiter's queue and
+    # any 429 backoff applies to the whole batch — burning quota. Sequential
+    # interleaves with other tickers' calls so 429s on one endpoint don't
+    # cluster four requests behind a single ticker.
+    raw = []
+    for fn, label in (
+        (get_ticker_details,  "details"),
+        (get_previous_close,  "prev_close"),
+        (get_week_52_high,    "52w_high"),
+        (get_financials,      "financials"),
+    ):
+        try:
+            raw.append(await fn(ticker))
+        except BaseException as e:
+            print(f"  [Fundamentals] {ticker} {label} error: {e}")
+            raw.append(None)
 
-    # Explicitly convert exceptions to None
-    details = raw[0] if not isinstance(raw[0], BaseException) else None
-    prev = raw[1] if not isinstance(raw[1], BaseException) else None
-    week_52 = raw[2] if not isinstance(raw[2], BaseException) else None
-    fin = raw[3] if not isinstance(raw[3], BaseException) else None
-
-    # Log any exceptions
-    for i, label in enumerate(["details", "prev_close", "52w_high", "financials"]):
-        if isinstance(raw[i], BaseException):
-            print(f"  [Fundamentals] {ticker} {label} error: {raw[i]}")
+    details, prev, week_52, fin = raw
 
     # 1) Ticker details (company name, market cap, sector)
     if isinstance(details, dict):

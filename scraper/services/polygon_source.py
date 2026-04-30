@@ -16,7 +16,10 @@ BASE = "https://api.polygon.io"
 # Rate limiting: Polygon free tier = 5 req/min = 12s between requests.
 # Paid tiers can lower this via POLYGON_RATE_DELAY env var (e.g. "1.5").
 RATE_LIMIT_DELAY = float(os.environ.get("POLYGON_RATE_DELAY", "12"))
-_MAX_THROTTLE_DELAY = 15.0  # ceiling for adaptive throttling
+_MAX_THROTTLE_DELAY = 20.0  # ceiling for adaptive throttling
+# Backoff schedule when a 429 fires (no Retry-After). 30/60/90 lands cleanly
+# more often than 15/30/60 — Polygon's window needs more margin than 15s.
+_BACKOFF_SCHEDULE = (30, 60, 90)
 
 # Shared limiter state. `_pause_until` is set when any request gets a 429 so
 # all queued callers wait for the same backoff window — without this, every
@@ -106,12 +109,13 @@ async def _get(path: str, params: dict = None) -> dict | None:
                 return data
             if r.status_code == 429:
                 _consecutive_429s += 1
-                # Prefer server's Retry-After when present, else exponential
+                # Prefer server's Retry-After when present, else schedule
                 retry_after = r.headers.get("retry-after")
+                schedule_idx = min(attempt, len(_BACKOFF_SCHEDULE) - 1)
                 try:
-                    backoff = float(retry_after) if retry_after else min(15 * (2 ** attempt), 60)
+                    backoff = float(retry_after) if retry_after else _BACKOFF_SCHEDULE[schedule_idx]
                 except (TypeError, ValueError):
-                    backoff = min(15 * (2 ** attempt), 60)
+                    backoff = _BACKOFF_SCHEDULE[schedule_idx]
                 print(f"  [Polygon] Rate limited on {path}, backoff {backoff:.0f}s (attempt {attempt + 1}/{max_retries})")
                 _signal_backoff(backoff)
                 # Adaptive throttle: bump base delay so subsequent batches pace themselves
