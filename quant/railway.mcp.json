@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python -m simualpha_quant.mcp.server --transport sse --host 0.0.0.0 --port $PORT",
+    "startCommand": "sh -c 'python -m simualpha_quant.mcp.server --transport sse --host 0.0.0.0 --port ${PORT:-8765}'",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 60,
     "restartPolicyType": "ON_FAILURE",
