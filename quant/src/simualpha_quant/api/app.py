@@ -38,6 +38,19 @@ SIMULATE_SYNC_COST_LIMIT: int = 200         # len(tickers) * num_years
 SIMULATE_SYNC_TIME_LIMIT_SECONDS: float = 10.0
 
 
+# Strong references to in-flight background tasks. Without this set,
+# Python may garbage-collect the task object mid-execution because the
+# only reference was the throwaway return of ``asyncio.create_task()``.
+# See https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_BACKGROUND_TASKS: set = set()
+
+
+def _track(task) -> None:
+    """Pin a background task to a module-level set and unpin on completion."""
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
 # ─────────────────────────── generic tool handler ──────────────────────
 
 
@@ -128,12 +141,12 @@ async def _handle_backtest(request: Request, req: BacktestPatternRequest, starte
     if force_async or jobs_mod.should_async(universe_size, years):
         job_id = jobs_mod.submit(req.model_dump(mode="json"))
         # Background runner is just an async wrapper around the sync tool.
-        asyncio.create_task(
+        _track(asyncio.create_task(
             jobs_mod.run_async(
                 job_id,
                 lambda: asyncio.to_thread(backtest_pattern, req),
             )
-        )
+        ))
         return success(
             {"job_id": job_id, "status": "queued"},
             status_code=202,
@@ -151,12 +164,12 @@ async def _handle_backtest(request: Request, req: BacktestPatternRequest, starte
         # We don't have the partial result here (watchdog raised before
         # returning); re-execute on the background so the job lifecycle
         # is correct, mark the existing call as "in flight, see job".
-        asyncio.create_task(
+        _track(asyncio.create_task(
             jobs_mod.run_async(
                 job_id,
                 lambda: asyncio.to_thread(backtest_pattern, req),
             )
-        )
+        ))
         log.info(
             "backtest exceeded sync time budget, converted to async",
             extra={"elapsed_s": float(str(exc)) if str(exc).replace(".", "", 1).isdigit() else None,
@@ -195,12 +208,12 @@ async def _handle_simulate(request: Request, req: SimulateStrategyRequest, start
 
     if force_async or cost > SIMULATE_SYNC_COST_LIMIT:
         job_id = jobs_mod.submit(req.model_dump(mode="json"))
-        asyncio.create_task(
+        _track(asyncio.create_task(
             jobs_mod.run_async(
                 job_id,
                 lambda: asyncio.to_thread(simulate_strategy, req),
             )
-        )
+        ))
         return success(
             {"job_id": job_id, "status": "queued"},
             status_code=202,
@@ -215,12 +228,12 @@ async def _handle_simulate(request: Request, req: SimulateStrategyRequest, start
         )
     except jobs_mod.SyncTimeoutExceeded:
         job_id = jobs_mod.submit(req.model_dump(mode="json"))
-        asyncio.create_task(
+        _track(asyncio.create_task(
             jobs_mod.run_async(
                 job_id,
                 lambda: asyncio.to_thread(simulate_strategy, req),
             )
-        )
+        ))
         log.info(
             "simulate exceeded sync time budget, converted to async",
             extra={"job_id": job_id},

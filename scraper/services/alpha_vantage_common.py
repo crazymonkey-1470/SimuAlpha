@@ -64,7 +64,10 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
         # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
     
-    response = requests.get(API_BASE_URL, params=api_params)
+    # Hard timeout — without this a stalled upstream hangs the whole
+    # scraper FastAPI worker. 30s is enough for AV's slow endpoints
+    # (FUNDAMENTALS, NEWS_SENTIMENT) under normal load.
+    response = requests.get(API_BASE_URL, params=api_params, timeout=30)
     response.raise_for_status()
 
     response_text = response.text
