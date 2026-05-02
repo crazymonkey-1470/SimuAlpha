@@ -4,8 +4,8 @@ Simplified data tool access layer for SimuAlpha.
 Wraps data_interface routing into easy-to-use functions.
 """
 
-from scraper.services.taconfig import get_config
-from scraper.services.data_interface import DataInterface
+from .taconfig import get_config
+from .data_interface import DataInterface
 
 __all__ = [
     "get_stock_data",

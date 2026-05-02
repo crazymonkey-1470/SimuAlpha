@@ -1,4 +1,29 @@
 require('dotenv').config();
+
+// ═══════════════════════════════════════════
+// FAIL-FAST ENV VAR VALIDATION
+// ═══════════════════════════════════════════
+// Refuse to boot if any of these are missing — silent degradation in
+// production (e.g. SCRAPER_URL falling back to localhost:8000) is the
+// pattern that produced PIPELINE_AUDIT.md's known-bug list.
+(() => {
+  const required = [
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SCRAPER_URL',
+    'ANTHROPIC_API_KEY',
+  ];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[fatal] Missing required env vars: ${missing.join(', ')}.\n` +
+        `        See backend/.env.example for the full contract.`,
+    );
+    process.exit(1);
+  }
+})();
+
 const express = require('express');
 const log = require('./services/logger').child({ module: 'server' });
 const { runFullPipeline, startCron } = require('./cron');

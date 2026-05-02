@@ -93,8 +93,14 @@ async function _runPrescreen() {
       if (!res.ok) {
         consecutiveErrors++;
         if (consecutiveErrors >= 20) {
-          log.error({ consecutiveErrors }, 'Too many consecutive errors — scraper may be down, stopping');
-          break;
+          // Hard fail rather than break-and-return-empty — Stage 3 reading
+          // a silently truncated candidate list and writing 0 signals is
+          // exactly the failure mode PIPELINE_AUDIT.md called out.
+          throw new Error(
+            `Stage 2 aborted after ${consecutiveErrors} consecutive scraper errors ` +
+            `(processed ${processed}/${universe.length} tickers, last status ${res.status}). ` +
+            `Scraper at ${SCRAPER_URL} may be down or returning errors.`,
+          );
         }
         filterStats.fetchFailed++;
         continue;
