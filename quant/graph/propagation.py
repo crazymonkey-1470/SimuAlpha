@@ -2,7 +2,7 @@
 # TradingAgents/graph/propagation.py
 
 from typing import Dict, Any, List, Optional
-from SimuAlpha.agents.utils.agent_states import (
+from quant.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
     RiskDebateState,

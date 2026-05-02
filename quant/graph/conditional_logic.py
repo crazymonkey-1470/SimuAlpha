@@ -1,7 +1,7 @@
 # Forked from TauricResearch/TradingAgents — Apache 2.0
 # TradingAgents/graph/conditional_logic.py
 
-from SimuAlpha.agents.utils.agent_states import AgentState
+from quant.agents.utils.agent_states import AgentState
 
 
 class ConditionalLogic:
