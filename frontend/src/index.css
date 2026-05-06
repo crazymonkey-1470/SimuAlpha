@@ -342,7 +342,8 @@ body::before {
   .mobile-menu a.active { color: var(--text-primary); }
 
   /* Cards: full-width single column on mobile */
-  .card-grid {
+  .card-grid,
+  .agent-grid {
     grid-template-columns: 1fr !important;
   }
 

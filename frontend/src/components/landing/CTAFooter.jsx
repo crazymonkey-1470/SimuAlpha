@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 
-const PATREON_URL = import.meta.env.VITE_PATREON_URL || 'https://www.patreon.com/simualpha';
+const ABOUT_URL = '/about';
 
 const tiers = [
   {
@@ -216,8 +216,8 @@ export default function CTAFooter() {
           <p style={s.footerCtaSub}>
             Start with the free tier. Upgrade when the first Load-the-Boat signal pays for the year.
           </p>
-          <a href={PATREON_URL} target="_blank" rel="noopener noreferrer" style={s.ctaBtn}>
-            Open Screener →
+          <a href={ABOUT_URL} style={s.ctaBtn}>
+            Learn Our Mission →
           </a>
         </motion.section>
       </div>

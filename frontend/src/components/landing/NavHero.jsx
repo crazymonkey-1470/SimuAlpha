@@ -1,6 +1,6 @@
 import CapitalFlowGlobe from './CapitalFlowGlobe';
 
-const PATREON_URL = import.meta.env.VITE_PATREON_URL || 'https://www.patreon.com/simualpha';
+const ABOUT_URL = '/about';
 
 const s = {
   nav: {
@@ -99,8 +99,7 @@ export default function NavHero() {
             <a className="nav-link" style={s.navLink} href="#features">Features</a>
             <a className="nav-link" style={s.navLink} href="#compare">Compare</a>
             <a className="nav-link" style={s.navLink} href="#pricing">Pricing</a>
-            <a className="nav-link" style={s.navLink} href={PATREON_URL} target="_blank" rel="noopener noreferrer">Sign in</a>
-            <a style={s.navCta} href="/dashboard">Open Screener →</a>
+            <a style={s.navCta} href={ABOUT_URL}>About →</a>
           </div>
         </div>
       </nav>
@@ -131,8 +130,8 @@ export default function NavHero() {
               your attention.
             </p>
             <div className="ctas" style={s.ctas}>
-              <a style={s.btnPrimary} href={PATREON_URL} target="_blank" rel="noopener noreferrer">
-                Join Patreon →
+              <a style={s.btnPrimary} href={ABOUT_URL}>
+                Our Mission →
               </a>
               <a style={s.btnSecondary} href="#features">
                 See How It Works
