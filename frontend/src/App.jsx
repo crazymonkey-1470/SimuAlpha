@@ -5,6 +5,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 
 // Standalone landing page (no app layout/sidebar)
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const About = lazy(() => import('./pages/About'));
 
 // App pages (wrapped in Layout)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -26,6 +27,7 @@ export default function App() {
         <Routes>
           {/* Standalone landing page — no app layout/sidebar */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<About />} />
 
           {/* App routes — wrapped in Layout (with NavBar) */}
           <Route element={<Layout />}>
