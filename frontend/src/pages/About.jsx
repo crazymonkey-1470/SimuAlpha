@@ -188,8 +188,7 @@ export default function About() {
           <div style={s.navLinks} className="hide-mobile">
             <Link style={s.navLink} to="/#features">Features</Link>
             <Link style={s.navLink} to="/#pricing">Pricing</Link>
-            <Link style={s.navLink} to="/about">About</Link>
-            <Link style={s.navCta} to="/dashboard">Open Screener →</Link>
+            <Link style={s.navCta} to="/about">About →</Link>
           </div>
         </div>
       </nav>
@@ -312,15 +311,12 @@ export default function About() {
           style={s.ctaBlock}
         >
           <h2 style={s.ctaTitle}>
-            Want to see the <span style={s.accent}>system</span> in action?
+            Building <span style={s.accent}>in public.</span>
           </h2>
           <p style={s.ctaSub}>
-            The screener is live. Free tier, no card required.
+            The product is in active development. More to share soon.
           </p>
           <div style={s.ctaRow}>
-            <Link style={s.btnPrimary} to="/dashboard">
-              Open Screener →
-            </Link>
             <Link style={s.btnSecondary} to="/">
               Back to Home
             </Link>

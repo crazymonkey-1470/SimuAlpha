@@ -99,8 +99,7 @@ export default function NavHero() {
             <a className="nav-link" style={s.navLink} href="#features">Features</a>
             <a className="nav-link" style={s.navLink} href="#compare">Compare</a>
             <a className="nav-link" style={s.navLink} href="#pricing">Pricing</a>
-            <a className="nav-link" style={s.navLink} href={ABOUT_URL}>About</a>
-            <a style={s.navCta} href="/dashboard">Open Screener →</a>
+            <a style={s.navCta} href={ABOUT_URL}>About →</a>
           </div>
         </div>
       </nav>
