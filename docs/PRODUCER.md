@@ -25,7 +25,7 @@ select add_item(
     'What did each of us see growing up?'
   ],
   quote          => 'Optional pull quote.',
-  item_type      => 'article',        -- article | video | note | fun_fact | guest_idea
+  item_type      => 'article',        -- article | video | note | fun_fact | guest_idea | topic_idea
   status         => 'this_week',      -- inbox (default) | this_week | used | archived
   topics         => array['religion', 'news']
 );
@@ -130,7 +130,7 @@ Generated from the migrated schema. `*` = required, no default.
 | summary | text | your 2–5 sentences |
 | talking_points | text[] | default `'{}'`; `array['Q1','Q2']` |
 | quote | text | optional pull quote |
-| item_type | `item_type` | default `article`; `article`, `video`, `note`, `fun_fact`, `guest_idea` |
+| item_type | `item_type` | default `article`; `article`, `video`, `note`, `fun_fact`, `guest_idea`, `topic_idea` (a pitch, usually no link) |
 | status | `item_status` | default `inbox`; `inbox`, `this_week`, `used`, `archived` |
 | guest_name | text | for `guest_idea` |
 | why_them | text | for `guest_idea` |
@@ -191,13 +191,67 @@ Generated from the migrated schema. `*` = required, no default.
 | role | `member_role` | default `host` |
 | created_at | timestamptz | automatic |
 
+### `item_highlights`: a crew member's ★ on an item
+| column | type | notes |
+|---|---|---|
+| item_id | uuid → items * | PK part; cascades |
+| user_id | uuid → profiles | PK part; set from the session on the website |
+| created_at | timestamptz | automatic |
+
+### `research_requests`: jobs for the Grok bot
+| column | type | notes |
+|---|---|---|
+| id | uuid | default |
+| item_id | uuid → items | optional: the article it's about (cascades) |
+| episode_id | uuid → episodes | optional |
+| kind | `research_kind` | `deep_research` (default), `stats`, `fact_check`, `counterpoints`, `guest_lookup`, `other` |
+| request | text * | what to find out |
+| status | `research_status` | `open` (default), `in_progress`, `done`, `cancelled` |
+| requested_by / requested_by_role | uuid → profiles / `member_role` | set automatically |
+| response | text | the answer; setting it stamps `answered_at` and moves `open`/`in_progress` to `done` |
+| sources | text[] | links backing the answer |
+| answered_by | text | label shown on the site, e.g. `Grok` |
+| answered_at, created_at, updated_at | timestamptz | automatic |
+
 ### Views (read-only, respect RLS)
-- `item_cards`: every `items` column plus `topics text[]` (in tab order), `episode_ids uuid[]`, `comment_count int`, `added_by_name text`.
+- `item_cards`: every `items` column plus `topics text[]` (in tab order), `episode_ids uuid[]`, `comment_count int`, `added_by_name text`, `highlighted_by uuid[]`, `highlight_count int`, `research_open int`, `research_done int`.
 - `this_week`: `item_cards` filtered to `status = 'this_week'`.
+- `research_queue`: open / in-progress research requests with the article's title, url, source, summary and talking points.
 
 ### Functions
 - `add_item(...)` → `uuid` (above).
+- `answer_research(request_id, response, sources default '{}', answered_by default 'Grok')`: answers and closes a request.
 - `normalize_url(text)` → `text`, the duplicate-detection key.
+
+## Grok research queue
+
+The crew leaves Grok jobs on the site: on an article (🔎 Grok) or from the Grok tab.
+Answers show up on the Grok tab and under the article.
+
+**If Grok (or any agent) has database access**, it works the queue in two calls:
+
+```sql
+-- 1. What's waiting (oldest first), with the article context
+select id, kind, request, requested_by_name, item_title, item_url, item_summary from research_queue;
+
+-- optional: claim it so the crew sees it's being worked on
+update research_requests set status = 'in_progress' where id = '...';
+
+-- 2. Answer it (closes the request; shows on the site labelled "Grok")
+select answer_research(
+  '...request id...',
+  'Concise answer with the key numbers. 2-6 sentences.',
+  array['https://source-1', 'https://source-2']
+);
+```
+
+Errors: an unknown id raises `No research request with id …`; an empty answer is rejected.
+
+**If Grok has no database access**, the crew uses the site: **Copy for Grok** puts a
+ready-made prompt (request + article context) on the clipboard, then they paste Grok's reply
+with **Paste answer** (tick "This answer came from Grok").
+
+To see what the hosts care about: `select title, highlight_count from item_cards where highlight_count > 0 order by highlight_count desc;`
 
 ## Crew access
 
@@ -234,4 +288,7 @@ password; they can change it under ☰ on the site.
 | Edit an item's text (title, summary, talking points, ...) | own items only | all | all |
 | Delete items | own only | all | all |
 | Edit / delete comments | own only | delete any | all |
+| Star items (★) | as themselves | as themselves | any |
+| Ask Grok, answer or update research | ✓ | ✓ | ✓ |
+| Delete research requests | own only | all | all |
 | Change roles / allow-list | ✗ | ✗ | ✓ |

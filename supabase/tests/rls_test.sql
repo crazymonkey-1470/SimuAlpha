@@ -268,6 +268,88 @@ select tests.eq((select added_by_role::text from public.items where id = :'prod_
 reset role;
 
 -- ===========================================================================
+-- Highlights, topic ideas, research queue (migration 20261107)
+-- ===========================================================================
+select tests.as_user(null);
+select public.add_item(title => 'Pitch: an episode on fasting', item_type => 'topic_idea',
+                       summary => 'Why the early church fasted and what men gain from it.') as pitch \gset
+select tests.eq((select item_type::text from public.items where id = :'pitch'), 'topic_idea', 'topic_idea item type works');
+
+set role anon;
+select tests.throws('select count(*) from public.item_highlights',   '42501', 'anon cannot read highlights');
+select tests.throws('select count(*) from public.research_requests', '42501', 'anon cannot read research');
+select tests.throws('select count(*) from public.research_queue',    '42501', 'anon cannot read research queue');
+reset role;
+
+set role authenticated;
+select tests.as_user(:'freddy');
+insert into public.item_highlights (item_id) values (:'art');
+select tests.eq((select highlight_count from public.item_cards where id = :'art'), 1, 'highlight counted in item_cards');
+select tests.eq((select highlighted_by[1]::text from public.item_cards where id = :'art'), :'freddy', 'highlighted_by lists the user');
+select tests.throws(format('insert into public.item_highlights (item_id, user_id) values (%L, %L)', :'art', :'stew'),
+                    '42501', 'cannot highlight on behalf of someone else');
+select tests.throws(format('insert into public.item_highlights (item_id) values (%L)', :'art'),
+                    '23505', 'double highlight rejected');
+insert into public.item_highlights (item_id) values (:'pitch');
+
+insert into public.research_requests (item_id, kind, request, requested_by, requested_by_role)
+values (:'art', 'stats', 'Church attendance by sex and age, 2000-2026, with sources', :'stew', 'producer')
+returning id as rq \gset
+select tests.eq((select requested_by::text || '/' || requested_by_role from public.research_requests where id = :'rq'),
+                :'freddy' || '/host', 'research requester forced to self');
+select tests.eq((select item_title from public.research_queue where id = :'rq'), 'Why men stopped going to church',
+                'research_queue carries item context');
+select tests.eq((select research_open from public.item_cards where id = :'art'), 1, 'item_cards counts open research');
+insert into public.research_requests (kind, request) values ('deep_research', 'History of the Promise Keepers movement')
+returning id as rq2 \gset
+reset role;
+
+set role authenticated;
+select tests.as_user(:'stew');
+with h as (delete from public.item_highlights where item_id = :'art' and user_id = :'freddy' returning 1)
+select tests.eq(count(*)::int, 0, 'cannot remove someone else''s highlight') from h;
+with d as (delete from public.research_requests where id = :'rq' returning 1)
+select tests.eq(count(*)::int, 0, 'host cannot delete another host''s research request') from d;
+-- a host pastes an answer from Grok by hand
+update public.research_requests set response = 'Pasted answer', sources = '{https://example.org/s}', answered_by = 'Grok'
+where id = :'rq2';
+select tests.eq((select status::text || '/' || answered_by || '/' || (answered_at is not null) from public.research_requests where id = :'rq2'),
+                'done/Grok/true', 'pasting an answer closes the request and keeps the Grok label');
+update public.research_requests set response = 'Edited by Stew' where id = :'rq2';
+select tests.eq((select answered_by from public.research_requests where id = :'rq2'), 'Grok',
+                'editing an answer keeps its explicit label');
+insert into public.research_requests (kind, request) values ('fact_check', 'Is the 1 in 4 stat real?') returning id as rq3 \gset
+update public.research_requests set response = 'Checked it myself: roughly right.' where id = :'rq3';
+select tests.eq((select answered_by from public.research_requests where id = :'rq3'), 'Stew',
+                'an unlabeled answer from the site is credited to the person');
+select tests.throws(format('update public.research_requests set requested_by = %L where id = %L', :'stew', :'rq'),
+                    '42501', 'cannot reassign a research request');
+reset role;
+
+-- the bot answers via SQL
+select tests.as_user(null);
+select public.answer_research(:'rq', 'Gen Z men now out-attend Gen Z women (Example survey, 2026).',
+                              array['https://example.org/survey']);
+select tests.eq((select status::text || '/' || answered_by || '/' || (answered_at is not null) || '/' || sources[1]
+                   from public.research_requests where id = :'rq'),
+                'done/Grok/true/https://example.org/survey', 'answer_research closes the request');
+select tests.eq((select research_open || '/' || research_done from public.item_cards where id = :'art'), '0/1',
+                'item_cards research counts update');
+select tests.eq((select count(*) from public.research_queue)::int, 0, 'answered requests leave the queue');
+select tests.throws($$select public.answer_research(gen_random_uuid(), 'x')$$, 'P0002', 'answer_research on unknown id');
+select tests.throws(format('select public.answer_research(%L, %L)', :'rq', '  '), '23514', 'answer_research rejects empty answer');
+
+set role authenticated;
+select tests.as_user(:'producer');
+with d as (delete from public.research_requests where id = :'rq2' returning 1)
+select tests.eq(count(*)::int, 1, 'producer login can delete any research request') from d;
+reset role;
+
+select tests.as_user(null);
+delete from public.items where id = :'pitch';
+select tests.eq((select count(*) from public.item_highlights where item_id = :'pitch')::int, 0, 'highlights cascade with their item');
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

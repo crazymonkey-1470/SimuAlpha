@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { configError, supabase } from './supabase';
 import { AppContext, href, useApp, useLoad, useRoute, type AppData } from './lib';
@@ -12,6 +12,9 @@ import Episodes from './pages/Episodes';
 import EpisodePage from './pages/EpisodePage';
 import Account from './pages/Account';
 import Search from './pages/Search';
+import Picks from './pages/Picks';
+import Research from './pages/Research';
+import { HomeIcon, MenuIcon, MicIcon, PlusIcon, SearchIcon, StarIcon } from './components/Icons';
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -77,25 +80,51 @@ function SignedIn({ session }: { session: Session }) {
   );
 }
 
+const TABS: { key: string; label: string; icon: ComponentType; match: (string | undefined)[] }[] = [
+  { key: '', label: 'Home', icon: HomeIcon, match: [undefined] },
+  { key: 'picks', label: 'Picks', icon: StarIcon, match: ['picks'] },
+  { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
+  { key: 'research', label: 'Grok', icon: SearchIcon, match: ['research'] },
+  { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e'] },
+];
+
 function Layout() {
   const [head, arg] = useRoute();
+  const tabHref = (key: string) => (key ? href(key) : '#/');
   return (
     <div className="shell">
       <header className="topbar">
         <a className="wordmark" href="#/">
           True<em>Adam</em>
         </a>
-        <nav className="mainnav">
-          <a href="#/" className={!head ? 'active' : ''}>This week</a>
-          <a href={href('episodes')} className={head === 'episodes' || head === 'e' ? 'active' : ''}>Episodes</a>
-          <a href={href('add')} className={'add ' + (head === 'add' ? 'active' : '')}>+ Add</a>
-          <a href={href('account')} className={head === 'account' ? 'active' : ''} aria-label="Account">☰</a>
+        <nav className="mainnav" aria-label="Main">
+          {TABS.map((t) => (
+            <a key={t.key} href={tabHref(t.key)} className={(t.key === 'add' ? 'add ' : '') + (t.match.includes(head) ? 'active' : '')}>
+              {t.key === 'add' ? '+ Add' : t.label}
+            </a>
+          ))}
         </nav>
+        <a href={href('account')} className={'account-link ' + (head === 'account' ? 'active' : '')} aria-label="Account">
+          <MenuIcon />
+        </a>
       </header>
       <TopicNav current={head === 't' ? arg : undefined} />
       <main className="content">
         <Page head={head} arg={arg} />
       </main>
+      <nav className="tabbar" aria-label="Main">
+        {TABS.map((t) => (
+          <a
+            key={t.key}
+            href={tabHref(t.key)}
+            className={(t.key === 'add' ? 'tab-add ' : '') + (t.match.includes(head) ? 'active' : '')}
+            aria-current={t.match.includes(head) ? 'page' : undefined}
+          >
+            <t.icon />
+            <span>{t.label}</span>
+          </a>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -120,6 +149,10 @@ function Page({ head, arg }: { head?: string; arg?: string }) {
       return <Account />;
     case 'search':
       return <Search key={arg} q={arg ?? ''} />;
+    case 'picks':
+      return <Picks />;
+    case 'research':
+      return <Research />;
     default:
       return <p className="empty">Page not found.</p>;
   }

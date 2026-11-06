@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { errorText, supabase } from '../supabase';
-import { href, navigate, useApp } from '../lib';
+import { goBack, href, navigate, useApp } from '../lib';
 import { CONTACT_LABEL, ITEM_TYPES, type ContactStatus, type ItemCard, type ItemStatus, type ItemType } from '../types';
 
 interface FormState {
@@ -56,10 +56,13 @@ const fromItem = (i: ItemCard): FormState => ({
 
 const orNull = (s: string) => (s.trim() ? s.trim() : null);
 
-function cleanUrl(raw: string): string | null {
+/** Accepts "example.com/x", "https://…", or pasted text that contains a link. */
+export function cleanUrl(raw: string): string | null {
   const u = raw.trim();
   if (!u) return null;
-  return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+  const found = u.match(/https?:\/\/[^\s<>"]+/i);
+  if (found) return found[0].replace(/[).,;]+$/, '');
+  return /^[^\s/]+\.[^\s]+$/.test(u) ? `https://${u}` : u; // anything else: let the database explain
 }
 
 export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTopic?: string }) {
@@ -177,7 +180,16 @@ export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTop
       </label>
       <label>
         Link
-        <input type="url" inputMode="url" placeholder="https://…" value={form.url} onChange={(e) => set('url', e.target.value)} />
+        <input
+          type="text"
+          inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="https://… (or just paste the link)"
+          value={form.url}
+          onChange={(e) => set('url', e.target.value)}
+        />
       </label>
       <div className="row">
         <label>
@@ -214,7 +226,8 @@ export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTop
       )}
 
       <label>
-        Summary <span className="muted">(2–5 sentences)</span>
+        {form.item_type === 'topic_idea' ? 'Why cover it?' : 'Summary'}{' '}
+        <span className="muted">{form.item_type === 'topic_idea' ? '(the angle, the hook)' : '(2–5 sentences)'}</span>
         <textarea rows={4} value={form.summary} onChange={(e) => set('summary', e.target.value)} />
       </label>
       <label>
@@ -264,7 +277,7 @@ export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTop
         <button className="primary" disabled={busy}>
           {busy ? 'Saving…' : id ? 'Save changes' : 'Add item'}
         </button>
-        <button type="button" onClick={() => history.back()}>
+        <button type="button" onClick={goBack}>
           Cancel
         </button>
         {id && (

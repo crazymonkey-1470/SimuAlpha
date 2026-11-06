@@ -24,9 +24,20 @@ export const supabase = createClient(url ?? 'http://invalid.localhost', key ?? '
   auth: { persistSession: true, autoRefreshToken: true },
 });
 
+const FRIENDLY: [RegExp, string][] = [
+  [/items_url_check/, 'That link doesn’t look like a web address. Paste the full link (https://…).'],
+  [/items_title_check|title.*not-null/, 'Give it a title.'],
+  [/research_requests_request_check/, 'Write what you want Grok to look into.'],
+  [/row-level security|permission denied/, 'You don’t have permission to do that. Ask the producer if this seems wrong.'],
+  [/JWT expired|invalid JWT|refresh_token/i, 'Your session expired. Reload the page and sign in again.'],
+  [/Failed to fetch|NetworkError|Load failed/i, 'Couldn’t reach the server. Check your connection and try again.'],
+];
+
 /** Human-readable message for a PostgREST / auth error. */
 export function errorText(error: PostgrestError | { message: string } | null | undefined): string {
   if (!error) return '';
   const e = error as PostgrestError;
+  const friendly = FRIENDLY.find(([re]) => re.test(e.message));
+  if (friendly) return friendly[1];
   return e.hint ? `${e.message} ${e.hint}` : e.message;
 }

@@ -5,6 +5,8 @@ import type { Episode, Profile, Topic } from './types';
 // ---------------------------------------------------------------------------
 // Hash router: #/t/news -> ['t', 'news']. Works on any static host.
 // ---------------------------------------------------------------------------
+let inAppNavigations = 0;
+
 function parseHash(): string[] {
   return window.location.hash
     .replace(/^#\/?/, '')
@@ -17,6 +19,7 @@ export function useRoute(): string[] {
   const [route, setRoute] = useState(parseHash);
   useEffect(() => {
     const onChange = () => {
+      inAppNavigations++;
       setRoute(parseHash());
       window.scrollTo(0, 0);
     };
@@ -30,6 +33,32 @@ export const href = (...parts: string[]) => '#/' + parts.map(encodeURIComponent)
 export const navigate = (...parts: string[]) => {
   window.location.hash = href(...parts).slice(1);
 };
+
+/** history.back() after in-app navigation; Home when the page was opened directly from a link. */
+export function goBack() {
+  if (inAppNavigations > 0) window.history.back();
+  else navigate();
+}
+
+/** Copy text; falls back to a hidden textarea for older iOS Safari. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // App-wide data

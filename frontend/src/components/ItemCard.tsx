@@ -3,6 +3,7 @@ import { errorText, supabase } from '../supabase';
 import { formatDay, freshness, href, useApp } from '../lib';
 import { CONTACT_LABEL, ITEM_TYPES, STATUS_LABEL, type ContactStatus, type ItemCard, type ItemStatus } from '../types';
 import Comments from './Comments';
+import { ResearchForm } from './Research';
 
 interface Props {
   item: ItemCard;
@@ -13,10 +14,14 @@ interface Props {
 }
 
 export default function ItemCardView({ item, onChange, episodeId, openComments = false }: Props) {
-  const { me, topics, episodes } = useApp();
+  const { me, topics, episodes, profiles } = useApp();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [showComments, setShowComments] = useState(openComments);
+  const [asking, setAsking] = useState(false);
+
+  const starred = item.highlighted_by.includes(me.id);
+  const starNames = item.highlighted_by.map((id) => (id === me.id ? 'You' : profiles.get(id)?.display_name ?? '?'));
 
   const canEdit = me.role === 'producer' || item.added_by === me.id;
   const typeLabel = ITEM_TYPES.find((t) => t.value === item.item_type)?.label ?? item.item_type;
@@ -38,6 +43,12 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
   const attach = (episode_id: string) => run(supabase.from('item_episodes').insert({ item_id: item.id, episode_id }));
   const detach = () =>
     run(supabase.from('item_episodes').delete().eq('item_id', item.id).eq('episode_id', episodeId!));
+  const toggleStar = () =>
+    run(
+      starred
+        ? supabase.from('item_highlights').delete().eq('item_id', item.id).eq('user_id', me.id)
+        : supabase.from('item_highlights').insert({ item_id: item.id }),
+    );
 
   return (
     <article className={`card status-${item.status} type-${item.item_type}`}>
@@ -103,6 +114,19 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
 
       {item.quote && <blockquote>“{item.quote}”</blockquote>}
 
+      {(item.highlight_count > 0 || item.research_open + item.research_done > 0) && (
+        <div className="signals">
+          {item.highlight_count > 0 && <span className="stars">★ {starNames.join(', ')}</span>}
+          {item.research_open + item.research_done > 0 && (
+            <a className="research-signal" href={href('i', item.id)}>
+              🔎 {[item.research_open && `${item.research_open} open`, item.research_done && `${item.research_done} answered`]
+                .filter(Boolean)
+                .join(' · ')}
+            </a>
+          )}
+        </div>
+      )}
+
       {(item.topics.length > 0 || attached.length > 0) && (
         <div className="chips">
           {item.topics.map((slug) => (
@@ -121,7 +145,7 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       <div className="actions">
         {item.status === 'inbox' && (
           <button className="primary" disabled={busy} onClick={() => setStatus('this_week')}>
-            ★ This week
+            📌 This week
           </button>
         )}
         {item.status !== 'inbox' && (
@@ -139,8 +163,20 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
             Archive
           </button>
         )}
-        <button className={showComments ? 'on' : ''} onClick={() => setShowComments((s) => !s)}>
+        <button
+          className={'star ' + (starred ? 'starred' : '')}
+          disabled={busy}
+          onClick={toggleStar}
+          aria-pressed={starred}
+          aria-label={starred ? 'Remove your star' : 'Star this'}
+        >
+          {starred ? '★' : '☆'} {item.highlight_count || 'Star'}
+        </button>
+        <button className={showComments ? 'on' : ''} onClick={() => setShowComments((s) => !s)} aria-label="Comments">
           💬 {item.comment_count}
+        </button>
+        <button className={asking ? 'on' : ''} onClick={() => setAsking((a) => !a)}>
+          🔎 Grok
         </button>
         {attachable.length > 0 && (
           <select
@@ -172,6 +208,16 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       </div>
 
       {err && <p className="error">{err}</p>}
+      {asking && (
+        <ResearchForm
+          item={item}
+          onDone={() => {
+            setAsking(false);
+            onChange();
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
       {showComments && <Comments itemId={item.id} onCountChange={onChange} />}
     </article>
   );

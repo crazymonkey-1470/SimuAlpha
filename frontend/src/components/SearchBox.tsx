@@ -11,7 +11,7 @@ export default function SearchBox({ initial = '' }: { initial?: string }) {
     <form className="search" onSubmit={submit} role="search">
       <input
         type="search"
-        placeholder="Search titles, summaries, sources…"
+        placeholder="Search articles…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         aria-label="Search"

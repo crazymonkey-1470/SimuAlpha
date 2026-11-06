@@ -23,7 +23,8 @@ docs/PRODUCER.md       how to insert items, plus the exact table/column list
   if their email is in `allowed_emails`. Hosts can't rewrite text they didn't add.
 - **Producer**: writes with SQL (Supabase connector or SQL editor), which bypasses RLS.
   See [docs/PRODUCER.md](docs/PRODUCER.md).
-- **Website**: a static single-page app using the *publishable* key only. It reads
+- **Website**: a single-page app (static files on Cloudflare; all data read and written live in
+  Supabase) using the *publishable* key only. It reads
   `VITE_TRUEADAM_SUPABASE_URL` / `VITE_TRUEADAM_SUPABASE_KEY` from `frontend/.env.production`.
   These names are deliberately distinct, so leftover `VITE_SUPABASE_*` variables on a host
   can't point the site at a different project. The build refuses `sb_secret_…` /
@@ -44,8 +45,8 @@ rewrite rules are required.
 
 ## Live project status
 
-- Schema applied as `supabase/migrations/20261106215937_init.sql` (matches the remote
-  migration history, so `supabase db push` only applies future migrations).
+- Migrations `20261106215937_init.sql` and `20261106232444_highlights_research.sql` are applied
+  (filenames match the remote history, so `supabase db push` only applies future migrations).
 - Auth: public sign-ups disabled, minimum password length 8.
 - Crew access: insert into `allowed_emails`, then create users in Authentication → Users →
   Add user with **Auto Confirm User** ticked. See [docs/PRODUCER.md](docs/PRODUCER.md#crew-access).
@@ -66,8 +67,8 @@ scripts/test-db.sh   # needs Postgres 15+ server binaries; runs on GitHub's ubun
 ```
 
 This applies the migration to a throwaway Postgres (with a small Supabase stand-in) and
-checks 76 behaviours: the allow-list, duplicate URLs, topic validation, anon lockout,
-host vs. producer edit rights, attribution, and the views.
+checks 100 behaviours: the allow-list, duplicate URLs, topic validation, anon lockout,
+host vs. producer edit rights, attribution, highlights, the Grok research queue, and the views.
 
 ## Site map
 
@@ -78,5 +79,7 @@ host vs. producer edit rights, attribution, and the views.
 | `#/i/<id>` | One item with comments (shareable link) |
 | `#/add` | Add an item (article, video, note, fun fact, guest idea) |
 | `#/episodes`, `#/e/<id>` | Episode ideas: attach items, checklist (date, guest, fun fact, 3+ discussion items), mark all used |
+| `#/picks` | ★ Crew picks (most-starred first) and topic pitches |
+| `#/research` | Grok research queue: ask, copy prompt for Grok, paste answers |
 | `#/search/<q>` | Search titles, summaries, sources |
 | `#/account` | Display name, password, sign out |
