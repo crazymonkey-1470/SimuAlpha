@@ -564,6 +564,10 @@ select tests.eq(public.worker_report(:'tok', :'yt', jsonb_build_object('status',
     jsonb_build_object('title', 'Short', 'url', 'https://www.youtube.com/shorts/CCC'),
     jsonb_build_object('title', '', 'url', 'https://pod.example.org/blank')))), 1, 'worker_report adds new entries only (dupes, Shorts, blanks skipped)');
 select tests.throws(format('select count(*) from public.feed_entries'), '42501', 'the anon worker key still cannot read tables directly');
+select tests.eq(public.worker_report(:'tok', :'yt', jsonb_build_object('status', 200, 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'Rerun episode', 'url', 'https://pod.example.org/rerun', 'views', 1),
+    jsonb_build_object('title', 'Rerun episode (again)', 'url', 'https://pod.example.org/rerun?utm_source=feed', 'views', 2)))), 1,
+  'the same link twice in one report is stored once (no ON CONFLICT error)');
 reset role;
 select tests.eq((select duration_seconds || '/' || media_type || '/' || preview || '/' || transcript_url from public.feed_entries where url = 'https://pod.example.org/ep1'),
                 '3111/podcast/Show notes/https://pod.example.org/ep1.vtt', 'podcast duration, audio, notes and transcript stored');
