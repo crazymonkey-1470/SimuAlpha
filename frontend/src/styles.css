@@ -582,3 +582,31 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
   .content { animation: none; }
 }
 .worker-status button.link { justify-self: start; margin-top: 4px; }
+
+/* Quote of the show */
+.quote-card { margin: 0; }
+.quote-card blockquote { margin: 0 0 8px; font-size: 21px; }
+.quote-card.compact blockquote { font-size: 19px; }
+.quote-card figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 10px 34px; font-size: 15px; color: var(--umber); }
+.quote-card figcaption b { font-family: var(--caps); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.quote-card figcaption cite { font-style: italic; }
+.quote-card figcaption a { color: inherit; }
+.quote-context { margin: 0 0 10px 34px; font-size: 16px; color: var(--ink-soft); }
+.quote-questions { margin: 0 0 4px 34px; }
+.quote-questions h4 { margin: 0 0 6px; font-family: var(--caps); font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vermilion); }
+.badge.unverified { color: var(--ochre); border-color: #dfc49a; background: var(--ochre-pale); }
+.show-quote { margin: 22px 0 8px; padding: 16px 18px; border: 1px solid var(--gold); background: var(--vellum); box-shadow: inset 0 0 0 4px var(--vellum), inset 0 0 0 5px var(--gold-pale); }
+.show-quote-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; }
+.show-quote-head h2 { margin: 0; }
+.show-quote-head .segmented { margin: 0; }
+.home-quote { margin: 18px 0 8px; padding: 14px 16px; border-top: 1px solid var(--gold); border-bottom: 1px solid var(--gold); }
+.home-quote h2 { margin-top: 0; }
+.quote-item.current { border-color: var(--gold); }
+.quote-form textarea, .quote-form input, .quote-form select { margin-bottom: 8px; }
+@media (max-width: 520px) {
+  .quote-card figcaption, .quote-context, .quote-questions { margin-left: 0; }
+  .quote-card blockquote { font-size: 19px; }
+}
+.home-quote h2 .badge { margin-left: 8px; vertical-align: middle; }
+.link-more { display: inline-flex; align-items: center; gap: 6px; font-family: var(--caps); font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--lapis); text-decoration: none; }
+.link-more:hover { color: var(--ink); }

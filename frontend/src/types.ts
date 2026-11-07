@@ -51,12 +51,16 @@ export interface ItemCard extends Item {
   research_done: number;
 }
 
+export type QuoteRole = 'opener' | 'closer';
+
 export interface Episode {
   id: string;
   title: string;
   recording_date: string | null;
   status: EpisodeStatus;
   notes: string | null;
+  quote_id: string | null;
+  quote_role: QuoteRole;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -225,3 +229,27 @@ export interface Feed {
   backfilled_at: string | null;
   created_at: string;
 }
+
+/** Row of the quote_cards view: a quote from the bank, with where it was used. */
+export interface QuoteCard {
+  id: string;
+  text: string;
+  author: string;
+  source: string | null;
+  source_url: string | null;
+  context: string | null;
+  questions: string[];
+  topics: string[];
+  verified: boolean;
+  added_by: string | null;
+  added_by_name: string;
+  created_at: string;
+  used_count: number;
+  used_in: string[];
+  last_used: string | null;
+}
+
+export const QUOTE_ROLE_LABEL: Record<QuoteRole, string> = {
+  opener: 'Opener: wisdom to start the conversation',
+  closer: 'Closer: send-off to end the show',
+};

@@ -4,6 +4,7 @@ import { navigate, useApp, useLoad } from '../lib';
 import { EPISODE_STATUS_LABEL, ITEM_TYPES, STATUS_LABEL, type EpisodeStatus, type ItemCard } from '../types';
 import ItemList from '../components/ItemList';
 import { CheckIcon } from '../components/Icons';
+import ShowQuote from '../components/ShowQuote';
 
 export default function EpisodePage({ id }: { id: string }) {
   const { episodes, reloadEpisodes, me } = useApp();
@@ -49,6 +50,7 @@ export default function EpisodePage({ id }: { id: string }) {
     { ok: items.some((i) => i.item_type === 'guest_idea'), label: 'Guest' },
     { ok: items.some((i) => i.item_type === 'fun_fact'), label: 'Fun fact' },
     { ok: talkItems.length >= 3, label: `Discussion items (${talkItems.length}/3+)` },
+    { ok: !!ep.quote_id, label: 'Quote of the show' },
   ];
   const missing = checks.filter((c) => !c.ok).map((c) => c.label);
 
@@ -159,6 +161,8 @@ export default function EpisodePage({ id }: { id: string }) {
           Still missing: {missing.join(', ')}.
         </p>
       )}
+
+      <ShowQuote ep={ep} />
 
       <h2>
         Attached <span className="count">{items.length}</span>

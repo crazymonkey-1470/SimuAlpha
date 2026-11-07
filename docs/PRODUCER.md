@@ -348,6 +348,34 @@ Their links open via news.google.com. For podcast takeaways, Podcast Notes and T
 show notes and transcripts are in `guests` and `motivation`. Good-news and comeback stories are
 in `motivation`.
 
+## Quote of the show
+
+Every episode carries one motivational quote, used as the **opener** (wisdom to start the
+conversation) or the **closer** (send-off). A new episode automatically gets the least-used
+verified quote from the bank. The crew can swap it, choose another (Episodes → Quote bank) or flip
+opener and closer. The digest's `episodes` list shows each one's `quote` and `quote_role`, or
+`needs_quote: true`.
+
+```sql
+-- Add a quote (and optionally put it on an episode as the opener or closer):
+select add_quote(quote => 'Watch ye, stand fast in the faith, quit you like men, be strong.',
+                 author => '1 Corinthians 16:13', source => 'King James Version (1611)',
+                 context => 'Paul''s closing charge to the church at Corinth.',
+                 questions => array['What does "act like men" mean today?'],
+                 topics => array['religion', 'motivation'], verified => true,
+                 episode_id => '<episode id>', role => 'opener');
+select swap_quote('<episode id>');         -- give an episode a different quote
+select * from quote_cards order by used_count, author;   -- the bank, least used first
+```
+
+**Accuracy rule.** Set `verified => true` only when the exact wording and the attribution were
+checked against a primary source, and cite it in `source`: book and chapter, speech and date, or
+verse and translation. Many famous quotes are misattributed. For example, "We are what we
+repeatedly do" is Will Durant summarising Aristotle, not Aristotle. When unsure, leave
+`verified` false; the site then labels the quote "Attribution not verified". Prefer
+public-domain wording, such as the KJV and older translations, over modern copyrighted
+translations. Write two short questions that connect the quote to the episode's topics.
+
 ## Grok's memory (second brain)
 
 Grok doesn't learn on its own; it only knows what it's given. Its long-term memory lives in
