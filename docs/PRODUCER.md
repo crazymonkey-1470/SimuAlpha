@@ -113,7 +113,7 @@ Generated from the migrated schema. `*` = required, no default.
 ### `topics`
 | column | type | notes |
 |---|---|---|
-| slug | text, PK | `news`, `politics`, `personal-finance`, `economics`, `religion`, `philosophy`, `history`, `working-out`, `dating-culture`, `science`, `literature`, `arts`, `pop-culture`, `music`, `movies` (includes MCU / comic-book films), `guests`, `fun-facts` |
+| slug | text, PK | `news`, `politics`, `personal-finance`, `economics`, `religion`, `philosophy`, `history`, `working-out`, `dating-culture`, `science`, `literature`, `arts`, `pop-culture`, `music`, `movies` (includes MCU / comic-book films), `guests`, `fun-facts`, `motivation` (good news, comebacks, inspiring stories) |
 | name | text * | tab label |
 | sort_order | integer * | tab order |
 | description | text | tagging guidance |
@@ -308,6 +308,16 @@ select add_item(title => '...', url => '...', source => '...', summary => '...',
 Add a source by SQL with `insert into feeds (name, url, topics) values ('Name', 'https://…/feed', '{history}');`.
 Run `select refresh_feeds();` to fetch everything now. Feed errors show on the Sources page
 and in `feeds.last_error`.
+
+The newsroom mix runs left to right on purpose (Fox News, CNN, AP, Reuters, WSJ, BBC, ABC, CBS, NBC,
+PBS, NPR, Christian Science Monitor, The Hill, Axios, NewsNation, The Free Press, Politico), so
+`outlets` on a story shows who did and didn't cover it. Use that as a quick check: a story only
+one side covers is worth a second source before it goes in the prep room.
+Outlets without a working RSS feed (CNN, AP, Reuters, WSJ) come through Google News filtered to
+their site: `https://news.google.com/rss/search?q=site:cnn.com+when:1d&hl=en-US&gl=US&ceid=US:en`.
+Their links open via news.google.com. For podcast takeaways, Podcast Notes and Tim Ferriss's
+show notes and transcripts are in `guests` and `motivation`. Good-news and comeback stories are
+in `motivation`.
 
 ## Grok's memory (second brain)
 
