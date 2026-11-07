@@ -181,7 +181,7 @@ reset role;
 -- ===========================================================================
 set role authenticated;
 select tests.as_user(:'freddy');
-select tests.eq((select count(*) from public.topics)::int, 17, 'host sees 17 topics');
+select tests.eq((select count(*) from public.topics)::int, 18, 'host sees 18 topics');
 select tests.eq((select count(*) from public.this_week)::int, 2, 'this_week view shows nominated items');
 select tests.throws('select * from public.allowed_emails', '42501', 'host cannot read allow-list');
 
@@ -554,6 +554,7 @@ select tests.eq(public.ingest_feed_xml(:'tpod', format($x$<rss xmlns:itunes="htt
   to_char(now(), 'Dy, DD Mon YYYY HH24:MI:SS "GMT"'))), 1, 'podcast episodes without <link> use the audio URL');
 select tests.eq((select media_type || '/' || duration_seconds from public.feed_entries where url = 'https://cdn.example.org/ep9.mp3'), 'podcast/3111', 'audio-only episode stored as a podcast with duration');
 select public.create_ingest_token() as tok \gset
+select id as gn from public.feeds where name = 'CNN' \gset
 select tests.throws($$select * from public.worker_sources('ta_ingest_wrong')$$, '28000', 'wrong ingest token is refused');
 set role anon;
 select tests.eq((select count(*) from public.worker_sources(:'tok'))::int > 20, true, 'worker (anon key + token) can list sources');
@@ -568,7 +569,13 @@ select tests.eq(public.worker_report(:'tok', :'yt', jsonb_build_object('status',
     jsonb_build_object('title', 'Rerun episode', 'url', 'https://pod.example.org/rerun', 'views', 1),
     jsonb_build_object('title', 'Rerun episode (again)', 'url', 'https://pod.example.org/rerun?utm_source=feed', 'views', 2)))), 1,
   'the same link twice in one report is stored once (no ON CONFLICT error)');
+select tests.eq(public.worker_report(:'tok', :'gn', jsonb_build_object('status', 200, 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'Senate passes the budget deal - CNN', 'url', 'https://news.google.com/rss/articles/CBMiTEST?oc=5',
+                       'preview', 'Senate passes the budget deal - CNN CNN')))), 1, 'Google News entry stored');
 reset role;
+select tests.eq((select title || '|' || coalesce(preview, '(none)') from public.feed_entries where url = 'https://news.google.com/rss/articles/CBMiTEST?oc=5'),
+                'Senate passes the budget deal|(none)', 'Google News " - Outlet" suffix and echoed preview are stripped');
+select tests.eq((select count(*) from public.feeds where 'motivation' = any(topics))::int >= 6, true, 'motivation sources seeded');
 select tests.eq((select duration_seconds || '/' || media_type || '/' || preview || '/' || transcript_url from public.feed_entries where url = 'https://pod.example.org/ep1'),
                 '3111/podcast/Show notes/https://pod.example.org/ep1.vtt', 'podcast duration, audio, notes and transcript stored');
 select tests.eq((select views from public.feed_entries where url = 'https://www.youtube.com/watch?v=AAA'), 20000::bigint, 'view counts refresh on re-report');
