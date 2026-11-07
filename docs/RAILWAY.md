@@ -47,6 +47,20 @@ No public domain or networking is needed, since the worker only makes outgoing r
 Cloudflare isn't involved: it serves the website, and both the website and the worker talk
 only to Supabase.
 
+## Month backfill
+
+Each source is backfilled once with its last 31 days, so the crew has a month to browse. Up to
+12 sources are backfilled per run, so the first full backfill takes a few runs (about an hour).
+New sources are backfilled on their first run. Log lines show what happened:
+
+```
+ok  rss     Fox News Politics: 200 +96 new of 121 [backfill: 96 via Google News (foxnews.com/politics)]
+ok  rss     Good News Network: 200 +180 new of 230 [backfill: 180 from older pages]
+```
+
+If Google News refuses a request, that source shows `will retry` and is tried again next run.
+Redo the whole backfill from the Sources page (**Backfill the last month again**).
+
 ## Day to day
 
 - **Adding sources:** on the Sources page, choose *News / blog feed*, *YouTube channel* or

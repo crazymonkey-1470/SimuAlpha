@@ -528,7 +528,8 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
 
 /* ---------- source feed ---------- */
 .feed-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 6px; }
-.feed-filters select { width: auto; min-width: 200px; }
+.feed-filters select { width: auto; flex: 1 1 150px; min-width: 150px; max-width: 260px; }
+.actions.more { justify-content: center; margin-top: 18px; }
 .card.story { padding: 16px 16px 14px; }
 .card.story.dismissed { opacity: 0.6; }
 .story-title { font-size: 21px; margin-top: 8px; }
@@ -580,3 +581,4 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
 @media (prefers-reduced-motion: reduce) {
   .content { animation: none; }
 }
+.worker-status button.link { justify-self: start; margin-top: 4px; }

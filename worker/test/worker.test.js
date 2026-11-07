@@ -111,3 +111,108 @@ test('pullSource: conditional fetch (304), resolution report, HTTP errors', asyn
   const err = await pullSource({ kind: 'rss', url: 'https://x.example.org/gone', resolved: true }, { get: async () => resp(404) });
   assert.equal(err.error, 'HTTP 404');
 });
+
+// ---- Month backfill ----
+import { backfill, googleNewsUrl, googlePacer, siteFor } from '../src/backfill.js';
+
+const DAY = 86_400_000;
+const NOW = Date.parse('2026-11-07T12:00:00Z');
+const rssOf = (items) => `<?xml version="1.0"?><rss><channel><title>T</title>${items
+  .map(([t, u, at]) => `<item><title>${t}</title><link>${u}</link><pubDate>${new Date(at).toUTCString()}</pubDate></item>`)
+  .join('')}</channel></rss>`;
+const ok = (body) => ({ status: 200, ok: true, text: async () => body, headers: new Map() });
+const fail = (status) => ({ status, ok: false, text: async () => '', headers: new Map() });
+
+test('siteFor: Google News query, section narrowing, host fallback, unusable links', () => {
+  assert.equal(siteFor('https://news.google.com/rss/search?q=site:cnn.com+when:1d&hl=en-US&gl=US&ceid=US:en', []), 'cnn.com');
+  const fox = ['a', 'b', 'c', 'd', 'e'].map((x) => ({ url: `https://www.foxnews.com/politics/${x}` }));
+  assert.equal(siteFor('https://moxie.foxnews.com/google-publisher/politics.xml', fox), 'foxnews.com/politics');
+  const mixed = ['us/a', 'world/b', 'politics/c', 'media/d'].map((x) => ({ url: `https://www.foxnews.com/${x}` }));
+  assert.equal(siteFor('https://moxie.foxnews.com/google-publisher/latest.xml', mixed), 'foxnews.com');
+  assert.equal(siteFor('https://feeds.bbci.co.uk/news/rss.xml', [{ url: 'https://www.bbc.com/news/articles/x' }, { url: 'https://www.bbc.com/news/articles/y' }]), 'bbc.com');
+  assert.equal(siteFor('https://feeds.npr.org/1001/rss.xml', [{ url: 'https://www.npr.org/2026/11/07/a' }]), 'npr.org');
+  assert.equal(siteFor('https://feeds.feedburner.com/x', [{ url: 'https://feedproxy.google.com/~r/x/1' }]), null);
+  assert.match(googleNewsUrl('foxnews.com/politics', '2026-10-01', '2026-10-08'), /q=site%3Afoxnews\.com%2Fpolitics%20after%3A2026-10-01%20before%3A2026-10-08&hl=en-US/);
+});
+
+test('backfill: WordPress paging walks back a month and stops at the cutoff', async () => {
+  const asked = [];
+  const pages = {
+    2: rssOf([['Ten days', 'https://blog.example.org/10', NOW - 10 * DAY], ['Twenty days', 'https://blog.example.org/20', NOW - 20 * DAY]]),
+    3: rssOf([['28 days', 'https://blog.example.org/28', NOW - 28 * DAY], ['40 days', 'https://blog.example.org/40', NOW - 40 * DAY]]),
+  };
+  const deps = {
+    get: async (u) => (asked.push(u), pages[u.match(/paged=(\d+)/)[1]] ? ok(pages[u.match(/paged=(\d+)/)[1]]) : fail(404)),
+    google: async () => assert.fail('no Google needed for a paging site'),
+  };
+  const live = [{ url: 'https://blog.example.org/1', published_at: new Date(NOW - DAY).toISOString() }];
+  const r = await backfill({ kind: 'rss' }, 'https://blog.example.org/feed/', live, deps, NOW);
+  assert.equal(r.done, true);
+  assert.deepEqual(r.entries.map((e) => e.url), ['https://blog.example.org/10', 'https://blog.example.org/20', 'https://blog.example.org/28']);
+  assert.deepEqual(asked, ['https://blog.example.org/feed/?paged=2', 'https://blog.example.org/feed/?paged=3']);
+});
+
+test('backfill: a site that ignores paging falls back to Google News, a week at a time, once per site per run', async () => {
+  const live = ['a', 'b', 'c'].map((x, i) => ({ url: `https://www.foxnews.com/politics/${x}`, published_at: new Date(NOW - i * 3_600_000).toISOString() }));
+  const liveXml = rssOf(live.map((e) => ['Live', e.url, Date.parse(e.published_at)]));
+  const googleAsked = [];
+  let week = 0;
+  const deps = {
+    get: async (u) => {
+      if (u.includes('paged=')) return ok(liveXml); // parameter ignored: same items again
+      googleAsked.push(u);
+      week++;
+      return ok(rssOf([[`Week ${week} story - Fox News`, `https://news.google.com/rss/articles/w${week}`, NOW - (week * 7 - 3) * DAY],
+                       ['Too old', `https://news.google.com/rss/articles/old${week}`, NOW - 60 * DAY]]));
+    },
+    google: googlePacer(0),
+    sitesDone: new Set(),
+  };
+  const r = await backfill({ kind: 'rss' }, 'https://moxie.foxnews.com/google-publisher/politics.xml', live, deps, NOW);
+  assert.equal(r.done, true);
+  assert.equal(googleAsked.length, 5, '31 days = 5 weekly windows');
+  assert.ok(googleAsked.every((u) => u.includes(encodeURIComponent('site:foxnews.com/politics after:'))));
+  assert.equal(r.entries.length, 4, 'one story per window inside the month; the 32-day one and 60-day ones are dropped');
+  assert.ok(r.entries.every((e) => Date.parse(e.published_at) > NOW - 31 * DAY));
+
+  const again = await backfill({ kind: 'rss' }, 'https://moxie.foxnews.com/google-publisher/politics.xml', live, deps, NOW);
+  assert.equal(again.entries.length, 0);
+  assert.match(again.note, /already backfilled this run/);
+  assert.equal(googleAsked.length, 5, 'no second round of Google requests for the same site');
+});
+
+test('backfill: Google refusing leaves the source for a later run; YouTube and podcasts use their own history', async () => {
+  const deps = { get: async () => fail(503), google: googlePacer(0), sitesDone: new Set() };
+  const r = await backfill({ kind: 'rss' }, 'https://news.google.com/rss/search?q=site:apnews.com+when:1d', [], deps, NOW);
+  assert.equal(r.done, false);
+  assert.match(r.note, /503/);
+  assert.equal(deps.sitesDone.has('apnews.com'), false, 'site can be retried');
+  const yt = await backfill({ kind: 'youtube' }, 'https://www.youtube.com/feeds/videos.xml?channel_id=UCx', [], deps, NOW);
+  assert.deepEqual([yt.done, yt.entries.length], [true, 0]);
+});
+
+test('pullSource with backfill: no conditional headers, month cutoff, history appended and flagged', async () => {
+  const now = Date.now();
+  let first;
+  const deps = {
+    get: async (u, h) => {
+      if (!first) {
+        first = h;
+        return ok(rssOf([['Live CNN story - CNN', 'https://news.google.com/rss/articles/live', now - 3_600_000],
+                         ['Twenty days ago - CNN', 'https://news.google.com/rss/articles/d20', now - 20 * DAY]]));
+      }
+      return ok(rssOf([[`Older ${u.length} - CNN`, `https://news.google.com/rss/articles/${encodeURIComponent(u.slice(-40))}`, now - 9 * DAY]]));
+    },
+    google: googlePacer(0),
+    sitesDone: new Set(),
+  };
+  const r = await pullSource({ kind: 'rss', url: 'https://news.google.com/rss/search?q=site:cnn.com+when:1d', resolved: true, etag: '"v1"', backfill: true }, deps);
+  assert.equal(first['If-None-Match'], undefined, 'backfill fetches the full feed');
+  assert.equal(r.backfilled, true);
+  assert.ok(r.entries.some((e) => e.url.endsWith('/d20')), '20-day-old live item kept during backfill');
+  assert.ok(r.entries.length >= 3);
+  const normal = await pullSource({ kind: 'rss', url: 'https://x.example.org/rss', resolved: true },
+    { get: async () => ok(rssOf([['Old', 'https://x.example.org/old', now - 20 * DAY], ['New', 'https://x.example.org/new', now - DAY]])) });
+  assert.deepEqual(normal.entries.map((e) => e.url), ['https://x.example.org/new'], 'normal runs keep the 14-day window');
+  assert.equal(normal.backfilled, undefined);
+});

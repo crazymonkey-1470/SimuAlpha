@@ -262,7 +262,18 @@ The database collects headlines on its own, so Grok doesn't have to search the w
   every 20 minutes. If it stops, the database's own fetcher (`pg_cron` + `pg_net`) takes over.
   It keeps the headline, date, link, a ≤400-character preview and, for videos and episodes,
   the thumbnail, duration, views, audio link and transcript link. It never keeps full
-  articles. Entries nobody acted on are pruned after 30 days.
+  articles. Entries nobody acted on are pruned after 45 days.
+- **Month backfill:** each source is backfilled once with its last 31 days. New sources are
+  backfilled automatically on their first run, about a dozen sources per worker run.
+  WordPress-style sites are paged back (`?paged=2…`). Everything else goes through Google News
+  search for that site, one week at a time. `feeds.backfilled_at` records when it happened; set
+  it to null (or tap **Backfill the last month again** on the Sources page) to redo it.
+- **Categorisation:** every headline is filed by its words (`topic_terms`), on top of its feed's
+  topics, with at most three detected topics. For general news feeds (topic `news`) the detected
+  topic comes first, so `topics[1]` is the real subject: the digest and the Feed's topic filter
+  use it. Specialised feeds keep their own topic first.
+- **Junk filter:** headlines matching `entry_filters` (shopping deals, gift guides, stock-quote
+  pages) are not stored.
 - **Duplicates:** the same link (ignoring tracking parameters) is stored once. The same
   story from different outlets is grouped into one story with an outlet count; more
   outlets is a signal that it matters.
@@ -304,6 +315,16 @@ select add_item(title => '...', url => '...', source => '...', summary => '...',
 | `source_feedback` | `member_id`, `entry_id`, `kind` (`discuss`, `more_like_this`, `not_interested`), `reason` |
 | `article_reads` | read-once store keyed by normalised URL: `summary`, `key_points`, `sources`, `verdict`, `checked_at` |
 | `source_inbox` (view) | one row per story: lead headline, `outlets`, `outlet_count`, vote counts, `my_feedback`, `in_prep`, `read`, `read_summary` |
+
+Tune the categorisation by SQL. Terms are lower-case regex fragments matched as whole words:
+
+```sql
+insert into topic_terms (topic, term) values ('religion', 'lent'), ('working-out', 'barbells?');
+delete from topic_terms where topic = 'fun-facts' and term = 'weird';
+select reclassify_entries();              -- re-file every stored headline with the new lists
+select classify_topics('Pope Leo visits Uruguay');   -- test a headline: {religion}
+insert into entry_filters (pattern, note) values ('\msponsored\M', 'ads');   -- never store these
+```
 
 Add a source by SQL with `insert into feeds (name, url, topics) values ('Name', 'https://…/feed', '{history}');`.
 Run `select refresh_feeds();` to fetch everything now. Feed errors show on the Sources page
