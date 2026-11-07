@@ -350,6 +350,94 @@ delete from public.items where id = :'pitch';
 select tests.eq((select count(*) from public.item_highlights where item_id = :'pitch')::int, 0, 'highlights cascade with their item');
 
 -- ===========================================================================
+-- Grok memory (migration grok_memory)
+-- ===========================================================================
+select tests.as_user(null);
+select public.remember('Always give sources with links and keep answers under 200 words.', 'instruction',
+                       importance => 9, pinned => true) as m_rule \gset
+select public.remember('Freddy prefers historical context and church history deep dives.', 'preference',
+                       about_member => :'freddy', importance => 7, tags => array['history']) as m_fred \gset
+select public.remember('Stew wants hard numbers and charts, not anecdotes.', 'preference',
+                       about_member => :'stew', importance => 7) as m_stew \gset
+select public.remember('Episode 11 covered fatherlessness statistics.', 'event', importance => 4) as m_event \gset
+select tests.eq((select source::text || '/' || coalesce(created_by::text, 'none') from public.memories where id = :'m_fred'),
+                'grok/none', 'bot memories are labelled grok');
+select tests.eq(public.remember('Freddy prefers historical context and church-history deep dives!', 'preference',
+                                about_member => :'freddy', importance => 8)::text, :'m_fred',
+                'near-duplicate memory is reinforced, not duplicated');
+select tests.eq((select reinforced_count || '/' || importance from public.memories where id = :'m_fred'), '1/8',
+                'reinforcement bumps count and importance');
+select tests.throws($$select public.remember('x', about_topic => 'finance')$$, '23503', 'remember validates topic slugs', 'Unknown topic slug');
+select tests.eq((select content from public.recall('church history') limit 1),
+                'Freddy prefers historical context and church history deep dives.', 'recall ranks the relevant memory first');
+select tests.eq((select count(*) from public.recall('church histroy deep dive'))::int >= 1, true, 'recall tolerates typos (fuzzy match)');
+select tests.eq((select count(*) from public.recall(about_member => :'freddy') r where r.content like 'Stew%')::int, 0,
+                'recall about Freddy excludes Stew''s memories');
+select tests.eq((select bool_or(r.pinned) from public.recall(about_member => :'freddy') r), true,
+                'recall about a member includes pinned show rules');
+select tests.eq((select access_count > 0 from public.memories where id = :'m_fred'), true, 'recall records access');
+
+select public.revise_memory(:'m_stew', 'Stew wants hard numbers, charts and the original study link.', 'he asked for study links') as m_stew2 \gset
+select tests.eq((select (invalid_at is not null) || '/' || superseded_by::text from public.memories where id = :'m_stew'),
+                'true/' || :'m_stew2', 'revise retires the old memory and links the new one');
+select tests.eq((select count(*) from public.recall('anecdotes'))::int, 0, 'retired memories are not recalled');
+select public.forget(:'m_event', 'wrong episode number');
+select tests.throws(format('select public.forget(%L)', :'m_event'), 'P0002', 'forget twice is an error');
+
+select tests.eq((select jsonb_array_length(public.member_briefing(:'freddy') -> 'preferences')), 1, 'member_briefing lists preferences');
+select tests.eq((select public.member_briefing(:'freddy') -> 'favorite_topics' -> 0 ->> 'topic') is not null, true,
+                'member_briefing derives favorite topics from activity');
+select tests.eq((select public.show_briefing() -> 'pinned' ->> 0), 'Always give sources with links and keep answers under 200 words.',
+                'show_briefing carries pinned rules');
+select tests.eq((select public.show_briefing() -> 'recently_covered') ? 'Why men stopped going to church', true,
+                'show_briefing lists what has been covered');
+
+select public.log_conversation('[{"role":"user","content":"What did we say about fasting last month?"},
+                                 {"role":"assistant","content":"You planned a Lent episode on fasting and discipline."}]'::jsonb,
+                               member_id => :'freddy', title => 'Fasting follow-up', summary => 'Lent episode idea') as conv \gset
+select tests.eq((select title from public.search_conversations('fasting discipline') limit 1), 'Fasting follow-up',
+                'search_conversations finds past talks');
+select tests.throws($$select public.log_conversation('{"role":"user"}'::jsonb)$$, '22023', 'log_conversation needs an array');
+select tests.eq((select requested_by is not null from public.research_queue limit 1) is not false, true, 'research_queue exposes requested_by');
+
+set role anon;
+select tests.throws($$select * from public.recall('x')$$, '42501', 'anon cannot recall');
+select tests.throws('select count(*) from public.memories', '42501', 'anon cannot read memories');
+reset role;
+
+set role authenticated;
+select tests.as_user(:'freddy');
+select tests.eq((select count(*) from public.memory_cards where about_member = :'stew')::int, 0, 'host cannot see another host''s memories');
+select tests.eq((select count(*) from public.memory_cards where about_member = :'freddy' and invalid_at is null)::int, 1, 'host sees own memories');
+select tests.eq((select count(*) from public.memory_cards where about_member is null and invalid_at is null)::int, 1, 'host sees show memories');
+select tests.throws(format($f$insert into public.memories (content, kind, about_member) values ('spy', 'fact', %L)$f$, :'stew'),
+                    '42501', 'host cannot write memories about someone else');
+select public.remember('I like history deep dives with primary sources.', 'preference', about_member => :'freddy') as m_self \gset
+select tests.eq((select source::text || '/' || created_by::text from public.memories where id = :'m_self'),
+                'member/' || :'freddy', 'self-written memories are attributed');
+select tests.eq((select count(*) from public.recall(about_member => :'freddy'))::int >= 2, true, 'host can recall');
+select tests.eq((select jsonb_array_length(public.member_briefing(:'stew') -> 'preferences')), 0, 'briefing respects privacy for other hosts');
+select tests.eq((select count(*) from public.conversations)::int, 1, 'host sees own conversations');
+with d as (delete from public.memories where id = :'m_rule' returning 1)
+select tests.eq(count(*)::int, 0, 'host cannot delete the bot''s show rules') from d;
+with d as (delete from public.memories where id = :'m_self' returning 1)
+select tests.eq(count(*)::int, 1, 'host can delete memories about themselves') from d;
+reset role;
+
+set role authenticated;
+select tests.as_user(:'stew');
+select tests.eq((select count(*) from public.conversations)::int, 0, 'other hosts cannot see someone''s conversations');
+select tests.eq((select count(*) from public.conversation_messages)::int, 0, 'nor their messages');
+reset role;
+
+set role authenticated;
+select tests.as_user(:'producer');
+select tests.eq((select count(*) from public.memory_cards where about_member = :'stew' and invalid_at is null)::int, 1,
+                'producer sees everyone''s memories');
+reset role;
+select tests.as_user(null);
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

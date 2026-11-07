@@ -136,3 +136,40 @@ export const RESEARCH_STATUS_LABEL: Record<ResearchStatus, string> = {
   done: 'Answered',
   cancelled: 'Cancelled',
 };
+
+export type MemoryKind = 'preference' | 'fact' | 'event' | 'instruction' | 'reflection';
+
+/** Row of the memory_cards view. */
+export interface MemoryCard {
+  id: string;
+  kind: MemoryKind;
+  content: string;
+  about_member: string | null;
+  about_topic: string | null;
+  about_item: string | null;
+  about_episode: string | null;
+  about_entity: string | null;
+  tags: string[];
+  importance: number;
+  confidence: number;
+  pinned: boolean;
+  source: 'grok' | 'member' | 'producer' | 'system';
+  created_by: string | null;
+  evidence: string | null;
+  invalid_at: string | null;
+  retired_reason: string | null;
+  reinforced_count: number;
+  access_count: number;
+  created_at: string;
+  updated_at: string;
+  subject: string;
+  created_by_name: string;
+}
+
+export const MEMORY_KIND_LABEL: Record<MemoryKind, string> = {
+  preference: 'Preference',
+  fact: 'Fact',
+  event: 'Event',
+  instruction: 'Instruction',
+  reflection: 'Insight',
+};

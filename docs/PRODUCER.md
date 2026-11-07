@@ -253,6 +253,72 @@ with **Paste answer** (tick "This answer came from Grok").
 
 To see what the hosts care about: `select title, highlight_count from item_cards where highlight_count > 0 order by highlight_count desc;`
 
+## Grok's memory (second brain)
+
+Grok doesn't learn on its own; it only knows what it's given. Its long-term memory lives in
+this database, so it carries over between sessions and survives switching bots.
+
+| What | Where | Notes |
+|---|---|---|
+| Distilled memories | `memories` | `kind`: `preference`, `fact`, `event`, `instruction` (how to work), `reflection` (insight). About a crew member (`about_member`), a topic, an item, an episode, an outside person/thing (`about_entity`), or the whole show (all empty). `importance` 1–10, `confidence` 0–1, `pinned` = always included. |
+| Conversation history | `conversations`, `conversation_messages` | Raw long-context log of talks with Grok on any channel; full-text searchable. |
+| Ranked lookup | `recall()` | Keyword + typo-tolerant match, weighted by importance, recency (~60-day half-life), confirmations and pins. |
+| One-call context | `member_briefing(member)`, `show_briefing()` | Everything to read before answering. |
+
+Memories are never silently overwritten. A near-duplicate **reinforces** the existing one
+(it raises the count, importance and confidence). A correction **retires** the old memory
+(`invalid_at`, `superseded_by`) and keeps it for history. Privacy: memories about a person
+are visible on the site only to that person and producers. Show and topic memories are
+visible to the whole crew. Everyone can see and edit what Grok knows about them under
+**☰ Account**.
+
+### Grok's loop (with database access)
+
+```sql
+-- BEFORE answering a research request (research_queue has requested_by):
+select show_briefing();                              -- house rules, crew, recent episodes, what's been covered
+select member_briefing('<requested_by uuid>');       -- their pinned notes, likes, instructions, favorite topics,
+                                                     -- recent stars / requests / conversations
+select * from recall('<keywords from the request>', about_member => '<uuid>');   -- anything else relevant
+
+-- ... answer it ...
+select answer_research('<request id>', '<answer>', array['<source url>']);
+
+-- AFTER: store what you learned (duplicates are merged automatically)
+select remember('Stew wants the original study, not news coverage.', 'preference',
+                about_member => '<uuid>', importance => 7, source_research => '<request id>');
+select remember('Episode 14 covered fasting; the crew wants a follow-up on Lent.', 'event', importance => 6);
+select remember('Never use Wikipedia as a primary source.', 'instruction', pinned => true, importance => 9);
+
+-- Correct or retire
+select revise_memory('<memory id>', 'Mike now prefers short answers.', 'he said so on 2026-11-07');
+select forget('<memory id>', 'no longer true');
+
+-- Keep the raw conversation (long context), then search it later
+select log_conversation('[{"role":"user","content":"…"},{"role":"assistant","content":"…"}]'::jsonb,
+                        member_id => '<uuid>', title => 'Fasting follow-up', summary => 'One-line summary');
+select * from search_conversations('fasting lent', member_id => '<uuid>');
+```
+
+Good habits for the bot: one fact per memory, written so it makes sense on its own. Use
+`importance` 8–10 only for things that should shape most answers. Once a week, write a
+`reflection` that sums up patterns (e.g. "The crew's strongest episodes mix history with
+personal stories").
+
+### Without database access
+
+**Copy for Grok** already includes the house rules and what Grok knows about the person
+who asked, and asks Grok to list anything it **LEARNED**. When pasting the answer, put
+those lines in **"What did Grok learn about …?"** and they're saved to memory. Anyone can
+also add notes under ☰ Account or the **Grok → Memory** tab.
+
+### Not built yet (possible next step)
+
+Meaning-based (vector) search, which matches "fatherhood" to "being a dad". The live
+project supports pgvector. It needs an embedding source: a Supabase Edge Function with a
+built-in small model, or an API key. Until then, recall uses keywords plus fuzzy matching,
+which is plenty for a few thousand memories.
+
 ## Crew access
 
 A person can see the site only when **both** of these are true:

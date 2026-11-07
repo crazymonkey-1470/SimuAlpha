@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
 import { useLoad } from '../lib';
-import type { ResearchRequest, ResearchStatus } from '../types';
+import type { MemoryCard, ResearchRequest, ResearchStatus } from '../types';
+import { MemoryForm, MemoryRow } from '../components/Memory';
 import { RESEARCH_SELECT, ResearchCard, ResearchForm } from '../components/Research';
 
 const TABS: { key: string; label: string; statuses: ResearchStatus[] | null }[] = [
   { key: 'open', label: 'Open', statuses: ['open', 'in_progress'] },
   { key: 'done', label: 'Answered', statuses: ['done'] },
   { key: 'all', label: 'All', statuses: null },
+  { key: 'memory', label: 'Memory', statuses: null },
 ];
 
 export default function Research() {
@@ -16,6 +18,7 @@ export default function Research() {
   const statuses = TABS.find((t) => t.key === tab)!.statuses;
 
   const res = useLoad(() => {
+    if (tab === 'memory') return Promise.resolve({ data: [], error: null });
     let q = supabase.from('research_requests').select(RESEARCH_SELECT);
     if (statuses) q = q.in('status', statuses);
     return q.order(tab === 'done' ? 'answered_at' : 'created_at', { ascending: false }).limit(200);
@@ -58,14 +61,52 @@ export default function Research() {
         ))}
       </div>
 
-      {res.error && <p className="error">{res.error}</p>}
+      {tab === 'memory' && <MemoryTab />}
+      {tab !== 'memory' && res.error && <p className="error">{res.error}</p>}
       {res.loading && !res.data && <p className="muted">Loading…</p>}
-      {res.data && list.length === 0 && (
+      {tab !== 'memory' && res.data && list.length === 0 && (
         <p className="empty">{tab === 'open' ? 'Nothing waiting on Grok.' : 'Nothing here yet.'}</p>
       )}
       <div className="list">
         {list.map((r) => (
           <ResearchCard key={r.id} r={r} onChange={res.reload} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function MemoryTab() {
+  const [q, setQ] = useState('');
+  const mem = useLoad(
+    () =>
+      supabase
+        .from('memory_cards')
+        .select('*')
+        .is('invalid_at', null)
+        .order('pinned', { ascending: false })
+        .order('importance', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(300),
+    [],
+  );
+  const term = q.trim().toLowerCase();
+  const list = ((mem.data ?? []) as MemoryCard[]).filter(
+    (m) => !term || `${m.content} ${m.subject} ${m.tags.join(' ')}`.toLowerCase().includes(term),
+  );
+  return (
+    <>
+      <p className="hint">
+        Grok’s long-term memory about the show: standing instructions, facts, what’s been covered. It checks this
+        before every answer. Personal notes live on each person’s Account page.
+      </p>
+      <MemoryForm onDone={mem.reload} />
+      <input type="search" className="filter" placeholder="Search memory…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search memory" />
+      {mem.error && <p className="error">{mem.error}</p>}
+      {mem.data && list.length === 0 && <p className="empty">{term ? 'No matches.' : 'Grok hasn’t remembered anything yet.'}</p>}
+      <div className="memory-list">
+        {list.map((m) => (
+          <MemoryRow key={m.id} m={m} onChange={mem.reload} />
         ))}
       </div>
     </>

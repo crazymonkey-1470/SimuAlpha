@@ -390,6 +390,21 @@ button.star.starred { color: var(--gold); border-color: #c9a84c66; background: v
 .answer-form .actions { margin-top: 0.7rem; }
 .page-head h1 { margin-right: auto; }
 
+/* ---------- Grok memory ---------- */
+.memory-section { margin: 2rem 0 1.5rem; }
+.memory-form { display: grid; gap: 0.6rem; margin: 0.6rem 0 1rem; padding: 0.85rem 0.95rem; border: 1px solid #c9a84c33; border-radius: var(--radius); background: var(--gold-dim); }
+.memory-list { display: grid; gap: 0.6rem; }
+.memory { min-width: 0; overflow-wrap: anywhere; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.75rem 0.9rem; }
+.memory.pinned { border-color: #c9a84c55; }
+.memory-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin-bottom: 0.3rem; }
+.memory-subject { font-size: 0.75rem; color: var(--muted); }
+.memory-pin { font-size: 0.72rem; color: var(--gold); }
+.memory-content { margin: 0 0 0.4rem; font-size: 0.92rem; white-space: pre-line; }
+.badge.mk-preference { color: var(--gold); border-color: #c9a84c55; }
+.badge.mk-instruction { color: var(--green); border-color: #00e87a44; }
+.badge.mk-fact { color: var(--blue); border-color: #4a9eff44; }
+.badge.mk-event { color: var(--amber); border-color: #f0a50044; }
+
 /* Touch screens: Apple's 44pt minimum tap targets (kept last so it wins). */
 @media (pointer: coarse), (max-width: 959px) {
   button, .button { min-height: 44px; }

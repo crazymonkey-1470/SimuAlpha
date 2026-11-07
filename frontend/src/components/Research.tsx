@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { errorText, supabase } from '../supabase';
 import { copyText, formatTimestamp, href, useApp } from '../lib';
 import {
@@ -89,17 +89,41 @@ export function ResearchForm({
   );
 }
 
-function promptFor(r: ResearchRequest): string {
-  const lines = [
-    `True Adam Podcast research request (${RESEARCH_KIND_LABEL[r.kind]})`,
-    '',
-    r.request,
-  ];
+interface Briefing {
+  member?: { name: string } | null;
+  pinned?: string[];
+  preferences?: string[];
+  instructions?: string[];
+  favorite_topics?: { topic: string }[];
+}
+
+/** Prompt for Grok: the request, the article, who asked and what Grok already knows about them. */
+function promptFor(r: ResearchRequest, who?: Briefing | null, show?: Briefing | null): string {
+  const lines = [`True Adam Podcast research request (${RESEARCH_KIND_LABEL[r.kind]})`, '', r.request];
   if (r.items) {
     lines.push('', `Context: ${r.items.title}${r.items.url ? ` (${r.items.url})` : ''}`);
     if (r.items.summary) lines.push(r.items.summary);
   }
-  lines.push('', 'Reply with a concise answer, the key numbers, and links to your sources.');
+  const rules = [...(show?.pinned ?? []), ...(show?.instructions ?? [])].slice(0, 6);
+  if (rules.length) lines.push('', 'House rules:', ...rules.map((x) => `- ${x}`));
+  if (who?.member) {
+    const about = [
+      ...(who.pinned ?? []),
+      ...(who.preferences ?? []).slice(0, 6),
+      ...(who.instructions ?? []).slice(0, 3),
+    ];
+    const topics = (who.favorite_topics ?? []).slice(0, 4).map((t) => t.topic);
+    if (about.length || topics.length) {
+      lines.push('', `About ${who.member.name} (who asked):`);
+      about.forEach((x) => lines.push(`- ${x}`));
+      if (topics.length) lines.push(`- Most engaged topics: ${topics.join(', ')}`);
+    }
+  }
+  lines.push(
+    '',
+    'Reply with a concise answer, the key numbers, and links to your sources.',
+    'Then list anything new you learned about what this person likes, one per line, under "LEARNED:".',
+  );
   return lines.join('\n');
 }
 
@@ -121,6 +145,23 @@ export function ResearchCard({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(false);
+  const [learned, setLearned] = useState('');
+  const [context, setContext] = useState<{ who: Briefing | null; show: Briefing | null }>({ who: null, show: null });
+  const isOpen = r.status === 'open' || r.status === 'in_progress';
+  const canTeach = !!r.requested_by && (r.requested_by === me.id || me.role === 'producer');
+
+  // Fetch Grok's context ahead of time: iOS Safari only allows clipboard writes straight from a tap.
+  useEffect(() => {
+    if (!isOpen) return;
+    let live = true;
+    Promise.all([
+      r.requested_by ? supabase.rpc('member_briefing', { member: r.requested_by }) : Promise.resolve({ data: null }),
+      supabase.rpc('show_briefing'),
+    ]).then(([w, sh]) => live && setContext({ who: (w.data as Briefing) ?? null, show: (sh.data as Briefing) ?? null }));
+    return () => {
+      live = false;
+    };
+  }, [isOpen, r.requested_by]);
 
   const requester =
     (r.requested_by && profiles.get(r.requested_by)?.display_name) ||
@@ -143,6 +184,7 @@ export function ResearchCard({
   const saveAnswer = (e: FormEvent) => {
     e.preventDefault();
     if (!response.trim()) return;
+    const notes = learned.split('\n').map((l) => l.replace(/^\s*[-•*]\s*/, '').trim()).filter(Boolean);
     run(
       supabase
         .from('research_requests')
@@ -152,13 +194,29 @@ export function ResearchCard({
           // Unlabelled answers are credited to the person pasting them (DB trigger).
           answered_by: fromGrok ? 'Grok' : r.answered_by && r.answered_by !== 'Grok' ? r.answered_by : null,
         })
-        .eq('id', r.id),
-      () => setAnswering(false),
+        .eq('id', r.id)
+        .then(async (res) => {
+          if (res.error || !notes.length || !r.requested_by) return res;
+          for (const content of notes) {
+            const m = await supabase.rpc('remember', {
+              content,
+              kind: 'preference',
+              about_member: r.requested_by,
+              source_research: r.id,
+            });
+            if (m.error) return m;
+          }
+          return res;
+        }),
+      () => {
+        setAnswering(false);
+        setLearned('');
+      },
     );
   };
 
   const copy = async () => {
-    setCopied(await copyText(promptFor(r)));
+    setCopied(await copyText(promptFor(r, context.who, context.show)));
     window.setTimeout(() => setCopied(false), 2000);
   };
 
@@ -218,6 +276,12 @@ export function ResearchCard({
             <input type="checkbox" checked={fromGrok} onChange={(e) => setFromGrok(e.target.checked)} />
             This answer came from Grok
           </label>
+          {canTeach && (
+            <label>
+              What did Grok learn about {requester}? <span className="muted">(optional, one per line — saved to its memory)</span>
+              <textarea rows={2} value={learned} onChange={(e) => setLearned(e.target.value)} placeholder="e.g. Wants the original study, not news coverage" />
+            </label>
+          )}
           <div className="actions">
             <button className="primary" disabled={busy || !response.trim()}>
               Save answer
