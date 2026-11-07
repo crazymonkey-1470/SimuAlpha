@@ -62,7 +62,9 @@ export default function Account() {
 
       <section className="memory-section">
         <h2>
-          What Grok <em>knows</em> about you
+          <span>
+            What Grok <em>knows</em> about you
+          </span>
         </h2>
         <p className="hint">
           Grok reads this before it answers you, and adds to it as it learns. Only you and the producer can see it.

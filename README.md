@@ -5,8 +5,12 @@ topic tabs, saved articles with summaries and talking points, a "this week" pile
 planning, and comments. The producer fills it from the database side; the hosts browse,
 add their own finds, comment, and mark items used.
 
-The visual design (dark palette, Cormorant Garamond + IBM Plex Mono, dotted globe)
-comes from the SimuAlpha design system.
+**Look:** a Renaissance reading room. Plaster ground, fresco pigments (lapis, vermilion,
+terre verte, old gold), gilt frames, Roman capitals (Cinzel) for labels and buttons, and
+Garamond for reading (Cormorant Garamond for titles, EB Garamond for body). Summaries
+open with a red drop cap, and talking points carry red Roman numerals. The Home and
+sign-in pages are headed by Michelangelo's *Creation of Adam* (public domain, Wikimedia
+Commons): the hands on phones, both figures on wider screens.
 
 ```
 frontend/              the site: Vite + React + supabase-js, static, mobile-first

@@ -3,6 +3,7 @@ import { errorText, supabase } from '../supabase';
 import { navigate, useApp, useLoad } from '../lib';
 import { EPISODE_STATUS_LABEL, ITEM_TYPES, STATUS_LABEL, type EpisodeStatus, type ItemCard } from '../types';
 import ItemList from '../components/ItemList';
+import { CheckIcon } from '../components/Icons';
 
 export default function EpisodePage({ id }: { id: string }) {
   const { episodes, reloadEpisodes, me } = useApp();
@@ -130,7 +131,8 @@ export default function EpisodePage({ id }: { id: string }) {
           </button>
           {items.length > 0 && (
             <button disabled={busy} onClick={markAllUsed}>
-              ✓ Mark {items.length === 1 ? 'it' : `all ${items.length}`} used
+              <CheckIcon size={16} />
+              Mark {items.length === 1 ? 'it' : `all ${items.length}`} used
             </button>
           )}
           {(ep.created_by === me.id || me.role === 'producer') && (
@@ -145,11 +147,18 @@ export default function EpisodePage({ id }: { id: string }) {
       <ul className="checklist">
         {checks.map((c) => (
           <li key={c.label} className={c.ok ? 'ok' : 'missing'}>
-            {c.ok ? '✓' : '○'} {c.label}
+            {c.ok ? <CheckIcon size={15} /> : <span className="check-empty" aria-hidden="true" />}
+            <span className="sr-only">{c.ok ? 'Done: ' : 'Missing: '}</span>
+            {c.label}
           </li>
         ))}
       </ul>
-      {missing.length > 0 && <p className="warn">Still missing: {missing.join(', ')}.</p>}
+      {missing.length > 0 && (
+        <p className="warn">
+          <span className="pilcrow" aria-hidden="true">¶</span>
+          Still missing: {missing.join(', ')}.
+        </p>
+      )}
 
       <h2>
         Attached <span className="count">{items.length}</span>

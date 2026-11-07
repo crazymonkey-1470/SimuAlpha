@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { supabase } from '../supabase';
-import LazyGlobe from '../globe/LazyGlobe';
+import Fresco from '../components/Fresco';
+import { ArrowIcon, Lozenge, LozengeRule } from '../components/Icons';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -19,19 +20,18 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <LazyGlobe />
+      <Fresco className="login-fresco" />
       <div className="login-panel">
-        <div className="eyebrow">
-          <span className="dot" /> Private prep room
-        </div>
-        <h1 className="wordmark-hero">
-          True<em>Adam</em>
-        </h1>
-        <p className="tagline">
-          Reclaiming manhood as God calls men to be. The week’s reading, talking points and episode plans for
-          Freddy, Stew &amp; Mike.
+        <p className="eyebrow">
+          <Lozenge size={7} />
+          <span>Private prep room</span>
+          <Lozenge size={7} />
         </p>
-        <form onSubmit={submit} className="stack">
+        <h1 className="wordmark-hero">TRUE·ADAM</h1>
+        <LozengeRule width={180} />
+        <p className="motto">Reclaiming manhood as God calls men to be.</p>
+        <p className="tagline">The week’s reading, talking points and episode plans for Freddy, Stew &amp; Mike.</p>
+        <form onSubmit={submit} className="stack login-form">
           <label>
             Email
             <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -47,11 +47,12 @@ export default function Login() {
             />
           </label>
           <button className="primary" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in →'}
+            {busy ? 'Signing in…' : 'Sign in'}
+            {!busy && <ArrowIcon size={16} />}
           </button>
           {err && <p className="error">{err}</p>}
         </form>
-        <p className="muted small">No account or forgot your password? Ask the producer.</p>
+        <p className="muted small login-help">No account or forgot your password? Ask the producer.</p>
       </div>
     </div>
   );

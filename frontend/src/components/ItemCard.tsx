@@ -4,6 +4,18 @@ import { formatDay, freshness, href, useApp } from '../lib';
 import { CONTACT_LABEL, ITEM_TYPES, STATUS_LABEL, type ContactStatus, type ItemCard, type ItemStatus } from '../types';
 import Comments from './Comments';
 import { ResearchForm } from './Research';
+import {
+  ArchiveIcon,
+  CheckIcon,
+  CommentIcon,
+  EditIcon,
+  ExternalIcon,
+  MicIcon,
+  PinIcon,
+  SearchIcon,
+  StarIcon,
+  UndoIcon,
+} from './Icons';
 
 interface Props {
   item: ItemCard;
@@ -60,7 +72,10 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       <h3 className="card-title">
         {item.url ? (
           <a href={item.url} target="_blank" rel="noopener noreferrer">
-            {item.title} <span aria-hidden>↗</span>
+            {item.title}{' '}
+            <span className="ext" aria-hidden="true">
+              <ExternalIcon size={18} />
+            </span>
           </a>
         ) : (
           item.title
@@ -104,22 +119,28 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       {item.talking_points.length > 0 && (
         <div className="points">
           <h4>Talking points</h4>
-          <ul>
+          <ol>
             {item.talking_points.map((p, i) => (
               <li key={i}>{p}</li>
             ))}
-          </ul>
+          </ol>
         </div>
       )}
 
-      {item.quote && <blockquote>“{item.quote}”</blockquote>}
+      {item.quote && <blockquote>{item.quote.replace(/^[“"]+|[”"]+$/g, '')}</blockquote>}
 
       {(item.highlight_count > 0 || item.research_open + item.research_done > 0) && (
         <div className="signals">
-          {item.highlight_count > 0 && <span className="stars">★ {starNames.join(', ')}</span>}
+          {item.highlight_count > 0 && (
+            <span className="stars">
+              <StarIcon size={16} filled />
+              {starNames.join(', ')}
+            </span>
+          )}
           {item.research_open + item.research_done > 0 && (
             <a className="research-signal" href={href('i', item.id)}>
-              🔎 {[item.research_open && `${item.research_open} open`, item.research_done && `${item.research_done} answered`]
+              <SearchIcon size={16} />
+              {[item.research_open && `${item.research_open} open`, item.research_done && `${item.research_done} answered`]
                 .filter(Boolean)
                 .join(' · ')}
             </a>
@@ -136,7 +157,8 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
           ))}
           {attached.map((e) => (
             <a key={e.id} className="chip episode" href={href('e', e.id)}>
-              🎙 {e.title}
+              <MicIcon size={14} />
+              {e.title}
             </a>
           ))}
         </div>
@@ -145,21 +167,25 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       <div className="actions">
         {item.status === 'inbox' && (
           <button className="primary" disabled={busy} onClick={() => setStatus('this_week')}>
-            📌 This week
+            <PinIcon size={16} />
+            This week
           </button>
         )}
         {item.status !== 'inbox' && (
           <button disabled={busy} onClick={() => setStatus('inbox')}>
-            ↩ Inbox
+            <UndoIcon size={16} />
+            Inbox
           </button>
         )}
         {item.status !== 'used' && (
           <button disabled={busy} onClick={() => setStatus('used')}>
-            ✓ Used
+            <CheckIcon size={16} />
+            Used
           </button>
         )}
         {item.status !== 'archived' && (
           <button disabled={busy} onClick={() => setStatus('archived')}>
+            <ArchiveIcon size={16} />
             Archive
           </button>
         )}
@@ -170,13 +196,16 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
           aria-pressed={starred}
           aria-label={starred ? 'Remove your star' : 'Star this'}
         >
-          {starred ? '★' : '☆'} {item.highlight_count || 'Star'}
+          <StarIcon size={16} filled={starred} />
+          {item.highlight_count || 'Star'}
         </button>
         <button className={showComments ? 'on' : ''} onClick={() => setShowComments((s) => !s)} aria-label="Comments">
-          💬 {item.comment_count}
+          <CommentIcon size={16} />
+          {item.comment_count}
         </button>
         <button className={asking ? 'on' : ''} onClick={() => setAsking((a) => !a)}>
-          🔎 Grok
+          <SearchIcon size={16} />
+          Grok
         </button>
         {attachable.length > 0 && (
           <select
@@ -202,6 +231,7 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
         )}
         {canEdit && (
           <a className="button" href={href('edit', item.id)}>
+            <EditIcon size={16} />
             Edit
           </a>
         )}
