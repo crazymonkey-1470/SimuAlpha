@@ -173,3 +173,43 @@ export const MEMORY_KIND_LABEL: Record<MemoryKind, string> = {
   instruction: 'Instruction',
   reflection: 'Insight',
 };
+
+export type FeedbackKind = 'discuss' | 'more_like_this' | 'not_interested';
+
+/** Row of the source_inbox view: one story (lead entry + every outlet that covered it). */
+export interface SourceStory {
+  story_id: string;
+  entry_id: string;
+  title: string;
+  url: string;
+  source: string;
+  published_at: string | null;
+  preview: string | null;
+  topics: string[];
+  outlet_count: number;
+  outlets: string[];
+  latest_at: string;
+  item_id: string | null;
+  in_prep: boolean;
+  discuss_count: number;
+  more_count: number;
+  not_count: number;
+  my_feedback: FeedbackKind[];
+  read_summary: string | null;
+  read_checked_at: string | null;
+  read: boolean;
+}
+
+export interface Feed {
+  id: string;
+  name: string;
+  url: string;
+  site_url: string | null;
+  topics: string[];
+  active: boolean;
+  last_fetched_at: string | null;
+  last_status: number | null;
+  last_error: string | null;
+  last_new_count: number | null;
+  created_at: string;
+}

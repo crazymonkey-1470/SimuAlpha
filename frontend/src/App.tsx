@@ -12,9 +12,10 @@ import Episodes from './pages/Episodes';
 import EpisodePage from './pages/EpisodePage';
 import Account from './pages/Account';
 import Search from './pages/Search';
-import Picks from './pages/Picks';
+import Feed from './pages/Feed';
+import Sources from './pages/Sources';
 import Research from './pages/Research';
-import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, SearchIcon, StarIcon } from './components/Icons';
+import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, RssIcon, SearchIcon } from './components/Icons';
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -82,7 +83,7 @@ function SignedIn({ session }: { session: Session }) {
 
 const TABS: { key: string; label: string; icon: ComponentType<{ size?: number }>; match: (string | undefined)[] }[] = [
   { key: '', label: 'Home', icon: HomeIcon, match: [undefined] },
-  { key: 'picks', label: 'Picks', icon: StarIcon, match: ['picks'] },
+  { key: 'feed', label: 'Feed', icon: RssIcon, match: ['feed', 'picks', 'sources'] },
   { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
   { key: 'research', label: 'Grok', icon: SearchIcon, match: ['research'] },
   { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e'] },
@@ -165,8 +166,12 @@ function Page({ head, arg }: { head?: string; arg?: string }) {
       return <Account />;
     case 'search':
       return <Search key={arg} q={arg ?? ''} />;
+    case 'feed':
+      return <Feed />;
     case 'picks':
-      return <Picks />;
+      return <Feed key="picks" initial="starred" />;
+    case 'sources':
+      return <Sources />;
     case 'research':
       return <Research />;
     default:

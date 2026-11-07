@@ -15,7 +15,7 @@ cleanup() { run "$PGBIN/pg_ctl" -D "$WORK/data" -m immediate stop >/dev/null 2>&
 trap cleanup EXIT
 
 [ "$(id -u)" = 0 ] && chown postgres "$WORK"
-run "$PGBIN/initdb" -D "$WORK/data" -U postgres -A trust >/dev/null
+run "$PGBIN/initdb" -D "$WORK/data" -U postgres -A trust -E UTF8 --locale=C >/dev/null  # UTF-8 like Supabase
 run "$PGBIN/pg_ctl" -D "$WORK/data" -o "-p $PORT -k $WORK -c listen_addresses=''" -l "$WORK/log" -w start >/dev/null
 
 PSQL=(psql -X -q -h "$WORK" -p "$PORT" -U postgres -d postgres -v ON_ERROR_STOP=1)

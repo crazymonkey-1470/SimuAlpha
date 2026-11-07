@@ -253,6 +253,60 @@ with **Paste answer** (tick "This answer came from Grok").
 
 To see what the hosts care about: `select title, highlight_count from item_cards where highlight_count > 0 order by highlight_count desc;`
 
+## Source inbox: filter before reading (saves Grok tokens)
+
+The database collects headlines on its own, so Grok doesn't have to search the web every time.
+
+- **Fetching:** about 20 trusted RSS/Atom sources (listed and managed on the site's
+  **Feed → Sources** page). The scheduler checks every 20 minutes, and each source is
+  fetched every 2 hours. This runs inside Supabase (`pg_cron` + `pg_net`), with no extra
+  server. It stores the headline, date, link and a ≤400-character preview, never the full
+  article. Entries nobody acted on are pruned after 30 days.
+- **Duplicates:** the same link (ignoring tracking parameters) is stored once. The same
+  story from different outlets is grouped into one story with an outlet count; more
+  outlets is a signal that it matters.
+- **Crew buttons** (Feed tab): **Discuss this** puts the story in the prep-room inbox.
+  **More like this** and **Not interested** (with an optional reason) teach Grok what to pick.
+
+### Grok's cheap loop
+
+```sql
+-- 1. One compact call. Default: last 3 days, top 4 per topic (≈4–5k tokens).
+select producer_digest();
+--    Narrower and cheaper (≈600 tokens for two topics):
+select producer_digest(days => 1, per_topic => 3, only_topics => array['religion', 'dating-culture']);
+--    Returns: topics.{slug}: [{title, url, src, date, outlets?, preview, discuss?, more?, not?, read?}],
+--             this_week, covered (used in the last 45 days), episodes, hosts[{name, likes, more_like, not_interested[{title, why}]}]
+
+-- 2. Shortlist from titles, previews, outlet counts and votes. Skip stories marked read.
+--    Stories already in the prep room are left out of the digest.
+
+-- 3. Before reading an article, check the read-once store:
+select * from get_read('<url>');                    -- returns a row if it was read in the last 30 days
+select * from get_read('<url>', interval '7 days'); -- stricter freshness for fast-moving news
+
+-- 4. Read only the 2–3 strongest candidates in depth, then save the verified read:
+select save_read('<url>', '<2-4 sentence verified summary>',
+                 array['<key point>', '<key number>'], array['<source url>'], 'solid', '<title>');
+--    verdict: free text, e.g. solid / thin / misleading / paywalled
+
+-- 5. Promote winners: the crew taps "Discuss this", or
+select add_item(title => '...', url => '...', source => '...', summary => '...', talking_points => array['...'],
+                topics => array['religion']);
+```
+
+| Table / view | What it holds |
+|---|---|
+| `feeds` | `name`, `url`, `topics`, `active`, `last_fetched_at`, `last_status`, `last_error`, `last_new_count` |
+| `feed_entries` | one headline: `title`, `url`, `published_at`, `preview`, `topics`, `story_id` (shared by outlets covering the same story), `item_id` (once it's in the prep room) |
+| `source_feedback` | `member_id`, `entry_id`, `kind` (`discuss`, `more_like_this`, `not_interested`), `reason` |
+| `article_reads` | read-once store keyed by normalised URL: `summary`, `key_points`, `sources`, `verdict`, `checked_at` |
+| `source_inbox` (view) | one row per story: lead headline, `outlets`, `outlet_count`, vote counts, `my_feedback`, `in_prep`, `read`, `read_summary` |
+
+Add a source by SQL with `insert into feeds (name, url, topics) values ('Name', 'https://…/feed', '{history}');`.
+Run `select refresh_feeds();` to fetch everything now. Feed errors show on the Sources page
+and in `feeds.last_error`.
+
 ## Grok's memory (second brain)
 
 Grok doesn't learn on its own; it only knows what it's given. Its long-term memory lives in

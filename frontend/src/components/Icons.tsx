@@ -125,6 +125,27 @@ export const BackIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const RssIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 5a14 14 0 0 1 14 14" />
+    <path d="M5 11a8 8 0 0 1 8 8" />
+    <circle cx="6" cy="18" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const XIcon = (p: IconProps) => (
+  <Svg strokeWidth={1.8} {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);
+
+export const MoreLikeIcon = (p: IconProps) => (
+  <Svg strokeWidth={1.7} {...p}>
+    <path d="M7 11v9H4v-9z" />
+    <path d="M7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H19a1.6 1.6 0 0 1 1.6 1.9l-1.3 6.5A2 2 0 0 1 17.3 20H7" />
+  </Svg>
+);
+
 /** Gilt armillary sphere: the old globe, as a mark. */
 export const Armillary = ({ size = 30 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 36 36" fill="none" stroke="#B8924A" strokeWidth={1.4} aria-hidden="true" focusable="false">
