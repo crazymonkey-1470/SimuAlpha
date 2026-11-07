@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { errorText, supabase } from '../supabase';
 import { formatTimestamp, useApp } from '../lib';
 import { MEMORY_KIND_LABEL, type MemoryCard, type MemoryKind } from '../types';
+import { PinIcon } from './Icons';
 
 export const MEMORY_COLUMNS = '*';
 
@@ -26,7 +27,12 @@ export function MemoryRow({ m, onChange, showSubject = true }: { m: MemoryCard; 
       <div className="memory-head">
         <span className={`badge mk-${m.kind}`}>{MEMORY_KIND_LABEL[m.kind]}</span>
         {showSubject && <span className="memory-subject">{m.subject}</span>}
-        {m.pinned && <span className="memory-pin">📌 always remembered</span>}
+        {m.pinned && (
+          <span className="memory-pin">
+            <PinIcon size={14} />
+            always remembered
+          </span>
+        )}
       </div>
       <p className="memory-content">{m.content}</p>
       <p className="card-meta">
@@ -38,7 +44,8 @@ export function MemoryRow({ m, onChange, showSubject = true }: { m: MemoryCard; 
       {canManage && (
         <div className="actions">
           <button disabled={busy} onClick={() => run(supabase.from('memories').update({ pinned: !m.pinned }).eq('id', m.id))}>
-            {m.pinned ? 'Unpin' : '📌 Pin'}
+            <PinIcon size={16} />
+            {m.pinned ? 'Unpin' : 'Pin'}
           </button>
           <button disabled={busy} onClick={() => run(supabase.rpc('forget', { memory_id: m.id, reason: 'marked not true on the site' }))}>
             Not true anymore

@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { goBack, useLoad } from '../lib';
+import { BackIcon } from '../components/Icons';
 import type { ItemCard, ResearchRequest } from '../types';
 import ItemCardView from '../components/ItemCard';
 import { RESEARCH_SELECT, ResearchCard } from '../components/Research';
@@ -23,13 +24,17 @@ export default function ItemPage({ id }: { id: string }) {
   return (
     <>
       <button className="link back" onClick={goBack}>
-        ← Back
+        <BackIcon size={16} />
+        Back
       </button>
       <ItemCardView item={res.data as ItemCard} onChange={reload} openComments />
       {requests.length > 0 && (
         <>
           <h2>
-            Grok <em>research</em> <span className="count">{requests.length}</span>
+            <span>
+              Grok <em>research</em>
+            </span>{' '}
+            <span className="count">{requests.length}</span>
           </h2>
           <div className="list">
             {requests.map((r) => (

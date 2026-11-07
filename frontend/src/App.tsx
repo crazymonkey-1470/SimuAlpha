@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { configError, supabase } from './supabase';
-import { AppContext, href, useApp, useLoad, useRoute, type AppData } from './lib';
+import { AppContext, href, roman, useApp, useLoad, useRoute, type AppData } from './lib';
 import type { Episode, Profile, Topic } from './types';
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -14,7 +14,7 @@ import Account from './pages/Account';
 import Search from './pages/Search';
 import Picks from './pages/Picks';
 import Research from './pages/Research';
-import { HomeIcon, MenuIcon, MicIcon, PlusIcon, SearchIcon, StarIcon } from './components/Icons';
+import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, SearchIcon, StarIcon } from './components/Icons';
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -80,7 +80,7 @@ function SignedIn({ session }: { session: Session }) {
   );
 }
 
-const TABS: { key: string; label: string; icon: ComponentType; match: (string | undefined)[] }[] = [
+const TABS: { key: string; label: string; icon: ComponentType<{ size?: number }>; match: (string | undefined)[] }[] = [
   { key: '', label: 'Home', icon: HomeIcon, match: [undefined] },
   { key: 'picks', label: 'Picks', icon: StarIcon, match: ['picks'] },
   { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
@@ -94,13 +94,23 @@ function Layout() {
   return (
     <div className="shell">
       <header className="topbar">
-        <a className="wordmark" href="#/">
-          True<em>Adam</em>
+        <a className="wordmark" href="#/" aria-label="True Adam, home">
+          <Armillary />
+          <span className="wordmark-text">
+            <span className="wordmark-name">TRUE·ADAM</span>
+            <span className="wordmark-sub">PREP ROOM</span>
+          </span>
         </a>
         <nav className="mainnav" aria-label="Main">
           {TABS.map((t) => (
-            <a key={t.key} href={tabHref(t.key)} className={(t.key === 'add' ? 'add ' : '') + (t.match.includes(head) ? 'active' : '')}>
-              {t.key === 'add' ? '+ Add' : t.label}
+            <a
+              key={t.key}
+              href={tabHref(t.key)}
+              className={(t.key === 'add' ? 'add ' : '') + (t.match.includes(head) ? 'active' : '')}
+              aria-current={t.match.includes(head) ? 'page' : undefined}
+            >
+              {t.key === 'add' && <PlusIcon size={15} />}
+              {t.label}
             </a>
           ))}
         </nav>
@@ -120,7 +130,13 @@ function Layout() {
             className={(t.key === 'add' ? 'tab-add ' : '') + (t.match.includes(head) ? 'active' : '')}
             aria-current={t.match.includes(head) ? 'page' : undefined}
           >
-            <t.icon />
+            {t.key === 'add' ? (
+              <span className="tab-add-box">
+                <PlusIcon size={18} />
+              </span>
+            ) : (
+              <t.icon size={23} />
+            )}
             <span>{t.label}</span>
           </a>
         ))}
@@ -162,9 +178,18 @@ function TopicNav({ current }: { current?: string }) {
   const { topics } = useApp();
   return (
     <nav className="topics" aria-label="Topics">
-      {topics.map((t) => (
-        <a key={t.slug} href={href('t', t.slug)} className={t.slug === current ? 'active' : ''}>
-          {t.name}
+      <h2 className="topics-head">Topics</h2>
+      {topics.map((t, i) => (
+        <a
+          key={t.slug}
+          href={href('t', t.slug)}
+          className={t.slug === current ? 'active' : ''}
+          aria-current={t.slug === current ? 'page' : undefined}
+        >
+          <span className="numeral" aria-hidden="true">
+            {roman(i + 1)}
+          </span>
+          <span className="topic-name">{t.name}</span>
         </a>
       ))}
     </nav>

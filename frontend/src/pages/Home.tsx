@@ -3,7 +3,8 @@ import { formatDay, freshness, href, today, useApp, useLoad } from '../lib';
 import type { ItemCard } from '../types';
 import ItemList from '../components/ItemList';
 import SearchBox from '../components/SearchBox';
-import LazyGlobe from '../globe/LazyGlobe';
+import Fresco from '../components/Fresco';
+import { ArrowIcon, Lozenge, LozengeRule } from '../components/Icons';
 
 export default function Home() {
   const { episodes } = useApp();
@@ -25,22 +26,28 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero">
-        <LazyGlobe />
+      <section className="hero" aria-labelledby="hero-title">
+        <Fresco />
         <div className="hero-text">
-          <div className="eyebrow">
-            <span className="dot" />
-            {next ? `Next recording${next.recording_date ? ` · ${formatDay(next.recording_date)} (${freshness(next.recording_date)})` : ''}` : 'Between episodes'}
-          </div>
-          <h1>
-            {next ? next.title : <>This week’s <em>pile</em></>}
-          </h1>
-          <p>
-            {weekItems ? `${weekItems.length} nominated` : '…'} · {inbox.data ? `${inbox.data.length}${inbox.data.length === 30 ? '+' : ''} in the inbox` : '…'}
+          <p className="eyebrow">
+            <Lozenge size={6} />
+            <span>
+              {next
+                ? `Next recording${next.recording_date ? ` · ${formatDay(next.recording_date)} (${freshness(next.recording_date)})` : ''}`
+                : 'Between episodes'}
+            </span>
+            <Lozenge size={6} />
+          </p>
+          <h1 id="hero-title">{next ? next.title : 'This week’s pile'}</h1>
+          <LozengeRule width={200} />
+          <p className="hero-counts">
+            {weekItems ? `${weekItems.length} nominated` : '…'} ·{' '}
+            {inbox.data ? `${inbox.data.length}${inbox.data.length === 30 ? '+' : ''} in the inbox` : '…'}
           </p>
           {next && (
-            <a className="button cta" href={href('e', next.id)}>
-              Open episode plan →
+            <a className="button primary cta" href={href('e', next.id)}>
+              Open episode plan
+              <ArrowIcon size={16} />
             </a>
           )}
         </div>
@@ -55,6 +62,7 @@ export default function Home() {
         <p className="hint">Nominated for the next recording.</p>
         {weekItems && (!hasFunFact || !hasGuest) && (
           <p className="warn">
+            <span className="pilcrow" aria-hidden="true">¶</span>
             Still needed: {[!hasFunFact && 'a fun fact', !hasGuest && 'a guest idea'].filter(Boolean).join(' and ')}.
           </p>
         )}
@@ -63,7 +71,7 @@ export default function Home() {
           loading={week.loading}
           error={week.error}
           onChange={reload}
-          empty="Nothing nominated yet. Tap ★ This week on anything in the inbox."
+          empty="Nothing nominated yet. Tap This week on anything in the inbox."
         />
       </section>
 

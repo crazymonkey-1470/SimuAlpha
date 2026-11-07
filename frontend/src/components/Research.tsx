@@ -299,7 +299,7 @@ export function ResearchCard({
         <div className="actions">
           {(r.status === 'open' || r.status === 'in_progress') && (
             <button onClick={copy} disabled={busy}>
-              {copied ? '✓ Copied' : 'Copy for Grok'}
+              {copied ? 'Copied' : 'Copy for Grok'}
             </button>
           )}
           <button onClick={() => setAnswering(true)} disabled={busy}>

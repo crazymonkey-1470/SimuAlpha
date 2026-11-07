@@ -38,7 +38,7 @@ export default function Picks() {
       <h1>
         Crew <em>picks</em>
       </h1>
-      <p className="hint">Tap ☆ on anything you'd want to talk about. The most-starred rise to the top.</p>
+      <p className="hint">Tap the star on anything you’d want to talk about. The most-starred rise to the top.</p>
 
       <PitchForm onDone={reload} />
 
@@ -55,11 +55,14 @@ export default function Picks() {
         loading={picks.loading}
         error={picks.error}
         onChange={reload}
-        empty={mineOnly ? 'You haven’t starred anything yet.' : 'No stars yet. Tap ☆ on an article you like.'}
+        empty={mineOnly ? 'You haven’t starred anything yet.' : 'No stars yet. Tap the star on an article you like.'}
       />
 
       <h2>
-        Topic <em>pitches</em> <span className="count">{(pitches.data as ItemCard[] | null)?.length ?? ''}</span>
+        <span>
+          Topic <em>pitches</em>
+        </span>{' '}
+        <span className="count">{(pitches.data as ItemCard[] | null)?.length ?? ''}</span>
       </h2>
       <ItemList
         items={pitches.data as ItemCard[] | null}
