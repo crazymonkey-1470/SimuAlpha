@@ -77,6 +77,8 @@ export default function Sources() {
 
   const list = (feeds.data ?? []) as Feed[];
   const ing = status.data as IngestStatus | null;
+  const active = list.filter((f) => f.active);
+  const pendingBackfill = active.filter((f) => !f.backfilled_at).length;
   const health = (f: Feed) =>
     !f.active ? 'paused' : !f.resolved ? 'finding feed' : f.last_error ? 'error' : f.last_fetched_at ? 'ok' : 'waiting';
   const k = KINDS.find((x) => x.value === kind)!;
@@ -112,6 +114,25 @@ export default function Sources() {
               : 'The Railway worker hasn’t run yet.'}{' '}
             {ing.mode === 'database' && 'If the worker stops for an hour, the database takes over automatically.'}
           </span>
+          {active.length > 0 && (
+            <span>
+              {pendingBackfill > 0
+                ? `Month backfill: ${active.length - pendingBackfill} of ${active.length} sources done (about a dozen per run).`
+                : 'Month backfill: done for every source. New sources get theirs automatically.'}
+            </span>
+          )}
+          {isProducer && pendingBackfill === 0 && active.length > 0 && (
+            <button
+              className="link"
+              disabled={busy}
+              onClick={() =>
+                confirm('Fetch the last month again for every source? Headlines already stored are not duplicated.') &&
+                run(supabase.from('feeds').update({ backfilled_at: null }).eq('active', true), 'The worker will refill the last month over its next few runs.')
+              }
+            >
+              Backfill the last month again
+            </button>
+          )}
         </div>
       )}
 
@@ -160,6 +181,7 @@ export default function Sources() {
             <div className="memory-head">
               <span className={`badge src-${health(f).replace(' ', '-')}`}>{health(f)}</span>
               <span className="badge">{KIND_LABEL[f.kind] ?? f.kind}</span>
+              {f.active && f.resolved && !f.backfilled_at && <span className="badge">month backfill queued</span>}
               <span className="memory-subject">{f.topics.map((t) => topics.find((x) => x.slug === t)?.name ?? t).join(', ')}</span>
             </div>
             <p className="memory-content">

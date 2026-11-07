@@ -38,20 +38,29 @@ export default function Feed({ initial = 'fresh' }: { initial?: Segment }) {
   );
 }
 
+const PAGE = 120;
+const WINDOWS = [
+  { days: 1, label: 'Last 24 hours' },
+  { days: 7, label: 'Last 7 days' },
+  { days: 31, label: 'Last month' },
+];
+
 function Fresh() {
   const { topics } = useApp();
   const [topic, setTopic] = useState('');
+  const [days, setDays] = useState(7);
+  const [limit, setLimit] = useState(PAGE);
   const [showHidden, setShowHidden] = useState(false);
   const res = useLoad(() => {
     let q = supabase
       .from('source_inbox')
       .select('*')
-      .gt('latest_at', new Date(Date.now() - 7 * 86_400_000).toISOString())
+      .gt('latest_at', new Date(Date.now() - days * 86_400_000).toISOString())
       .order('latest_at', { ascending: false })
-      .limit(120);
+      .limit(limit);
     if (topic) q = q.contains('topics', [topic]);
     return q;
-  }, [topic]);
+  }, [topic, days, limit]);
 
   const all = (res.data ?? []) as SourceStory[];
   // Strongest first: several outlets, crew votes, then recency. In-prep stories sink.
@@ -66,11 +75,33 @@ function Fresh() {
   return (
     <>
       <p className="hint">
-        Headlines from trusted sources, refreshed every 20 minutes. The same story from several outlets shows once.
+        Headlines from trusted sources, refreshed every 20 minutes, filed by topic. The same story from several outlets
+        shows once.
         Tap <b>Discuss this</b> to send it to the prep room.
       </p>
       <div className="feed-filters">
-        <select value={topic} onChange={(e) => setTopic(e.target.value)} aria-label="Topic">
+        <select
+          value={days}
+          onChange={(e) => {
+            setDays(Number(e.target.value));
+            setLimit(PAGE);
+          }}
+          aria-label="How far back"
+        >
+          {WINDOWS.map((w) => (
+            <option key={w.days} value={w.days}>
+              {w.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={topic}
+          onChange={(e) => {
+            setTopic(e.target.value);
+            setLimit(PAGE);
+          }}
+          aria-label="Topic"
+        >
           <option value="">All topics</option>
           {topics.map((t) => (
             <option key={t.slug} value={t.slug}>
@@ -95,6 +126,13 @@ function Fresh() {
           <StoryCard key={s.story_id} s={s} onChange={res.reload} />
         ))}
       </div>
+      {all.length >= limit && (
+        <div className="actions more">
+          <button disabled={res.loading} onClick={() => setLimit(limit + PAGE)}>
+            {res.loading ? 'Loading…' : 'Show more'}
+          </button>
+        </div>
+      )}
     </>
   );
 }

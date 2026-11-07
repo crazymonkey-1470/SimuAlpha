@@ -572,10 +572,86 @@ select tests.eq(public.worker_report(:'tok', :'yt', jsonb_build_object('status',
 select tests.eq(public.worker_report(:'tok', :'gn', jsonb_build_object('status', 200, 'entries', jsonb_build_array(
     jsonb_build_object('title', 'Senate passes the budget deal - CNN', 'url', 'https://news.google.com/rss/articles/CBMiTEST?oc=5',
                        'preview', 'Senate passes the budget deal - CNN CNN')))), 1, 'Google News entry stored');
+select tests.eq(public.worker_report(:'tok', :'gn', jsonb_build_object('status', 200, 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'XOM Stock Quote Price and Forecast', 'url', 'https://news.google.com/rss/articles/QUOTE'),
+    jsonb_build_object('title', 'Don’t sleep on these early Black Friday mattress deals - CNN', 'url', 'https://news.google.com/rss/articles/DEALS'),
+    jsonb_build_object('title', '20 Harry Potter gifts for fans', 'url', 'https://news.google.com/rss/articles/GIFTS')))), 0,
+  'shopping and stock-quote pages are not stored');
+select tests.eq((select count(*) from public.worker_sources(:'tok') w where w.backfill)::int > 20, true, 'sources not yet backfilled are flagged for the month backfill');
+select tests.eq(public.worker_report(:'tok', :'gn', jsonb_build_object('status', 200, 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'Three weeks ago: storm recovery begins', 'url', 'https://gn.example.org/old-20', 'published_at', now() - interval '20 days'),
+    jsonb_build_object('title', 'Six weeks ago: too old to keep', 'url', 'https://gn.example.org/old-40', 'published_at', now() - interval '40 days')))), 1,
+  'backfilled headlines up to 35 days old are accepted, older ones dropped');
+select tests.eq(public.worker_report(:'tok', :'gn', jsonb_build_object('status', 200, 'append', true, 'backfilled', true, 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'Second chunk headline', 'url', 'https://gn.example.org/chunk-2', 'published_at', now() - interval '9 days')))), 1,
+  'a later chunk of the same run is accepted');
+reset role;
+select tests.eq((select (backfilled_at is not null)::text || '/' || last_new_count from public.feeds where id = :'gn'), 'true/2',
+                'last chunk marks the source backfilled; chunk counts add up');
+select tests.eq((select count(*) from public.worker_sources(:'tok') w where w.id = :'gn' and not w.backfill)::int, 1, 'a backfilled source is not backfilled again');
+set role anon;
 reset role;
 select tests.eq((select title || '|' || coalesce(preview, '(none)') from public.feed_entries where url = 'https://news.google.com/rss/articles/CBMiTEST?oc=5'),
                 'Senate passes the budget deal|(none)', 'Google News " - Outlet" suffix and echoed preview are stripped');
 select tests.eq((select count(*) from public.feeds where 'motivation' = any(topics))::int >= 6, true, 'motivation sources seeded');
+
+-- Categorisation
+select tests.eq(public.classify_topics('Pope Leo urges South America to bridge divides on Uruguay stop'), array['religion'], 'classifier: pope -> religion');
+select tests.eq((public.classify_topics('Fed holds interest rates steady as inflation cools'))[1], 'economics', 'classifier: rates and inflation -> economics');
+select tests.eq(public.classify_topics('Senate passes the budget deal'), array['politics'], 'classifier: senate -> politics');
+select tests.eq(public.classify_topics('Marvel moves the next Avengers sequel to 2027'), array['movies'], 'classifier: Marvel sequel -> movies');
+select tests.eq(public.classify_topics('Volunteers rebuild a widow''s home after the flood'), array['motivation'], 'classifier: volunteers -> motivation');
+select tests.eq(public.classify_topics('Gunman opens fire in Krakow, killing 6 people'), '{}'::text[], 'classifier: nothing forced when no topic fits');
+select tests.eq(public.classify_topics('Tractor-trailer crash closes I-95'), '{}'::text[], 'classifier: whole words only (no "trailer" -> movies)');
+select tests.eq(public.classify_topics('Officials meet in Geneva', 'The church leaders and the church council...'), array['religion'], 'classifier: two preview hits count');
+select tests.eq(public.classify_topics('Officials meet in Geneva', 'A church spokesman declined to comment.'), '{}'::text[], 'classifier: one preview hit does not');
+select tests.eq(public.entry_topics(array['news'], 'Pope Leo visits Uruguay'), array['religion', 'news'], 'general news feed: detected topic comes first');
+select tests.eq(public.entry_topics(array['religion'], 'A history of the early church'), array['religion', 'history'], 'specialised feed keeps its own topic first');
+select tests.eq((select topics from public.feed_entries where url = 'https://news.google.com/rss/articles/CBMiTEST?oc=5'), array['politics', 'news'],
+                'incoming headlines are filed automatically');
+select tests.throws($$insert into public.topic_terms (topic, term) values ('religion', 'bad(term')$$, '2201B', 'invalid topic terms are rejected');
+select tests.eq((select 'working-out' = any(topics) from public.feed_entries where url = 'https://atom.example.org/a/barbell'), false, 'before: barbell story not in Working Out');
+insert into public.topic_terms (topic, term) values ('working-out', 'barbells?');
+select tests.eq(public.reclassify_entries() >= 1, true, 'reclassify_entries re-files stored headlines after a term change');
+select tests.eq((select topics from public.feed_entries where url = 'https://atom.example.org/a/barbell'), array['religion', 'history', 'working-out'],
+                'after: the new term files it under Working Out too');
+insert into public.feed_entries (feed_id, url, title, published_at, topics) values
+  (:'gn', 'https://gn.example.org/keep-90', 'Ninety days old: the archive keeps it', now() - interval '90 days', '{news}'),
+  (:'gn', 'https://gn.example.org/drop-400', 'Over a year old and pruned', now() - interval '400 days', '{news}'),
+  (:'gn', 'https://gn.example.org/pope', 'Pope Leo visits Uruguay', now() - interval '2 days', '{news}');
+select public.prune_feed_entries();
+select tests.eq((select string_agg(url, ',' order by url) from public.feed_entries where url in ('https://gn.example.org/keep-90', 'https://gn.example.org/drop-400')),
+                'https://gn.example.org/keep-90', 'headlines are kept up to a year (keep_days 365)');
+select tests.eq((select count(*) from public.source_inbox where url = 'https://gn.example.org/keep-90')::int, 0, 'the inbox shows the last 62 days only');
+select tests.eq((select source || '/' || published from public.search_headlines('archive keeps')), 'CNN/' || (now() - interval '90 days')::date,
+                'search_headlines finds older headlines (every word, any order)');
+select tests.eq((select count(*) from public.search_headlines('archive banana'))::int, 0, 'search_headlines needs every word');
+select tests.eq((select count(*) from public.search_headlines('pope', topic => 'religion'))::int >= 1, true, 'search_headlines filters by topic');
+select tests.eq((select count(*) from public.search_headlines(since => (now() - interval '100 days')::date, until => (now() - interval '80 days')::date))::int, 1,
+                'search_headlines filters by date range');
+-- Size cap: the oldest headlines nobody acted on go first; prep-room and voted headlines stay.
+update public.ingest_state set max_headlines = 1000 where id;
+insert into public.feed_entries (feed_id, url, title, published_at, topics)
+select :'gn', 'https://gn.example.org/bulk-' || g, 'Bulk headline number ' || g, now() - make_interval(hours => g), '{news}'
+from generate_series(1, 1000) g;
+select tests.eq(public.prune_feed_entries() > 0, true, 'over the cap, prune removes headlines');
+select tests.eq((select count(*) from public.feed_entries)::int, 1000, 'headline count is held at max_headlines');
+select tests.eq((select count(*) from public.feed_entries where url in ('https://gn.example.org/bulk-1', 'https://gn.example.org/bulk-1000'))::int || '/' ||
+                (select count(*) from public.feed_entries where url = 'https://gn.example.org/bulk-1')::int, '1/1', 'the oldest go first, the newest stay');
+select tests.eq((select count(*) from public.feed_entries where id = :'e_barbell')::int, 1, 'headlines with crew votes are never pruned');
+select tests.eq((select count(*) from public.feed_entries where item_id is not null)::int > 0, true, 'headlines in the prep room are never pruned');
+select tests.throws('update public.ingest_state set max_headlines = 10 where id', '23514', 'cap has a sane floor');
+update public.ingest_state set keep_days = 14, max_headlines = 150000 where id;
+select public.prune_feed_entries();
+select tests.eq((select count(*) from public.feed_entries where url = 'https://gn.example.org/bulk-500')::int, 0, 'keep_days is adjustable');
+update public.ingest_state set keep_days = 365, max_headlines = 150000 where id;
+set role authenticated;
+select tests.as_user(:'stew');
+select tests.throws('select public.reclassify_entries()', '42501', 'hosts cannot re-file headlines');
+select tests.eq((select count(*) from public.topic_terms)::int > 300, true, 'members can read the topic word lists');
+select tests.throws($$insert into public.topic_terms (topic, term) values ('music', 'kazoo')$$, '42501', 'hosts cannot edit topic word lists');
+reset role;
+select tests.as_user(null);
 select tests.eq((select duration_seconds || '/' || media_type || '/' || preview || '/' || transcript_url from public.feed_entries where url = 'https://pod.example.org/ep1'),
                 '3111/podcast/Show notes/https://pod.example.org/ep1.vtt', 'podcast duration, audio, notes and transcript stored');
 select tests.eq((select views from public.feed_entries where url = 'https://www.youtube.com/watch?v=AAA'), 20000::bigint, 'view counts refresh on re-report');

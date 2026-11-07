@@ -222,5 +222,6 @@ export interface Feed {
   last_status: number | null;
   last_error: string | null;
   last_new_count: number | null;
+  backfilled_at: string | null;
   created_at: string;
 }
