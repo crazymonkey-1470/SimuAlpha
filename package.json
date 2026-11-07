@@ -1,0 +1,15 @@
+{
+  "name": "true-adam-feed-worker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Railway cron worker: pulls news RSS/Atom feeds, YouTube channels and podcasts into Supabase. The website lives in frontend/ (Cloudflare Pages).",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node worker/src/run.js",
+    "test": "node --test \"worker/test/*.test.js\""
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.12.0"
+  }
+}

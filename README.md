@@ -13,7 +13,8 @@ sign-in pages are headed by Michelangelo's *Creation of Adam* (public domain, Wi
 Commons): the hands on phones, both figures on wider screens.
 
 ```
-frontend/              the site: Vite + React + supabase-js, static, mobile-first
+frontend/              the site: Vite + React + supabase-js, static, mobile-first (Cloudflare Pages)
+worker/ + package.json Railway feed worker: news RSS/Atom, YouTube, podcasts → Supabase (docs/RAILWAY.md)
 supabase/migrations/   schema, RLS, seed topics: the contract the producer writes against
 supabase/tests/        schema + RLS tests (run on plain Postgres via scripts/test-db.sh)
 docs/PRODUCER.md       how to insert items, plus the exact table/column list
@@ -72,7 +73,7 @@ scripts/test-db.sh   # needs Postgres 15+ server binaries; runs on GitHub's ubun
 ```
 
 This applies the migration to a throwaway Postgres (with a small Supabase stand-in) and
-checks 173 behaviours: the allow-list, duplicate URLs, topic validation, anon lockout,
+checks 203 behaviours: the allow-list, duplicate URLs, topic validation, anon lockout,
 host vs. producer edit rights, attribution, highlights, the Grok research queue, Grok's memory,
 the source inbox (feed parsing, duplicate stories, feedback, read-once store, digest), and the views.
 

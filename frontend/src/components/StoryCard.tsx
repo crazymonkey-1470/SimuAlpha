@@ -30,9 +30,18 @@ export default function StoryCard({ s, onChange }: { s: SourceStory; onChange: (
   const discuss = (why?: string) => run(supabase.rpc('discuss_entry', { entry_id: s.entry_id, reason: why ?? null }));
 
   const date = s.published_at ?? s.latest_at;
+  const minutes = s.duration_seconds ? Math.round(s.duration_seconds / 60) : null;
+  const views = s.views != null ? new Intl.NumberFormat('en', { notation: 'compact' }).format(s.views) : null;
   return (
     <article className={`card story ${mine('not_interested') ? 'dismissed' : ''}`}>
+      {s.media_type === 'video' && s.thumbnail_url && (
+        <a className="story-thumb" href={s.url} target="_blank" rel="noopener noreferrer" aria-hidden="true" tabIndex={-1}>
+          <img src={s.thumbnail_url} alt="" loading="lazy" decoding="async" />
+        </a>
+      )}
       <div className="card-top">
+        {s.media_type === 'video' && <span className="badge type-video">Video</span>}
+        {s.media_type === 'podcast' && <span className="badge type-guest_idea">Podcast</span>}
         {s.in_prep && <span className="badge st-this_week">In the prep room</span>}
         {s.read && <span className="badge type-fun_fact">Read by Grok</span>}
         {s.outlet_count > 1 && <span className="badge">{s.outlet_count} outlets</span>}
@@ -51,6 +60,18 @@ export default function StoryCard({ s, onChange }: { s: SourceStory; onChange: (
           {formatDay(date.slice(0, 10))} <em>({freshness(date.slice(0, 10))})</em>
         </span>
         {others.length > 0 && <span>also: {others.join(', ')}</span>}
+        {minutes != null && <span>{minutes} min</span>}
+        {views && <span>{views} views</span>}
+        {s.media_type === 'podcast' && s.media_url && (
+          <a href={s.media_url} target="_blank" rel="noopener noreferrer">
+            Listen
+          </a>
+        )}
+        {s.transcript_url && (
+          <a href={s.transcript_url} target="_blank" rel="noopener noreferrer">
+            Transcript
+          </a>
+        )}
       </p>
       {s.preview && <p className="story-preview">{s.preview}</p>}
       {s.read_summary && (

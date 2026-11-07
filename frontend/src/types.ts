@@ -198,12 +198,23 @@ export interface SourceStory {
   read_summary: string | null;
   read_checked_at: string | null;
   read: boolean;
+  media_type: 'article' | 'video' | 'podcast';
+  media_url: string | null;
+  thumbnail_url: string | null;
+  duration_seconds: number | null;
+  views: number | null;
+  transcript_url: string | null;
 }
+
+export type FeedKind = 'rss' | 'youtube' | 'podcast';
 
 export interface Feed {
   id: string;
   name: string;
+  kind: FeedKind;
   url: string;
+  input_url: string | null;
+  resolved: boolean;
   site_url: string | null;
   topics: string[];
   active: boolean;

@@ -257,11 +257,12 @@ To see what the hosts care about: `select title, highlight_count from item_cards
 
 The database collects headlines on its own, so Grok doesn't have to search the web every time.
 
-- **Fetching:** about 20 trusted RSS/Atom sources (listed and managed on the site's
-  **Feed → Sources** page). The scheduler checks every 20 minutes, and each source is
-  fetched every 2 hours. This runs inside Supabase (`pg_cron` + `pg_net`), with no extra
-  server. It stores the headline, date, link and a ≤400-character preview, never the full
-  article. Entries nobody acted on are pruned after 30 days.
+- **Fetching:** news feeds, YouTube channels and podcasts, listed and managed on the site's
+  **Feed → Sources** page. The **Railway worker** (see `docs/RAILWAY.md`) pulls everything
+  every 20 minutes. If it stops, the database's own fetcher (`pg_cron` + `pg_net`) takes over.
+  It keeps the headline, date, link, a ≤400-character preview and, for videos and episodes,
+  the thumbnail, duration, views, audio link and transcript link. It never keeps full
+  articles. Entries nobody acted on are pruned after 30 days.
 - **Duplicates:** the same link (ignoring tracking parameters) is stored once. The same
   story from different outlets is grouped into one story with an outlet count; more
   outlets is a signal that it matters.
@@ -275,7 +276,8 @@ The database collects headlines on its own, so Grok doesn't have to search the w
 select producer_digest();
 --    Narrower and cheaper (≈600 tokens for two topics):
 select producer_digest(days => 1, per_topic => 3, only_topics => array['religion', 'dating-culture']);
---    Returns: topics.{slug}: [{title, url, src, date, outlets?, preview, discuss?, more?, not?, read?}],
+--    Returns: topics.{slug}: [{title, url, type? (video|podcast), min?, views?, src, date, outlets?, preview,
+--                              discuss?, more?, not?, read?}],
 --             this_week, covered (used in the last 45 days), episodes, hosts[{name, likes, more_like, not_interested[{title, why}]}]
 
 -- 2. Shortlist from titles, previews, outlet counts and votes. Skip stories marked read.
@@ -298,7 +300,7 @@ select add_item(title => '...', url => '...', source => '...', summary => '...',
 | Table / view | What it holds |
 |---|---|
 | `feeds` | `name`, `url`, `topics`, `active`, `last_fetched_at`, `last_status`, `last_error`, `last_new_count` |
-| `feed_entries` | one headline: `title`, `url`, `published_at`, `preview`, `topics`, `story_id` (shared by outlets covering the same story), `item_id` (once it's in the prep room) |
+| `feed_entries` | one headline: `title`, `url`, `published_at`, `preview`, `topics`, `story_id` (shared by outlets covering the same story), `item_id` (once it's in the prep room), `media_type` (article/video/podcast), `media_url`, `thumbnail_url`, `duration_seconds`, `views`, `transcript_url` |
 | `source_feedback` | `member_id`, `entry_id`, `kind` (`discuss`, `more_like_this`, `not_interested`), `reason` |
 | `article_reads` | read-once store keyed by normalised URL: `summary`, `key_points`, `sources`, `verdict`, `checked_at` |
 | `source_inbox` (view) | one row per story: lead headline, `outlets`, `outlet_count`, vote counts, `my_feedback`, `in_prep`, `read`, `read_summary` |
