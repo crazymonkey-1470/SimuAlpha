@@ -529,6 +529,74 @@ reset role;
 select tests.as_user(null);
 
 -- ===========================================================================
+-- Railway worker + YouTube / podcasts (migration worker_media)
+-- ===========================================================================
+select tests.as_user(null);
+select tests.eq(public.parse_duration('00:51:51'), 3111, 'hh:mm:ss durations parse');
+select tests.eq(public.parse_duration('45:10'), 2710, 'mm:ss durations parse');
+select tests.eq(public.parse_duration('3600'), 3600, 'second counts parse');
+select tests.eq((select count(*) from public.feeds where kind in ('youtube', 'podcast'))::int, 10, 'starter YouTube channels and podcasts seeded');
+
+insert into public.feeds (name, kind, url, topics) values ('Test Channel', 'youtube', 'https://www.youtube.com/feeds/videos.xml?channel_id=UCtest', '{science}') returning id as yt \gset
+select tests.eq(public.ingest_feed_xml(:'yt', format($x$<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+<entry><id>yt:video:AAA</id><title>Why octopuses have three hearts</title><link rel="alternate" href="https://www.youtube.com/watch?v=AAA"/><published>%1$s</published>
+ <media:group><media:title>x</media:title><media:thumbnail url="https://i.ytimg.com/vi/AAA/hqdefault.jpg" width="480" height="360"/><media:description>A video about cephalopods.</media:description>
+ <media:community><media:statistics views="13100"/></media:community></media:group></entry>
+<entry><title>A short</title><link rel="alternate" href="https://www.youtube.com/shorts/BBB"/><published>%1$s</published></entry>
+</feed>$x$, to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))), 1, 'YouTube feed ingests videos and skips Shorts');
+select tests.eq((select media_type || '/' || views || '/' || thumbnail_url || '/' || preview from public.feed_entries where url = 'https://www.youtube.com/watch?v=AAA'),
+                'video/13100/https://i.ytimg.com/vi/AAA/hqdefault.jpg/A video about cephalopods.', 'video thumbnail, views and description captured');
+
+insert into public.feeds (name, kind, url, topics) values ('Test Pod', 'podcast', 'https://pod.example.org/rss', '{history}') returning id as tpod \gset
+select tests.eq(public.ingest_feed_xml(:'tpod', format($x$<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>Pod</title>
+<item><title>Episode without a link</title><guid isPermaLink="false">gid://pod/ep-9</guid><pubDate>%s</pubDate>
+<enclosure url="https://cdn.example.org/ep9.mp3" type="audio/mpeg" length="1"/><itunes:duration>00:51:51</itunes:duration></item></channel></rss>$x$,
+  to_char(now(), 'Dy, DD Mon YYYY HH24:MI:SS "GMT"'))), 1, 'podcast episodes without <link> use the audio URL');
+select tests.eq((select media_type || '/' || duration_seconds from public.feed_entries where url = 'https://cdn.example.org/ep9.mp3'), 'podcast/3111', 'audio-only episode stored as a podcast with duration');
+select public.create_ingest_token() as tok \gset
+select tests.throws($$select * from public.worker_sources('ta_ingest_wrong')$$, '28000', 'wrong ingest token is refused');
+set role anon;
+select tests.eq((select count(*) from public.worker_sources(:'tok'))::int > 20, true, 'worker (anon key + token) can list sources');
+select tests.eq(public.worker_report(:'tok', :'yt', jsonb_build_object('status', 200, 'version', 'test', 'etag', '"v1"', 'entries', jsonb_build_array(
+    jsonb_build_object('title', 'Episode 1: Fasting', 'url', 'https://pod.example.org/ep1', 'published_at', now(), 'media_type', 'podcast',
+                       'media_url', 'https://cdn.example.org/ep1.mp3', 'duration_seconds', 3111, 'preview', '<p>Show notes</p>', 'transcript_url', 'https://pod.example.org/ep1.vtt'),
+    jsonb_build_object('title', 'Why octopuses have three hearts', 'url', 'https://www.youtube.com/watch?v=AAA', 'views', 20000),
+    jsonb_build_object('title', 'Short', 'url', 'https://www.youtube.com/shorts/CCC'),
+    jsonb_build_object('title', '', 'url', 'https://pod.example.org/blank')))), 1, 'worker_report adds new entries only (dupes, Shorts, blanks skipped)');
+select tests.throws(format('select count(*) from public.feed_entries'), '42501', 'the anon worker key still cannot read tables directly');
+reset role;
+select tests.eq((select duration_seconds || '/' || media_type || '/' || preview || '/' || transcript_url from public.feed_entries where url = 'https://pod.example.org/ep1'),
+                '3111/podcast/Show notes/https://pod.example.org/ep1.vtt', 'podcast duration, audio, notes and transcript stored');
+select tests.eq((select views from public.feed_entries where url = 'https://www.youtube.com/watch?v=AAA'), 20000::bigint, 'view counts refresh on re-report');
+select tests.eq((select etag || '/' || last_status from public.feeds where id = :'yt'), '"v1"/200', 'etag and status recorded for conditional fetches');
+select tests.eq((select worker_version from public.ingest_state), 'test', 'worker run recorded');
+select tests.eq(public.enqueue_feed_fetches(), 0, 'database fetcher stays idle while the worker is healthy');
+select tests.eq(public.ingest_status() ->> 'mode', 'worker', 'ingest_status reports worker mode');
+
+insert into public.feeds (name, kind, url, resolved, topics) values ('Pending Podcast', 'podcast', 'https://itunes.apple.com/search?media=podcast&term=pending', false, '{history}') returning id as pend \gset
+select tests.eq(public.worker_report(:'tok', :'pend', '{"status":200,"url":"https://feeds.example.org/pending.rss","entries":[]}'::jsonb), 0, 'worker can report a resolved feed URL');
+select tests.eq((select resolved::text || '/' || url || '/' || input_url from public.feeds where id = :'pend'),
+                'true/https://feeds.example.org/pending.rss/https://itunes.apple.com/search?media=podcast&term=pending', 'resolution stores the feed URL and keeps the input');
+select tests.eq(public.worker_report(:'tok', :'pend', '{"status":200,"url":"https://www.youtube.com/feeds/videos.xml?channel_id=UCtest"}'::jsonb), 0, 'resolving to an existing source is handled');
+select tests.eq((select active::text || '/' || (last_error like 'Resolves to a feed that is already a source%')::text from public.feeds where id = :'pend'), 'false/true', 'duplicate source is paused with a clear error');
+select tests.eq(public.worker_report(:'tok', :'yt', '{"status":404,"error":"HTTP 404"}'::jsonb), 0, 'worker reports fetch errors');
+select tests.eq((select last_error from public.feeds where id = :'yt'), 'HTTP 404', 'fetch error shown on the source');
+
+update public.ingest_state set worker_last_run_at = now() - interval '2 hours';
+select tests.eq(public.ingest_status() ->> 'mode', 'database', 'after an hour without the worker, the database fetcher takes over');
+
+set role authenticated;
+select tests.as_user(:'stew');
+select tests.throws($$select public.create_ingest_token()$$, '42501', 'hosts cannot create worker tokens');
+select tests.throws('select * from public.ingest_tokens', '42501', 'token hashes are not readable from the site');
+select tests.eq((select media_type from public.source_inbox where url = 'https://www.youtube.com/watch?v=AAA'), 'video', 'source_inbox exposes media type');
+reset role;
+select tests.as_user(null);
+select tests.eq((public.producer_digest(only_topics => array['science']) -> 'topics' -> 'science')::text like '%"type": "video"%', true, 'digest marks videos');
+select public.revoke_ingest_tokens();
+select tests.throws(format('select * from public.worker_sources(%L)', :'tok'), '28000', 'revoked tokens stop working');
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);
