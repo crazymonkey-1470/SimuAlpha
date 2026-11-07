@@ -4,29 +4,35 @@ import { useApp, useLoad } from '../lib';
 import type { ItemCard } from '../types';
 import ItemList from '../components/ItemList';
 
-export default function Picks() {
+/** Starred items and topic pitches. Standalone (#/picks) or embedded in the Feed page. */
+export default function Picks({ embedded = false, show = 'both' }: { embedded?: boolean; show?: 'both' | 'stars' | 'pitches' }) {
   const { me } = useApp();
   const [mineOnly, setMineOnly] = useState(false);
+  const wantStars = show !== 'pitches';
+  const wantPitches = show !== 'stars';
 
   const picks = useLoad(() => {
+    if (!wantStars) return Promise.resolve({ data: [], error: null });
     let q = supabase.from('item_cards').select('*').in('status', ['inbox', 'this_week']).gt('highlight_count', 0);
     if (mineOnly) q = q.contains('highlighted_by', [me.id]);
     return q
       .order('highlight_count', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(100);
-  }, [mineOnly]);
+  }, [mineOnly, wantStars]);
   const pitches = useLoad(
     () =>
-      supabase
-        .from('item_cards')
-        .select('*')
-        .eq('item_type', 'topic_idea')
-        .in('status', ['inbox', 'this_week'])
-        .order('highlight_count', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(100),
-    [],
+      wantPitches
+        ? supabase
+            .from('item_cards')
+            .select('*')
+            .eq('item_type', 'topic_idea')
+            .in('status', ['inbox', 'this_week'])
+            .order('highlight_count', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(100)
+        : Promise.resolve({ data: [], error: null }),
+    [wantPitches],
   );
   const reload = () => {
     picks.reload();
@@ -35,42 +41,54 @@ export default function Picks() {
 
   return (
     <>
-      <h1>
-        Crew <em>picks</em>
-      </h1>
-      <p className="hint">Tap the star on anything you’d want to talk about. The most-starred rise to the top.</p>
+      {!embedded && (
+        <h1>
+          Crew <em>picks</em>
+        </h1>
+      )}
+      {wantStars && (
+        <>
+          <p className="hint">Tap the star on anything you’d want to talk about. The most-starred rise to the top.</p>
+          <div className="segmented" role="tablist">
+            <button role="tab" aria-selected={!mineOnly} className={!mineOnly ? 'on' : ''} onClick={() => setMineOnly(false)}>
+              Everyone's stars
+            </button>
+            <button role="tab" aria-selected={mineOnly} className={mineOnly ? 'on' : ''} onClick={() => setMineOnly(true)}>
+              My stars
+            </button>
+          </div>
+          <ItemList
+            items={picks.data as ItemCard[] | null}
+            loading={picks.loading}
+            error={picks.error}
+            onChange={reload}
+            empty={mineOnly ? 'You haven’t starred anything yet.' : 'No stars yet. Tap the star on an article you like.'}
+          />
+        </>
+      )}
 
-      <PitchForm onDone={reload} />
-
-      <div className="segmented" role="tablist">
-        <button role="tab" aria-selected={!mineOnly} className={!mineOnly ? 'on' : ''} onClick={() => setMineOnly(false)}>
-          Everyone's stars
-        </button>
-        <button role="tab" aria-selected={mineOnly} className={mineOnly ? 'on' : ''} onClick={() => setMineOnly(true)}>
-          My stars
-        </button>
-      </div>
-      <ItemList
-        items={picks.data as ItemCard[] | null}
-        loading={picks.loading}
-        error={picks.error}
-        onChange={reload}
-        empty={mineOnly ? 'You haven’t starred anything yet.' : 'No stars yet. Tap the star on an article you like.'}
-      />
-
-      <h2>
-        <span>
-          Topic <em>pitches</em>
-        </span>{' '}
-        <span className="count">{(pitches.data as ItemCard[] | null)?.length ?? ''}</span>
-      </h2>
-      <ItemList
-        items={pitches.data as ItemCard[] | null}
-        loading={pitches.loading}
-        error={pitches.error}
-        onChange={reload}
-        empty="No pitches yet. Use the box above to pitch a topic."
-      />
+      {wantPitches && (
+        <>
+          {show === 'both' ? (
+            <h2>
+              <span>
+                Topic <em>pitches</em>
+              </span>{' '}
+              <span className="count">{(pitches.data as ItemCard[] | null)?.length ?? ''}</span>
+            </h2>
+          ) : (
+            <p className="hint">Ideas for episodes, with or without an article behind them.</p>
+          )}
+          <PitchForm onDone={reload} />
+          <ItemList
+            items={pitches.data as ItemCard[] | null}
+            loading={pitches.loading}
+            error={pitches.error}
+            onChange={reload}
+            empty="No pitches yet. Use the box above to pitch a topic."
+          />
+        </>
+      )}
     </>
   );
 }

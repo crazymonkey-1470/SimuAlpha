@@ -438,6 +438,97 @@ reset role;
 select tests.as_user(null);
 
 -- ===========================================================================
+-- Source inbox (migration source_inbox)
+-- ===========================================================================
+select tests.as_user(null);
+select tests.eq(public.html_to_text('<p>Hello&nbsp;&amp; <b>&#8220;world&#8221;</b> &mdash; test</p>'), 'Hello & “world” — test', 'html_to_text strips tags and entities');
+select tests.eq(public.safe_timestamptz('Thu, 06 Nov 2026 09:30:00 EST') is not null, true, 'RFC-822 dates parse');
+select tests.eq(public.safe_timestamptz('not a date'), null::timestamptz, 'bad dates become null');
+select tests.eq(public.story_key('Young men return to church, survey finds - BBC News'), 'young men return to church survey finds', 'story_key drops outlet suffix and punctuation');
+
+insert into public.feeds (name, url, topics) values ('Test Wire', 'https://wire.example.org/rss', '{religion,news}') returning id as feed_a \gset
+insert into public.feeds (name, url, topics) values ('Test Atom', 'https://atom.example.org/feed', '{religion}') returning id as feed_b \gset
+
+select tests.eq(public.ingest_feed_xml(:'feed_a', format($x$<?xml version="1.0" encoding="ISO-8859-1"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Wire</title>
+<item><title>Survey finds young men returning to church faster than women</title><link>https://wire.example.org/2026/men-church</link>
+  <description><![CDATA[<p>Gen Z men now attend&nbsp;more often.</p>]]></description><pubDate>%s</pubDate></item>
+<item><title>Old news</title><link>https://wire.example.org/old</link><pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate></item>
+<item><title>Already saved story</title><link>http://example.com/news/men-church?utm_source=rss</link><dc:date>%s</dc:date></item>
+<item><title>Stoicism for fathers &amp; sons</title><link>https://wire.example.org/stoic</link><content:encoded><![CDATA[<div>Seneca on raising boys</div>]]></content:encoded></item>
+</channel></rss>$x$, to_char(now() - interval '2 hours', 'Dy, DD Mon YYYY HH24:MI:SS "GMT"'), to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))), 3,
+  'RSS ingest adds fresh items and skips old ones');
+select tests.eq(public.ingest_feed_xml(:'feed_a', '<rss><channel><item><title>Survey finds young men returning to church faster than women</title><link>https://wire.example.org/2026/men-church?utm_source=x</link></item></channel></rss>'), 0,
+  're-ingest / tracking-param variant adds nothing (duplicate URL)');
+select tests.eq((select preview from public.feed_entries where url = 'https://wire.example.org/2026/men-church'), 'Gen Z men now attend more often.', 'preview is plain text');
+select tests.eq((select preview from public.feed_entries where url = 'https://wire.example.org/stoic'), 'Seneca on raising boys', 'content:encoded used when there is no description');
+select tests.eq((select item_id::text from public.feed_entries where title = 'Already saved story'), :'art', 'entry matching a saved item is linked to it');
+
+select tests.eq(public.ingest_feed_xml(:'feed_b', format($x$<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title>
+<entry><title>Young men are returning to church faster than women, survey finds</title><link rel="alternate" href="https://atom.example.org/a/men-church"/><published>%s</published><summary>Same story, other outlet.</summary></entry>
+<entry><title>Completely different: a history of the barbell</title><link href="https://atom.example.org/a/barbell"/><updated>%s</updated></entry>
+</feed>$x$, to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))), 2, 'Atom ingest works');
+select tests.eq((select outlet_count from public.source_inbox where title like 'Survey finds young men%'), 2,
+  'same story from two outlets is grouped (outlet_count 2)');
+select tests.eq((select outlets from public.source_inbox where title like 'Survey finds young men%'), array['Test Atom', 'Test Wire'], 'outlets listed');
+select tests.eq((select count(*) from public.source_inbox where title like '%barbell%')::int, 1, 'unrelated story stays separate');
+select tests.eq((select in_prep from public.source_inbox where title = 'Already saved story'), true, 'story already in the prep room is flagged');
+
+select tests.eq(public.ingest_feed_xml(:'feed_b', '<html><body>Not a feed<br></body></html>'), 0, 'broken XML is rejected');
+select tests.eq((select last_error like 'Not valid RSS/Atom%' from public.feeds where id = :'feed_b'), true, 'feed error recorded');
+
+select id as e_story from public.feed_entries where url = 'https://wire.example.org/2026/men-church' \gset
+select id as e_story_b from public.feed_entries where url = 'https://atom.example.org/a/men-church' \gset
+select id as e_stoic from public.feed_entries where url = 'https://wire.example.org/stoic' \gset
+select id as e_barbell from public.feed_entries where url = 'https://atom.example.org/a/barbell' \gset
+
+set role anon;
+select tests.throws('select count(*) from public.source_inbox', '42501', 'anon cannot read the source inbox');
+reset role;
+set role authenticated;
+select tests.as_user(:'rando');
+select tests.eq((select count(*) from public.source_inbox)::int, 0, 'non-member sees no sources');
+reset role;
+
+set role authenticated;
+select tests.as_user(:'freddy');
+select tests.throws($$insert into public.feeds (name, url) values ('x', 'https://x.example.org/rss')$$, '42501', 'hosts cannot add feeds');
+select tests.throws($$select public.refresh_feeds()$$, '42501', 'hosts cannot force a refresh');
+select public.set_feedback(:'e_stoic', 'more_like_this', reason => 'stoic angle');
+select tests.eq((select my_feedback from public.source_inbox where entry_id = :'e_stoic'), array['more_like_this'], 'more like this recorded');
+select public.set_feedback(:'e_barbell', 'not_interested', reason => 'covered it last month');
+select tests.eq((select not_count from public.source_inbox where entry_id = :'e_barbell'), 1, 'not interested recorded');
+select public.set_feedback(:'e_stoic', 'not_interested');
+select tests.eq((select my_feedback from public.source_inbox where entry_id = :'e_stoic'), array['not_interested'], 'not interested cancels more-like-this');
+select public.set_feedback(:'e_stoic', 'not_interested', turn_on => false);
+select tests.eq((select my_feedback from public.source_inbox where entry_id = :'e_stoic'), '{}'::text[], 'feedback can be removed');
+select public.discuss_entry(:'e_story', 'great opener') as disc_item \gset
+select tests.eq((select added_by::text || '/' || status from public.items where id = :'disc_item'), :'freddy' || '/inbox', 'Discuss this adds the story to the inbox as the host');
+select tests.eq((select in_prep from public.source_inbox where entry_id = :'e_story'), true, 'discussed story is marked in prep');
+select tests.eq(public.discuss_entry(:'e_story_b')::text, :'disc_item', 'discussing the other outlet''s copy reuses the same item');
+select tests.eq((select discuss_count from public.source_inbox where story_id = (select story_id from public.feed_entries where id = :'e_story')), 2, 'both discuss votes count toward the story');
+select public.save_read('https://atom.example.org/a/barbell?utm_source=x', 'Barbell history summary.', array['Invented 1860s'], array['https://src.example.org'], 'solid', 'Barbell history');
+select tests.eq((select summary from public.get_read('https://atom.example.org/a/barbell')), 'Barbell history summary.', 'read-once store returns a saved read');
+select tests.eq((select read from public.source_inbox where entry_id = :'e_barbell'), true, 'source inbox shows the story was read');
+select tests.eq((select count(*) from public.get_read('https://atom.example.org/a/barbell', interval '0 seconds'))::int, 0, 'stale reads are not returned');
+select tests.eq(public.producer_digest() ? 'topics' and public.producer_digest() ? 'hosts', true, 'producer_digest has topics and hosts');
+select tests.eq((public.producer_digest(only_topics => array['history']) -> 'topics') ? 'religion', false, 'only_topics narrows the digest');
+select tests.eq((public.producer_digest() -> 'topics' -> 'religion' -> 0 ->> 'url') like 'https://%', true, 'digest stories carry their url');
+select tests.eq((public.producer_digest() -> 'topics')::text like '%Survey finds young men%', false, 'digest leaves out stories already in the prep room');
+select tests.eq((public.producer_digest() -> 'topics' -> 'religion' -> 0 ->> 'title') is not null, true, 'digest has a religion section');
+select tests.eq((select bool_or(h ->> 'name' = 'Fred' and h ? 'not_interested') from jsonb_array_elements(public.producer_digest() -> 'hosts') h), true,
+  'digest carries each host''s not-interested feedback');
+reset role;
+
+set role authenticated;
+select tests.as_user(:'stew');
+with d as (delete from public.source_feedback where member_id = :'freddy' returning 1)
+select tests.eq(count(*)::int, 0, 'hosts cannot delete each other''s feedback') from d;
+select tests.eq((select my_feedback from public.source_inbox where entry_id = :'e_barbell'), '{}'::text[], 'my_feedback is per person');
+reset role;
+select tests.as_user(null);
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

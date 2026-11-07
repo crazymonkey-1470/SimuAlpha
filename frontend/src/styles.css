@@ -526,6 +526,36 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
   .motto { font-size: 27px; }
 }
 
+/* ---------- source feed ---------- */
+.feed-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 6px; }
+.feed-filters select { width: auto; min-width: 200px; }
+.card.story { padding: 16px 16px 14px; }
+.card.story.dismissed { opacity: 0.6; }
+.story-title { font-size: 21px; margin-top: 8px; }
+.card.story .card-top:empty { display: none; }
+.card.story .card-top:empty + .story-title { margin-top: 0; }
+.story-preview {
+  margin: 0 0 12px; font-size: 16px; line-height: 1.5; color: var(--ink-soft);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.story-read { margin-top: 0; }
+.chip.votes { color: var(--lapis); border-color: var(--lapis-line); background: var(--lapis-pale); }
+.reason-form { display: grid; gap: 8px; margin-top: 12px; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; font-family: var(--caps); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; }
+.source-url { overflow-wrap: anywhere; }
+.badge.src-ok { color: var(--verte); border-color: var(--verte-line); background: var(--verte-pale); }
+.badge.src-error { color: var(--vermilion); border-color: var(--vermilion-line); background: var(--vermilion-pale); }
+.badge.src-paused { border-style: dashed; }
+@media (max-width: 559px) {
+  .card.story > .actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .card.story > .actions > :first-child { grid-column: 1 / -1; }
+  .card.story > .actions button:not(.primary) { font-size: 10.5px; letter-spacing: 0.06em; padding: 0 8px; }
+}
+@media (min-width: 960px) {
+  .card.story { padding: 20px 24px 18px; }
+  .story-title { font-size: 24px; }
+}
+
 /* Touch screens: Apple's 44pt minimum tap targets (kept last so it wins). */
 @media (pointer: coarse), (max-width: 959px) {
   button, .button { min-height: 44px; }
