@@ -262,7 +262,15 @@ The database collects headlines on its own, so Grok doesn't have to search the w
   every 20 minutes. If it stops, the database's own fetcher (`pg_cron` + `pg_net`) takes over.
   It keeps the headline, date, link, a ≤400-character preview and, for videos and episodes,
   the thumbnail, duration, views, audio link and transcript link. It never keeps full
-  articles. Entries nobody acted on are pruned after 45 days.
+  articles. Headlines nobody acted on are kept up to `ingest_state.keep_days` (365), capped at
+  `ingest_state.max_headlines` (150,000, about 255 MB; the oldest go first). Expect about 75 MB a
+  month, so on Supabase Free (500 MB) the cap keeps roughly 3–4 months. On Pro, run
+  `update ingest_state set max_headlines = 600000 where id;` for a full year. Prep-room items,
+  headlines with crew votes, Grok's reads and memories are never pruned.
+- **Archive search:** the Feed and `source_inbox` show the last 62 days. Search everything older
+  with `select * from search_headlines('fatherhood survey', since => '2026-06-01', topic => 'dating-culture');`.
+  Every word must appear in the title. Use it to check whether a story was covered before, or how
+  coverage changed over time.
 - **Month backfill:** each source is backfilled once with its last 31 days. New sources are
   backfilled automatically on their first run, about a dozen sources per worker run.
   WordPress-style sites are paged back (`?paged=2…`). Everything else goes through Google News

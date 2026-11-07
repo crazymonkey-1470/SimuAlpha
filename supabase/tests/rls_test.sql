@@ -616,11 +616,35 @@ select tests.eq(public.reclassify_entries() >= 1, true, 'reclassify_entries re-f
 select tests.eq((select topics from public.feed_entries where url = 'https://atom.example.org/a/barbell'), array['religion', 'history', 'working-out'],
                 'after: the new term files it under Working Out too');
 insert into public.feed_entries (feed_id, url, title, published_at, topics) values
-  (:'gn', 'https://gn.example.org/keep-40', 'Forty days old and kept', now() - interval '40 days', '{news}'),
-  (:'gn', 'https://gn.example.org/drop-50', 'Fifty days old and pruned', now() - interval '50 days', '{news}');
+  (:'gn', 'https://gn.example.org/keep-90', 'Ninety days old: the archive keeps it', now() - interval '90 days', '{news}'),
+  (:'gn', 'https://gn.example.org/drop-400', 'Over a year old and pruned', now() - interval '400 days', '{news}'),
+  (:'gn', 'https://gn.example.org/pope', 'Pope Leo visits Uruguay', now() - interval '2 days', '{news}');
 select public.prune_feed_entries();
-select tests.eq((select string_agg(url, ',' order by url) from public.feed_entries where url in ('https://gn.example.org/keep-40', 'https://gn.example.org/drop-50')),
-                'https://gn.example.org/keep-40', 'headlines are kept 45 days');
+select tests.eq((select string_agg(url, ',' order by url) from public.feed_entries where url in ('https://gn.example.org/keep-90', 'https://gn.example.org/drop-400')),
+                'https://gn.example.org/keep-90', 'headlines are kept up to a year (keep_days 365)');
+select tests.eq((select count(*) from public.source_inbox where url = 'https://gn.example.org/keep-90')::int, 0, 'the inbox shows the last 62 days only');
+select tests.eq((select source || '/' || published from public.search_headlines('archive keeps')), 'CNN/' || (now() - interval '90 days')::date,
+                'search_headlines finds older headlines (every word, any order)');
+select tests.eq((select count(*) from public.search_headlines('archive banana'))::int, 0, 'search_headlines needs every word');
+select tests.eq((select count(*) from public.search_headlines('pope', topic => 'religion'))::int >= 1, true, 'search_headlines filters by topic');
+select tests.eq((select count(*) from public.search_headlines(since => (now() - interval '100 days')::date, until => (now() - interval '80 days')::date))::int, 1,
+                'search_headlines filters by date range');
+-- Size cap: the oldest headlines nobody acted on go first; prep-room and voted headlines stay.
+update public.ingest_state set max_headlines = 1000 where id;
+insert into public.feed_entries (feed_id, url, title, published_at, topics)
+select :'gn', 'https://gn.example.org/bulk-' || g, 'Bulk headline number ' || g, now() - make_interval(hours => g), '{news}'
+from generate_series(1, 1000) g;
+select tests.eq(public.prune_feed_entries() > 0, true, 'over the cap, prune removes headlines');
+select tests.eq((select count(*) from public.feed_entries)::int, 1000, 'headline count is held at max_headlines');
+select tests.eq((select count(*) from public.feed_entries where url in ('https://gn.example.org/bulk-1', 'https://gn.example.org/bulk-1000'))::int || '/' ||
+                (select count(*) from public.feed_entries where url = 'https://gn.example.org/bulk-1')::int, '1/1', 'the oldest go first, the newest stay');
+select tests.eq((select count(*) from public.feed_entries where id = :'e_barbell')::int, 1, 'headlines with crew votes are never pruned');
+select tests.eq((select count(*) from public.feed_entries where item_id is not null)::int > 0, true, 'headlines in the prep room are never pruned');
+select tests.throws('update public.ingest_state set max_headlines = 10 where id', '23514', 'cap has a sane floor');
+update public.ingest_state set keep_days = 14, max_headlines = 150000 where id;
+select public.prune_feed_entries();
+select tests.eq((select count(*) from public.feed_entries where url = 'https://gn.example.org/bulk-500')::int, 0, 'keep_days is adjustable');
+update public.ingest_state set keep_days = 365, max_headlines = 150000 where id;
 set role authenticated;
 select tests.as_user(:'stew');
 select tests.throws('select public.reclassify_entries()', '42501', 'hosts cannot re-file headlines');
