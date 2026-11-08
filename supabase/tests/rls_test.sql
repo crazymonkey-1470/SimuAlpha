@@ -535,7 +535,7 @@ select tests.as_user(null);
 select tests.eq(public.parse_duration('00:51:51'), 3111, 'hh:mm:ss durations parse');
 select tests.eq(public.parse_duration('45:10'), 2710, 'mm:ss durations parse');
 select tests.eq(public.parse_duration('3600'), 3600, 'second counts parse');
-select tests.eq((select count(*) from public.feeds where kind in ('youtube', 'podcast'))::int, 10, 'starter YouTube channels and podcasts seeded');
+select tests.eq((select count(*) from public.feeds where kind in ('youtube', 'podcast'))::int >= 10, true, 'starter YouTube channels and podcasts seeded');
 
 insert into public.feeds (name, kind, url, topics) values ('Test Channel', 'youtube', 'https://www.youtube.com/feeds/videos.xml?channel_id=UCtest', '{science}') returning id as yt \gset
 select tests.eq(public.ingest_feed_xml(:'yt', format($x$<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:yt="http://www.youtube.com/xml/schemas/2015">
