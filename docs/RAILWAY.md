@@ -25,8 +25,10 @@ Railway worker  ──(publishable key + ingest token)──▶  Supabase  ◀�
 ## Setup (one time)
 
 The Railway service is connected to this repo's `main` branch. Railway builds the repo root
-(`package.json` → `worker/`) and reads `railway.json` for the start command and the
-`*/20 * * * *` schedule.
+(`package.json` → `worker/`) and starts it with `npm start` (`node worker/src/run.js`).
+Railway no longer reads `railway.json` for services that hadn't opted into Config-as-code
+(the feature ends on 2026-12-01). Set the schedule and restart policy in the dashboard
+(step 3). `railway.json` stays in the repo only as a record of those settings.
 
 1. **Create the token.** On the site, go to **Feed → Sources → Railway worker → Create
    worker token**, then **Copy all three**. The token is shown only once.
@@ -37,11 +39,18 @@ The Railway service is connected to this repo's `main` branch. Railway builds th
    SUPABASE_KEY=<publishable key, already filled in by the copy button>
    INGEST_TOKEN=ta_ingest_…
    ```
-3. **Deploy.** Railway redeploys after the variable change; if it doesn't, use
-   **Deployments → Redeploy**. Then check **Settings → Cron Schedule**: it should read
-   `*/20 * * * *`. If Railway left the service as an always-on app, set the schedule there by hand.
-4. **Check it worked.** The run's logs end with `done in …s: +N new, …`. The Sources page
-   then says **"Railway worker is fetching"**.
+3. **Settings → Deploy:**
+   - **Cron Schedule** → **Add Schedule** → `*/20 * * * *` (UTC, every 20 minutes).
+     Without it the worker only runs when something is deployed.
+   - **Restart Policy** → **Never**. The worker exits when a run is done; "On Failure" would
+     restart a failed run up to 10 times.
+   - Leave **Serverless** off and **Custom Start Command** empty.
+4. **Optional (Settings):**
+   - **Region**: US West is closest to the Supabase project (Oregon), so runs finish faster
+     than from Asia or Europe.
+   - **Wait for CI**: on, so a commit that fails the GitHub checks isn't deployed.
+5. **Check it worked.** The service card shows the next run time. Each run's logs end with
+   `done in …s: +N new, …`, and the Sources page says **"Railway worker is fetching"**.
 
 No public domain or networking is needed, since the worker only makes outgoing requests.
 Cloudflare isn't involved: it serves the website, and both the website and the worker talk
