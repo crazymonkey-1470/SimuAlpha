@@ -684,6 +684,94 @@ select public.revoke_ingest_tokens();
 select tests.throws(format('select * from public.worker_sources(%L)', :'tok'), '28000', 'revoked tokens stop working');
 
 -- ===========================================================================
+-- Quote of the show
+-- ===========================================================================
+select tests.as_user(null);
+select tests.eq((select count(*) from public.quotes where verified and nullif(btrim(source), '') is not null)::int >= 20, true, 'starter bank of verified, sourced quotes');
+select tests.throws($$insert into public.quotes (text, author, verified) values ('Unsourced but verified?', 'Someone', true)$$, '23514', 'verified quotes must cite a source');
+select tests.throws($$insert into public.quotes (text, author, topics) values ('Bad topic', 'Someone', '{finance}')$$, '23503', 'quote topics are validated');
+select tests.throws($$insert into public.quotes (text, author) values ('"Iron sharpeneth iron, so a man sharpeneth the countenance of his friend!"', 'Anon')$$, '23505', 'the same quote cannot be added twice');
+
+set role authenticated;
+select tests.as_user(:'stew');
+insert into public.episodes (title) values ('Ep. 13: Work') returning id as ep13, quote_id as q13 \gset
+insert into public.episodes (title) values ('Ep. 14: Courage') returning id as ep14, quote_id as q14 \gset
+select tests.eq(:'q13' <> '' and :'q14' <> '', true, 'new episodes get a quote automatically');
+select tests.eq(:'q13' <> :'q14', true, 'two new episodes get different (least-used) quotes');
+select tests.eq((select quote_role::text from public.episodes where id = :'ep13'), 'closer', 'default role is the closer');
+select tests.eq(public.swap_quote(:'ep13')::text <> :'q13', true, 'swap_quote gives the episode a different quote');
+update public.episodes set quote_role = 'opener' where id = :'ep13';
+select tests.eq((select quote_role::text from public.episodes where id = :'ep13'), 'opener', 'hosts can make it the opener');
+insert into public.quotes (text, author, source, questions, topics)
+values ('“Do the next right thing.”', 'Stew''s grandfather', 'Family saying', array['What''s the next right thing for you?', ' '], '{motivation}')
+returning id as q_stew \gset
+select tests.eq((select added_by::text || '/' || verified::text || '/' || text || '/' || array_length(questions, 1) from public.quotes where id = :'q_stew'),
+                :'stew' || '/false/Do the next right thing./1', 'hosts add quotes (credited, unverified, quote marks and blank questions stripped)');
+update public.episodes set quote_id = :'q_stew' where id = :'ep14';
+select tests.eq((select used_count || '/' || used_in[1] || '/' || added_by_name from public.quote_cards where id = :'q_stew'), '1/Ep. 14: Courage/Stew', 'quote_cards shows where a quote was used');
+delete from public.quotes where id = (select id from public.quotes where added_by is null limit 1);
+select tests.eq((select count(*) from public.quotes where added_by is null)::int >= 20, true, 'hosts cannot delete quotes they did not add');
+select tests.as_user(:'freddy');
+update public.quotes set text = 'Hijacked' where id = :'q_stew';
+select tests.eq((select text from public.quotes where id = :'q_stew'), 'Do the next right thing.', 'hosts cannot edit someone else''s quote');
+select tests.as_user(:'stew');
+delete from public.quotes where id = :'q_stew';
+select tests.eq((select quote_id from public.episodes where id = :'ep14'), null::uuid, 'deleting your quote clears it from the episode');
+reset role;
+set role anon;
+select tests.throws('select count(*) from public.quotes', '42501', 'anon cannot read quotes');
+reset role;
+select tests.as_user(null);
+select public.add_quote('Grok test quote about grit.', 'Test Author', 'Test source', episode_id => :'ep14', role => 'opener') as q_grok \gset
+select tests.eq((select quote_id::text || '/' || quote_role from public.episodes where id = :'ep14'), :'q_grok' || '/opener', 'add_quote can put a quote on an episode');
+select tests.eq((select count(*) from jsonb_array_elements(public.producer_digest() -> 'episodes') e where e ? 'quote')::int >= 1, true, 'the digest shows episode quotes');
+update public.episodes set quote_id = null where id = :'ep14';
+select tests.eq((select count(*) from jsonb_array_elements(public.producer_digest() -> 'episodes') e where (e ->> 'needs_quote')::boolean)::int >= 1, true, 'the digest flags episodes that need a quote');
+delete from public.episodes where id in (:'ep13', :'ep14');
+
+-- ===========================================================================
+-- Overnight debug fixes
+-- ===========================================================================
+select tests.as_user(null);
+insert into public.feed_entries (feed_id, url, title, published_at, topics) values
+  (:'gn', 'https://news.google.com/rss/articles/DUP1', 'Mayor unveils plan to rebuild the old harbor bridge', now() - interval '1 hour', '{news}'),
+  (:'gn', 'https://news.google.com/rss/articles/DUP2', 'Mayor unveils plan to rebuild the old harbor bridge', now() - interval '30 minutes', '{news}');
+select tests.eq((select count(distinct story_id) from public.feed_entries where url like 'https://news.google.com/rss/articles/DUP_')::int, 1,
+                'the same source repeating a headline joins one story');
+select tests.eq((select outlet_count from public.source_inbox where title = 'Mayor unveils plan to rebuild the old harbor bridge'), 1,
+                '"outlets" counts sources, not copies');
+insert into public.feed_entries (feed_id, url, title, topics) values
+  (:'gn', 'https://gn.example.org/horoscope', 'Your Positive Weekly Horoscope: Free Will Astrology', '{news}'),
+  (:'gn', 'https://gn.example.org/gifts', 'The 21 best collectible gifts your loved ones will love', '{news}'),
+  (:'gn', 'https://gn.example.org/costco', '7 Costco Thanksgiving food deals and steals that shoppers can''t miss', '{news}'),
+  (:'gn', 'https://gn.example.org/tradedeal', 'Trump strikes deal with Putin to supply Russian diesel', '{news}');
+select tests.eq((select string_agg(url, ',') from public.feed_entries where url like 'https://gn.example.org/%' and url ~ '(horoscope|gifts|costco|tradedeal)$'),
+                'https://gn.example.org/tradedeal', 'junk filter drops horoscopes and shopping round-ups but keeps real "deal" news');
+select tests.eq(to_regclass('public.r') is null, true, 'no stray tables left by migrations');
+update public.feed_entries set story_id = gen_random_uuid() where url = 'https://news.google.com/rss/articles/DUP2';
+select tests.eq(public.regroup_duplicate_stories(), 1, 'regroup_duplicate_stories folds a split duplicate back in');
+select tests.eq((select count(distinct story_id) from public.feed_entries where url like 'https://news.google.com/rss/articles/DUP_')::int, 1,
+                'after regrouping, the duplicate is one story again');
+select tests.eq(public.regroup_duplicate_stories(), 0, 'regrouping again changes nothing');
+select tests.eq(has_function_privilege('authenticated', 'public.items_auto_topic()', 'execute')
+                or has_function_privilege('anon', 'public.on_auth_user_change()', 'execute'), false, 'trigger functions are not callable over the API');
+select public.remember('Touch-test memory for the overnight debug.', 'fact') as m_touch \gset
+set role authenticated;
+select tests.as_user(:'rando');
+select public.touch_memories(array[:'m_touch']::uuid[]);
+reset role;
+select tests.as_user(null);
+select tests.eq((select access_count from public.memories where id = :'m_touch'), 0, 'non-members cannot bump memory counters');
+set role authenticated;
+select tests.as_user(:'producer');
+insert into public.topic_terms (topic, term) values ('history', 'night-debug-term');
+select tests.eq((select count(*) from public.topic_terms where term = 'night-debug-term')::int, 1, 'the producer can still add topic terms');
+delete from public.topic_terms where term = 'night-debug-term';
+select tests.eq((select count(*) from public.topic_terms where term = 'night-debug-term')::int, 0, 'the producer can still remove topic terms');
+reset role;
+select tests.as_user(null);
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

@@ -51,7 +51,12 @@ export default function Episodes() {
 
   return (
     <>
-      <h1>Episode ideas</h1>
+      <div className="page-head">
+        <h1>Episode ideas</h1>
+        <a className="button" href={href('quotes')}>
+          Quote bank
+        </a>
+      </div>
       <form className="inline-form" onSubmit={create}>
         <input placeholder="New episode title or theme" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Recording date" />

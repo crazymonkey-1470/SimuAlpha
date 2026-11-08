@@ -15,6 +15,7 @@ import Search from './pages/Search';
 import Feed from './pages/Feed';
 import Sources from './pages/Sources';
 import Research from './pages/Research';
+import Quotes from './pages/Quotes';
 import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, RssIcon, SearchIcon } from './components/Icons';
 
 export default function App() {
@@ -86,7 +87,7 @@ const TABS: { key: string; label: string; icon: ComponentType<{ size?: number }>
   { key: 'feed', label: 'Feed', icon: RssIcon, match: ['feed', 'picks', 'sources'] },
   { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
   { key: 'research', label: 'Grok', icon: SearchIcon, match: ['research'] },
-  { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e'] },
+  { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e', 'quotes'] },
 ];
 
 function Layout() {
@@ -174,6 +175,8 @@ function Page({ head, arg }: { head?: string; arg?: string }) {
       return <Sources />;
     case 'research':
       return <Research />;
+    case 'quotes':
+      return <Quotes key={arg ?? 'bank'} episodeId={arg} />;
     default:
       return <p className="empty">Page not found.</p>;
   }

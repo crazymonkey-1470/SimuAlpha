@@ -177,7 +177,7 @@ test('backfill: a site that ignores paging falls back to Google News, a week at 
 
   const again = await backfill({ kind: 'rss' }, 'https://moxie.foxnews.com/google-publisher/politics.xml', live, deps, NOW);
   assert.equal(again.entries.length, 0);
-  assert.match(again.note, /already backfilled this run/);
+  assert.match(again.note, /already searched this run/);
   assert.equal(googleAsked.length, 5, 'no second round of Google requests for the same site');
 });
 
@@ -215,4 +215,45 @@ test('pullSource with backfill: no conditional headers, month cutoff, history ap
     { get: async () => ok(rssOf([['Old', 'https://x.example.org/old', now - 20 * DAY], ['New', 'https://x.example.org/new', now - DAY]])) });
   assert.deepEqual(normal.entries.map((e) => e.url), ['https://x.example.org/new'], 'normal runs keep the 14-day window');
   assert.equal(normal.backfilled, undefined);
+});
+
+test('backfill: a stray old item in the feed does not push the Google search outside the month', async () => {
+  const live = [
+    { url: 'https://www.npr.org/2026/11/07/a', published_at: new Date(NOW - 3_600_000).toISOString() },
+    { url: 'https://www.npr.org/2019/01/01/evergreen', published_at: new Date(NOW - 2000 * DAY).toISOString() },
+  ];
+  const googleAsked = [];
+  const deps = {
+    get: async (u) => {
+      if (u.includes('paged=')) return fail(404);
+      googleAsked.push(u);
+      return ok(rssOf([[`Story ${googleAsked.length} - NPR`, `https://news.google.com/rss/articles/n${googleAsked.length}`, NOW - (googleAsked.length * 7 - 3) * DAY]]));
+    },
+    google: googlePacer(0),
+    sitesDone: new Set(),
+  };
+  const r = await backfill({ kind: 'rss' }, 'https://feeds.npr.org/1001/rss.xml', live, deps, NOW);
+  assert.equal(googleAsked.length, 5, 'searches the whole month');
+  assert.equal(r.entries.length, 4);
+});
+
+test('backfill: archive pages that stop short of a month are topped up from Google News', async () => {
+  const live = [{ url: 'https://wp.example.org/new', published_at: new Date(NOW - DAY).toISOString() }];
+  const googleAsked = [];
+  const deps = {
+    get: async (u) => {
+      if (u.endsWith('paged=2')) return ok(rssOf([['Five days', 'https://wp.example.org/5', NOW - 5 * DAY], ['Six days', 'https://wp.example.org/6', NOW - 6 * DAY]]));
+      if (u.includes('paged=')) return fail(404);
+      googleAsked.push(u);
+      return ok(rssOf([[`Older ${googleAsked.length}`, `https://news.google.com/rss/articles/o${googleAsked.length}`, NOW - (6 + googleAsked.length * 5) * DAY]]));
+    },
+    google: googlePacer(0),
+    sitesDone: new Set(),
+  };
+  const r = await backfill({ kind: 'rss' }, 'https://wp.example.org/feed/', live, deps, NOW);
+  assert.ok(googleAsked.length >= 4, 'Google picks up where the pages stopped');
+  assert.ok(googleAsked[0].includes(encodeURIComponent('site:wp.example.org')));
+  assert.ok(r.entries.some((e) => e.url === 'https://wp.example.org/6'), 'paged items kept');
+  assert.ok(r.entries.some((e) => e.url.startsWith('https://news.google.com/')), 'Google items added');
+  assert.match(r.note, /2 from older pages \+ \d+ via Google News/);
 });

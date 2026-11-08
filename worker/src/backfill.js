@@ -68,7 +68,7 @@ export function siteFor(feedUrl, entries) {
   return host;
 }
 
-/** Older pages of a WordPress-style feed. Returns [] when the site ignores ?paged. */
+/** Older pages of a WordPress-style feed. `reached` = the archive went back past the cutoff. */
 export async function pagedHistory(feedUrl, kind, cutoff, seen, deps) {
   const out = [];
   for (let page = 2; page <= MAX_PAGES; page++) {
@@ -85,10 +85,10 @@ export async function pagedHistory(feedUrl, kind, cutoff, seen, deps) {
     if (!fresh.length) break; // same page again (parameter ignored) or the archive ran out
     for (const e of fresh) seen.add(e.url);
     out.push(...fresh.filter((e) => !e.published_at || Date.parse(e.published_at) > cutoff));
-    const dates = entries.map((e) => Date.parse(e.published_at)).filter(Number.isFinite);
-    if (dates.length && Math.min(...dates) <= cutoff) break; // reached the start of the window
+    const dates = fresh.map((e) => Date.parse(e.published_at)).filter(Number.isFinite);
+    if (dates.length && Math.min(...dates) <= cutoff) return { entries: out, reached: true };
   }
-  return out;
+  return { entries: out, reached: false };
 }
 
 /** Google News, one week at a time, from `until` back to `cutoff`. Throws if Google refuses. */
@@ -125,23 +125,32 @@ export async function backfill(src, feedUrl, live, deps, now = Date.now()) {
 
   const seen = new Set(live.map((e) => e.url));
   const isGoogle = /^https:\/\/news\.google\.com\//i.test(feedUrl);
+  let paged = [];
   if (!isGoogle) {
-    const paged = await pagedHistory(feedUrl, src.kind, cutoff, seen, deps);
-    if (paged.length) return { entries: paged.slice(0, MAX_ENTRIES), done: true, note: `${paged.length} from older pages` };
+    const r = await pagedHistory(feedUrl, src.kind, cutoff, seen, deps);
+    paged = r.entries;
+    if (r.reached) return { entries: paged.slice(0, MAX_ENTRIES), done: true, note: `${paged.length} from older pages` };
   }
+  const pagedNote = paged.length ? `${paged.length} from older pages + ` : '';
 
   const site = siteFor(feedUrl, live);
-  if (!site) return { entries: [], done: true, note: 'no site to search' };
-  if (deps.sitesDone?.has(site)) return { entries: [], done: true, note: `${site} already backfilled this run` };
+  if (!site) return { entries: paged, done: true, note: paged.length ? `${paged.length} from older pages` : 'no site to search' };
+  if (deps.sitesDone?.has(site)) return { entries: paged, done: true, note: `${pagedNote}${site} already searched this run` };
   deps.sitesDone?.add(site);
 
-  const dates = live.map((e) => Date.parse(e.published_at)).filter(Number.isFinite);
+  // Search Google from the oldest story we already have inside the window. Ignore stray old items
+  // (pinned or evergreen posts) so they don't push the search outside the month.
+  const dates = [...live, ...paged].map((e) => Date.parse(e.published_at)).filter((d) => Number.isFinite(d) && d > cutoff);
   const until = isGoogle || !dates.length ? now : Math.min(...dates);
   try {
     const found = (await googleHistory(site, until, cutoff, deps)).filter((e) => !seen.has(e.url));
-    return { entries: found.slice(0, MAX_ENTRIES), done: true, note: `${found.length} via Google News (${site})` };
+    return {
+      entries: [...paged, ...found].slice(0, MAX_ENTRIES),
+      done: true,
+      note: `${pagedNote}${found.length} via Google News (${site})`,
+    };
   } catch (e) {
     deps.sitesDone?.delete(site);
-    return { entries: [], done: false, note: String(e.message ?? e) };
+    return { entries: paged, done: false, note: String(e.message ?? e) };
   }
 }

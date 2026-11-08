@@ -6,7 +6,7 @@ import { parseFeed } from './parse.js';
 import { resolvePodcast, resolveYouTube } from './resolve.js';
 import { BACKFILL_DAYS, backfill, googlePacer } from './backfill.js';
 
-const VERSION = 'worker-1.1.0';
+const VERSION = 'worker-1.1.1';
 const UA = 'TrueAdamPrep/1.0 (+https://simualpha.com) feed reader';
 const MAX_AGE_DAYS = 14;
 const CONCURRENCY = 5;

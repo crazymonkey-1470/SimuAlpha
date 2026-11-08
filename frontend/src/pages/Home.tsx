@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { formatDay, freshness, href, today, useApp, useLoad } from '../lib';
-import type { ItemCard } from '../types';
+import type { ItemCard, QuoteCard as Quote } from '../types';
+import QuoteCard from '../components/QuoteCard';
 import ItemList from '../components/ItemList';
 import SearchBox from '../components/SearchBox';
 import Fresco from '../components/Fresco';
@@ -21,6 +22,13 @@ export default function Home() {
 
   const weekItems = week.data as ItemCard[] | null;
   const next = episodes.find((e) => e.status === 'planning' && (!e.recording_date || e.recording_date >= today()));
+  const quote = useLoad<Quote>(
+    () =>
+      next?.quote_id
+        ? supabase.from('quote_cards').select('*').eq('id', next.quote_id).maybeSingle<Quote>()
+        : Promise.resolve({ data: null, error: null }),
+    [next?.quote_id],
+  );
   const hasFunFact = weekItems?.some((i) => i.item_type === 'fun_fact');
   const hasGuest = weekItems?.some((i) => i.item_type === 'guest_idea');
 
@@ -52,6 +60,19 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      {next && quote.data && next.quote_id && (
+        <section className="home-quote" aria-labelledby="home-quote-title">
+          <h2 id="home-quote-title">
+            Quote of the show <span className="badge">{next.quote_role === 'opener' ? 'Opener' : 'Closer'}</span>
+          </h2>
+          <QuoteCard q={quote.data} compact />
+          <a className="link-more" href={href('e', next.id)}>
+            Questions, swap or choose another
+            <ArrowIcon size={14} />
+          </a>
+        </section>
+      )}
 
       <SearchBox />
 
