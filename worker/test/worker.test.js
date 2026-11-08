@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { htmlToText, parseDuration, parseFeed } from '../src/parse.js';
 import { resolvePodcast, resolveYouTube } from '../src/resolve.js';
-import { pullSource } from '../src/run.js';
+import { pullSource, reportInChunks } from '../src/run.js';
 
 const fixture = (f) => readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8');
 
@@ -256,4 +256,26 @@ test('backfill: archive pages that stop short of a month are topped up from Goog
   assert.ok(r.entries.some((e) => e.url === 'https://wp.example.org/6'), 'paged items kept');
   assert.ok(r.entries.some((e) => e.url.startsWith('https://news.google.com/')), 'Google items added');
   assert.match(r.note, /2 from older pages \+ \d+ via Google News/);
+});
+
+test('reportInChunks: small chunks, append flags, backfilled only on the last call, timeouts split and retried', async () => {
+  const calls = [];
+  const send = async (r) => {
+    if (r.entries.length > 15) throw new Error('worker_report failed (500): {"code":"57014","message":"canceling statement due to statement timeout"}');
+    calls.push({ n: r.entries.length, append: r.append, backfilled: r.backfilled });
+    return r.entries.length;
+  };
+  const entries = Array.from({ length: 70 }, (_, i) => ({ url: `https://x.example.org/${i}` }));
+  const added = await reportInChunks(send, { status: 200, entries, backfilled: true }, 40);
+  assert.equal(added, 70, 'every entry sent once');
+  assert.ok(calls.every((c) => c.n <= 15), 'timed-out chunks were split');
+  assert.equal(calls[0].append, false);
+  assert.ok(calls.slice(1).every((c) => c.append === true));
+  assert.deepEqual(calls.map((c) => c.backfilled).filter(Boolean), [true], 'only the final call marks the backfill done');
+  assert.equal(calls.at(-1).backfilled, true);
+  const other = async () => { throw new Error('worker_report failed (500): boom'); };
+  await assert.rejects(reportInChunks(other, { status: 200, entries }), /boom/, 'other errors are not retried');
+  const empty = [];
+  await reportInChunks(async (r) => (empty.push(r), 0), { status: 304, entries: [] });
+  assert.equal(empty.length, 1, 'a report with no entries still records the fetch');
 });

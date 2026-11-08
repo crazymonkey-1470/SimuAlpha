@@ -6,12 +6,12 @@ import { parseFeed } from './parse.js';
 import { resolvePodcast, resolveYouTube } from './resolve.js';
 import { BACKFILL_DAYS, backfill, googlePacer } from './backfill.js';
 
-const VERSION = 'worker-1.1.1';
+const VERSION = 'worker-1.1.2';
 const UA = 'TrueAdamPrep/1.0 (+https://simualpha.com) feed reader';
 const MAX_AGE_DAYS = 14;
 const CONCURRENCY = 5;
 const BACKFILLS_PER_RUN = 12; // a month of history for a dozen sources per run keeps runs short and Google happy
-const REPORT_CHUNK = 100;
+const REPORT_CHUNK = 40; // keeps each save well inside the database's 3-second limit for the worker's key
 
 const env = (k) => {
   const v = process.env[k]?.trim();
@@ -83,6 +83,31 @@ export async function pullSource(src, deps = { get, fetchText, fetchJson, google
   return report;
 }
 
+/**
+ * Send a report in chunks. Only the final call carries `backfilled`; later calls are marked `append` so the
+ * source's "new" count adds up. A chunk that hits the database's statement timeout is split and retried.
+ */
+export async function reportInChunks(send, report, size = REPORT_CHUNK) {
+  const chunks = [];
+  for (let i = 0; i < report.entries.length; i += size) chunks.push(report.entries.slice(i, i + size));
+  if (!chunks.length) chunks.push([]);
+  let calls = 0;
+  let added = 0;
+  async function go(entries, last) {
+    try {
+      const n = await send({ ...report, entries, append: calls > 0, backfilled: last ? report.backfilled : undefined });
+      calls++;
+      return n;
+    } catch (e) {
+      if (!/57014|statement timeout/i.test(String(e.message ?? e)) || entries.length <= 5) throw e;
+      const mid = Math.ceil(entries.length / 2);
+      return (await go(entries.slice(0, mid), false)) + (await go(entries.slice(mid), last));
+    }
+  }
+  for (const [i, chunk] of chunks.entries()) added += await go(chunk, i === chunks.length - 1);
+  return added;
+}
+
 async function main() {
   const base = env('SUPABASE_URL');
   const key = env('SUPABASE_KEY');
@@ -105,18 +130,7 @@ async function main() {
         report = { version: VERSION, status: 0, error: String(e.message ?? e).slice(0, 300), entries: [] };
       }
       try {
-        // Big backfills go in chunks; only the last chunk marks the source as backfilled.
-        let n = 0;
-        const chunks = [];
-        for (let i = 0; i < report.entries.length; i += REPORT_CHUNK) chunks.push(report.entries.slice(i, i + REPORT_CHUNK));
-        if (!chunks.length) chunks.push([]);
-        for (const [i, chunk] of chunks.entries()) {
-          const last = i === chunks.length - 1;
-          n += await rpc(base, key, 'worker_report', {
-            token, feed_id: src.id,
-            report: { ...report, entries: chunk, append: i > 0, backfilled: last ? report.backfilled : undefined },
-          });
-        }
+        const n = await reportInChunks((r) => rpc(base, key, 'worker_report', { token, feed_id: src.id, report: r }), report);
         added += n;
         if (report.status === 304) unchanged++;
         if (report.error) failed++;
