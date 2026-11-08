@@ -730,6 +730,48 @@ select tests.eq((select count(*) from jsonb_array_elements(public.producer_diges
 delete from public.episodes where id in (:'ep13', :'ep14');
 
 -- ===========================================================================
+-- Overnight debug fixes
+-- ===========================================================================
+select tests.as_user(null);
+insert into public.feed_entries (feed_id, url, title, published_at, topics) values
+  (:'gn', 'https://news.google.com/rss/articles/DUP1', 'Mayor unveils plan to rebuild the old harbor bridge', now() - interval '1 hour', '{news}'),
+  (:'gn', 'https://news.google.com/rss/articles/DUP2', 'Mayor unveils plan to rebuild the old harbor bridge', now() - interval '30 minutes', '{news}');
+select tests.eq((select count(distinct story_id) from public.feed_entries where url like 'https://news.google.com/rss/articles/DUP_')::int, 1,
+                'the same source repeating a headline joins one story');
+select tests.eq((select outlet_count from public.source_inbox where title = 'Mayor unveils plan to rebuild the old harbor bridge'), 1,
+                '"outlets" counts sources, not copies');
+insert into public.feed_entries (feed_id, url, title, topics) values
+  (:'gn', 'https://gn.example.org/horoscope', 'Your Positive Weekly Horoscope: Free Will Astrology', '{news}'),
+  (:'gn', 'https://gn.example.org/gifts', 'The 21 best collectible gifts your loved ones will love', '{news}'),
+  (:'gn', 'https://gn.example.org/costco', '7 Costco Thanksgiving food deals and steals that shoppers can''t miss', '{news}'),
+  (:'gn', 'https://gn.example.org/tradedeal', 'Trump strikes deal with Putin to supply Russian diesel', '{news}');
+select tests.eq((select string_agg(url, ',') from public.feed_entries where url like 'https://gn.example.org/%' and url ~ '(horoscope|gifts|costco|tradedeal)$'),
+                'https://gn.example.org/tradedeal', 'junk filter drops horoscopes and shopping round-ups but keeps real "deal" news');
+select tests.eq(to_regclass('public.r') is null, true, 'no stray tables left by migrations');
+update public.feed_entries set story_id = gen_random_uuid() where url = 'https://news.google.com/rss/articles/DUP2';
+select tests.eq(public.regroup_duplicate_stories(), 1, 'regroup_duplicate_stories folds a split duplicate back in');
+select tests.eq((select count(distinct story_id) from public.feed_entries where url like 'https://news.google.com/rss/articles/DUP_')::int, 1,
+                'after regrouping, the duplicate is one story again');
+select tests.eq(public.regroup_duplicate_stories(), 0, 'regrouping again changes nothing');
+select tests.eq(has_function_privilege('authenticated', 'public.items_auto_topic()', 'execute')
+                or has_function_privilege('anon', 'public.on_auth_user_change()', 'execute'), false, 'trigger functions are not callable over the API');
+select public.remember('Touch-test memory for the overnight debug.', 'fact') as m_touch \gset
+set role authenticated;
+select tests.as_user(:'rando');
+select public.touch_memories(array[:'m_touch']::uuid[]);
+reset role;
+select tests.as_user(null);
+select tests.eq((select access_count from public.memories where id = :'m_touch'), 0, 'non-members cannot bump memory counters');
+set role authenticated;
+select tests.as_user(:'producer');
+insert into public.topic_terms (topic, term) values ('history', 'night-debug-term');
+select tests.eq((select count(*) from public.topic_terms where term = 'night-debug-term')::int, 1, 'the producer can still add topic terms');
+delete from public.topic_terms where term = 'night-debug-term';
+select tests.eq((select count(*) from public.topic_terms where term = 'night-debug-term')::int, 0, 'the producer can still remove topic terms');
+reset role;
+select tests.as_user(null);
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

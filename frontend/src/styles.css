@@ -115,7 +115,8 @@ button.primary:hover:not(:disabled), .button.primary:hover { background: #1b3263
 button.danger { color: var(--vermilion); border-color: var(--vermilion-line); }
 button.on { background: var(--lapis-pale); border-color: var(--lapis-line); color: var(--lapis); }
 button.link {
-  border: 0; background: none; min-height: 0; padding: 0; gap: 6px;
+  /* Text-sized look, finger-sized target: the padding is cancelled by the negative margin. */
+  border: 0; background: none; min-height: 0; padding: 12px 8px; margin: -12px -8px; gap: 6px;
   font-family: var(--caps); font-size: 11px; letter-spacing: 0.14em; color: var(--lapis); text-decoration: none;
 }
 button.link:hover { color: var(--ink); }

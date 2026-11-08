@@ -291,7 +291,7 @@ The database collects headlines on its own, so Grok doesn't have to search the w
 ### Grok's cheap loop
 
 ```sql
--- 1. One compact call. Default: last 3 days, top 4 per topic (≈4–5k tokens).
+-- 1. One compact call. Default: last 3 days, top 4 per topic (≈6–7k tokens across 18 topics).
 select producer_digest();
 --    Narrower and cheaper (≈600 tokens for two topics):
 select producer_digest(days => 1, per_topic => 3, only_topics => array['religion', 'dating-culture']);
@@ -330,6 +330,7 @@ Tune the categorisation by SQL. Terms are lower-case regex fragments matched as 
 insert into topic_terms (topic, term) values ('religion', 'lent'), ('working-out', 'barbells?');
 delete from topic_terms where topic = 'fun-facts' and term = 'weird';
 select reclassify_entries();              -- re-file every stored headline with the new lists
+select regroup_duplicate_stories();       -- fold repeated headlines from one source into one story
 select classify_topics('Pope Leo visits Uruguay');   -- test a headline: {religion}
 insert into entry_filters (pattern, note) values ('\msponsored\M', 'ads');   -- never store these
 ```
