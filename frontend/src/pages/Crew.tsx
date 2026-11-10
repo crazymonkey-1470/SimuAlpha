@@ -3,6 +3,31 @@ import { supabase } from '../supabase';
 import { formatTimestamp, freshness, href, roman, useApp, useLoad } from '../lib';
 import { ITEM_TYPES, STATUS_LABEL, type CrewStat, type ItemCard } from '../types';
 
+/** The non-zero numbers worth showing for one row, in reading order. */
+function stats(r: CrewStat): [number, string][] {
+  const all: [number, string][] = r.member_id
+    ? [
+        [r.from_feed, 'from the Feed'],
+        [r.nominated, 'nominated'],
+        [r.on_air, 'on air'],
+        [r.liked, 'liked in the Feed'],
+        [r.stars_given, '★ given'],
+        [r.stars_received, '★ received'],
+        [r.comments, r.comments === 1 ? 'comment' : 'comments'],
+        [r.episodes, r.episodes === 1 ? 'episode planned' : 'episodes planned'],
+        [r.quotes, r.quotes === 1 ? 'quote added' : 'quotes added'],
+        [r.days_marked, r.days_marked === 1 ? 'day marked' : 'days marked'],
+        [r.research, 'asked of Grok'],
+        [r.passed, 'passed on'],
+      ]
+    : [
+        [r.reads, r.reads === 1 ? 'verified read' : 'verified reads'],
+        [r.research, 'research answered'],
+        [r.comments, 'comments'],
+      ];
+  return all.filter(([n]) => n > 0);
+}
+
 const PERIODS = [
   { days: 7, label: 'This week' },
   { days: 30, label: 'This month' },
@@ -24,9 +49,10 @@ export default function Crew() {
         Crew <em>board</em>
       </h1>
       <p className="hint">
-        Who’s bringing material to the prep room. <b>Added</b> counts everything put in the prep room, from the Feed’s
-        “Discuss this” or the Add tab. <b>Nominated</b> means picked for This week, and <b>on air</b> means used in an
-        episode.
+        Who’s bringing material to the prep room. <b>Added</b> counts everything put in the prep room: from the Feed’s
+        “Discuss this”, the Add tab, or the producer’s database commands (Grok’s picks). <b>Nominated</b> means picked
+        for This week and <b>on air</b> means used in an episode. Feed likes, stars, comments, episodes, quotes and
+        calendar days count too.
       </p>
       <div className="segmented" role="tablist">
         {PERIODS.map((p) => (
@@ -58,7 +84,7 @@ export default function Crew() {
                     {r.member_id === me.id ? ' (you)' : ''}
                   </b>
                   <span className="muted">
-                    {r.last_added ? `last added ${freshness(r.last_added.slice(0, 10))}` : 'nothing added in this period'}
+                    {r.last_active ? `last active ${freshness(r.last_active.slice(0, 10))}` : 'no activity in this period'}
                   </span>
                 </div>
                 <span className="crew-count">
@@ -67,13 +93,12 @@ export default function Crew() {
                 </span>
               </div>
               <p className="crew-stats">
-                {r.from_feed > 0 && <span>{r.from_feed} from the Feed</span>}
-                <span>{r.nominated} nominated</span>
-                <span>{r.on_air} on air</span>
-                <span>{r.stars_received} ★ received</span>
-                <span>{r.comments} comments</span>
-                {r.member_id ? <span>{r.stars_given} ★ given</span> : null}
-                <span>{r.member_id ? `${r.research} asked of Grok` : `${r.research} research answered`}</span>
+                {stats(r).map(([n, label]) => (
+                  <span key={label}>
+                    <b>{n}</b> {label}
+                  </span>
+                ))}
+                {stats(r).length === 0 && <span>Nothing yet in this period.</span>}
               </p>
               {r.added > 0 && (
                 <button className="link" onClick={() => setOpen(isOpen ? null : key)} aria-expanded={isOpen}>
