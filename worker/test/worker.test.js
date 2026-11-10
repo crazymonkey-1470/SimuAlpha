@@ -279,3 +279,12 @@ test('reportInChunks: small chunks, append flags, backfilled only on the last ca
   await reportInChunks(async (r) => (empty.push(r), 0), { status: 304, entries: [] });
   assert.equal(empty.length, 1, 'a report with no entries still records the fetch');
 });
+
+test('resolvePodcast: a show name with a literal % is searched as typed', async () => {
+  let asked = '';
+  const r = await resolvePodcast('100% Fed Up', async (u) => ((asked = u), { results: [{ collectionName: '100% Fed Up', feedUrl: 'https://feeds.example.org/fedup' }] }));
+  assert.equal(r.url, 'https://feeds.example.org/fedup');
+  assert.match(asked, /term=100%25%20Fed%20Up$/);
+  const enc = await resolvePodcast('https://itunes.apple.com/search?media=podcast&term=Dan%20Snow%27s%20History+Hit', async (u) => ((asked = u), { results: [{ collectionName: "Dan Snow's History Hit", feedUrl: 'https://feeds.example.org/hh' }] }));
+  assert.equal(enc.url, 'https://feeds.example.org/hh', 'encoded search URLs still decode');
+});

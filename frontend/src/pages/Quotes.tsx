@@ -38,6 +38,9 @@ export default function Quotes({ episodeId }: { episodeId?: string }) {
 
   async function add(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setErr('');
     const { data, error } = await supabase
       .from('quotes')
       .insert({
@@ -47,10 +50,11 @@ export default function Quotes({ episodeId }: { episodeId?: string }) {
         context: draft.context.trim() || null,
         questions: draft.questions.split('\n').map((x) => x.trim()).filter(Boolean),
         topics: draft.topic ? [draft.topic] : [],
-        verified: draft.verified,
+        verified: draft.verified && !!draft.source.trim(),
       })
       .select('id')
       .single();
+    setBusy(false);
     if (error) return setErr(errorText(error));
     setDraft({ text: '', author: '', source: '', context: '', questions: '', topic: '', verified: false });
     setAdding(false);
@@ -91,7 +95,7 @@ export default function Quotes({ episodeId }: { episodeId?: string }) {
         <form className="research-form quote-form" onSubmit={add}>
           <textarea rows={3} required value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} placeholder="The quote, word for word" aria-label="Quote" />
           <input required value={draft.author} onChange={(e) => setDraft({ ...draft, author: e.target.value })} placeholder="Who said it" aria-label="Author" />
-          <input value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} placeholder="Where: book and chapter, speech and date, verse…" aria-label="Source" />
+          <input value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value, verified: draft.verified && !!e.target.value.trim() })} placeholder="Where: book and chapter, speech and date, verse…" aria-label="Source" />
           <textarea rows={2} value={draft.context} onChange={(e) => setDraft({ ...draft, context: e.target.value })} placeholder="Context: why it matters (optional)" aria-label="Context" />
           <textarea rows={2} value={draft.questions} onChange={(e) => setDraft({ ...draft, questions: e.target.value })} placeholder="Questions to talk about, one per line (optional)" aria-label="Questions" />
           <select value={draft.topic} onChange={(e) => setDraft({ ...draft, topic: e.target.value })} aria-label="Topic">

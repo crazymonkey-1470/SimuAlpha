@@ -748,6 +748,15 @@ insert into public.feed_entries (feed_id, url, title, topics) values
 select tests.eq((select string_agg(url, ',') from public.feed_entries where url like 'https://gn.example.org/%' and url ~ '(horoscope|gifts|costco|tradedeal)$'),
                 'https://gn.example.org/tradedeal', 'junk filter drops horoscopes and shopping round-ups but keeps real "deal" news');
 select tests.eq(to_regclass('public.r') is null, true, 'no stray tables left by migrations');
+update public.feeds set outlet = 'Test Wire Group' where id in (:'feed_a', :'feed_b');
+select tests.eq((select outlet_count from public.source_inbox where title like 'Survey finds young men%'), 1,
+                'two feeds of one outlet count as one outlet');
+update public.feeds set outlet = null where id in (:'feed_a', :'feed_b');
+select tests.eq((select outlet_count from public.source_inbox where title like 'Survey finds young men%'), 2,
+                'different outlets still count separately');
+select tests.eq(public.ingest_feed_xml(:'feed_a', '<rss><channel><item><title>Survey finds young men returning to church faster than women</title><link>https://wire.example.org/2026/men-church</link></item></channel></rss>'), 0,
+                'backup fetcher skips headlines already stored');
+
 update public.feed_entries set story_id = gen_random_uuid() where url = 'https://news.google.com/rss/articles/DUP2';
 select tests.eq(public.regroup_duplicate_stories(), 1, 'regroup_duplicate_stories folds a split duplicate back in');
 select tests.eq((select count(distinct story_id) from public.feed_entries where url like 'https://news.google.com/rss/articles/DUP_')::int, 1,
