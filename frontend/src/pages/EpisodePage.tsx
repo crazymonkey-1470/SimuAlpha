@@ -5,6 +5,7 @@ import { EPISODE_STATUS_LABEL, ITEM_TYPES, STATUS_LABEL, type EpisodeStatus, typ
 import ItemList from '../components/ItemList';
 import { CheckIcon } from '../components/Icons';
 import ShowQuote from '../components/ShowQuote';
+import DayAvailability from '../components/DayAvailability';
 
 export default function EpisodePage({ id }: { id: string }) {
   const { episodes, reloadEpisodes, me } = useApp();
@@ -123,6 +124,7 @@ export default function EpisodePage({ id }: { id: string }) {
             </select>
           </label>
         </div>
+        {ep.recording_date && <DayAvailability day={ep.recording_date} />}
         <label>
           Notes
           <textarea rows={3} value={draft.notes} onChange={(e) => edit('notes', e.target.value)} placeholder="Theme, run of show, guest logistics…" />

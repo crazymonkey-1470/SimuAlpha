@@ -47,8 +47,9 @@ preferences from `member_briefing(id)`, and keep it up to date with `remember(..
   pitches.
   - **Statuses:** `inbox` → `this_week` (nominated) → `used` (aired) or `archived`.
   - **Crew activity:** the crew star items, comment, and send you research requests.
-- **Episodes**, each with a **quote of the show** (opener or closer) from a bank of 25
-  verified public-domain quotes.
+- **Episodes** on a month calendar, each with a **quote of the show** (opener or closer) from a
+  bank of 25 verified public-domain quotes. On the same calendar, the crew mark days Free, Maybe
+  or Busy (table `availability`).
 - **Your memory** (`memories`, `conversations`): long-term, per person, topic and show.
   - **Duplicates:** a near-duplicate reinforces the existing memory instead of adding a copy.
   - **Corrections:** a correction retires the old memory instead of deleting it.
@@ -152,6 +153,15 @@ select * from quote_cards order by used_count, author;        -- quote bank, lea
 6. **After recording:** set what aired to used, so you don't pitch it again:
    `update items set status = 'used' where id in (…);`
 
+**Picking a recording date.** The crew mark days Free / Maybe / Busy on the Episodes calendar:
+
+```sql
+select * from crew_availability();                   -- next 6 weeks: free, maybe, busy, not_set, everyone_free, episodes
+select day from crew_availability(current_date, 28) where everyone_free and episodes = '{}';   -- open days all can make
+```
+
+When suggesting a date, prefer `everyone_free` days, and name who hasn't marked the day yet (`not_set`).
+
 **Also useful:**
 
 ```sql
@@ -214,6 +224,7 @@ select e.title, sf.reason from source_feedback sf join feed_entries e on e.id = 
 | `remember(...)` / `recall(query)` / `revise_memory(...)` / `forget(...)` | Long-term memory |
 | `log_conversation(messages, member_id, title, summary)` / `search_conversations(query)` | Long-context log |
 | `add_quote(...)` / `swap_quote(episode_id)` | Quote of the show |
+| `crew_availability(from_day, days)` | Who's free each day, and whether everyone is |
 | `classify_topics(title)` | See how a headline would be filed |
 | `ingest_status()` | Is the news worker running? |
 

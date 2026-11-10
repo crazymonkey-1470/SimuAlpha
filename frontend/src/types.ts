@@ -253,3 +253,18 @@ export const QUOTE_ROLE_LABEL: Record<QuoteRole, string> = {
   opener: 'Opener: wisdom to start the conversation',
   closer: 'Closer: send-off to end the show',
 };
+
+export type AvailabilityStatus = 'free' | 'maybe' | 'busy';
+
+export interface Availability {
+  member_id: string;
+  day: string;
+  status: AvailabilityStatus;
+  note: string | null;
+}
+
+export const AVAILABILITY_LABEL: Record<AvailabilityStatus, string> = {
+  free: 'Free',
+  maybe: 'Maybe',
+  busy: 'Busy',
+};

@@ -781,6 +781,34 @@ reset role;
 select tests.as_user(null);
 
 -- ===========================================================================
+-- Crew availability (episode calendar)
+-- ===========================================================================
+set role authenticated;
+select tests.as_user(:'stew');
+insert into public.availability (day, status) values ('2026-12-05', 'free'), ('2026-12-06', 'busy');
+select tests.eq((select count(*) from public.availability where member_id = :'stew')::int, 2, 'a host marks their own days (member_id filled in)');
+select tests.throws($$insert into public.availability (member_id, day, status) values ('11111111-1111-1111-1111-111111111111', '2026-12-05', 'free')$$,
+                    '42501', 'a host cannot set someone else''s availability');
+update public.availability set status = 'maybe', note = 'after 3pm' where day = '2026-12-06';
+select tests.eq((select status::text || '/' || note from public.availability where member_id = :'stew' and day = '2026-12-06'), 'maybe/after 3pm', 'a host updates their own day with a note');
+select tests.as_user(:'freddy');
+insert into public.availability (day, status) values ('2026-12-05', 'free');
+update public.availability set status = 'busy' where member_id = :'stew' and day = '2026-12-05';
+select tests.eq((select status::text from public.availability where member_id = :'stew' and day = '2026-12-05'), 'free', 'hosts cannot change another host''s availability');
+select tests.eq((select count(*) from public.availability)::int >= 3, true, 'everyone sees the crew''s availability');
+select tests.eq((select array_length(free, 1) = 2 and 'Stew' = any(free) from public.crew_availability('2026-12-05', 1)), true, 'crew_availability lists who is free');
+select tests.eq((select everyone_free from public.crew_availability('2026-12-05', 1)), false, 'not everyone has said they are free');
+select tests.eq((select count(*) from public.crew_availability('2026-12-01', 14))::int, 14, 'one row per day');
+select tests.as_user(:'rando');
+select tests.eq((select count(*) from public.availability)::int, 0, 'non-members see no availability');
+reset role;
+set role anon;
+select tests.throws('select count(*) from public.availability', '42501', 'anon cannot read availability');
+reset role;
+select tests.as_user(null);
+select tests.eq((select maybe from public.crew_availability('2026-12-06', 1)), array['Stew'], 'SQL sessions (Grok) can read availability');
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);
