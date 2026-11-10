@@ -225,6 +225,7 @@ select e.title, sf.reason from source_feedback sf join feed_entries e on e.id = 
 | `log_conversation(messages, member_id, title, summary)` / `search_conversations(query)` | Long-context log |
 | `add_quote(...)` / `swap_quote(episode_id)` | Quote of the show |
 | `crew_availability(from_day, days)` | Who's free each day, and whether everyone is |
+| `crew_board(days)` | Who added what (you're credited as "Grok"), and how it did |
 | `classify_topics(title)` | See how a headline would be filed |
 | `ingest_status()` | Is the news worker running? |
 

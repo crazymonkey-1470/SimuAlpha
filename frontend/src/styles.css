@@ -692,3 +692,32 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
 .day-availability { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0 0 12px; font-size: 15px; }
 .day-availability > span { display: inline-flex; align-items: center; gap: 5px; }
 .day-availability a { font-family: var(--caps); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
+
+/* Credit + crew board */
+.byline-name { font-weight: 600; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--gold); }
+.crew-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 14px; margin-bottom: 4px; padding: 10px 14px;
+  border: 1px solid var(--line); background: var(--vellum); color: var(--ink); text-decoration: none;
+}
+.crew-strip:hover { border-color: var(--gold); }
+.crew-strip .eyebrow { margin: 0; }
+.crew-strip-names { display: flex; flex-wrap: wrap; gap: 4px 14px; flex: 1; font-size: 16px; }
+.crew-strip-names b { font-family: var(--display); font-size: 18px; color: var(--vermilion); }
+.crew-leader { margin: 0 0 12px; font-size: 17px; }
+.crew-board { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.crew-row.me { border-color: var(--lapis-line); }
+.crew-row-head { display: flex; align-items: center; gap: 14px; }
+.crew-rank { flex: none; width: 34px; font-family: var(--display); font-style: italic; font-weight: 600; font-size: 22px; color: var(--vermilion); text-align: center; }
+.crew-who { display: grid; flex: 1; min-width: 0; }
+.crew-who b { font-family: var(--display); font-size: 22px; font-weight: 600; }
+.crew-count { display: grid; justify-items: center; font-family: var(--display); font-size: 30px; font-weight: 600; line-height: 1; color: var(--ink); }
+.crew-count small { font-family: var(--caps); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--umber); }
+.crew-stats { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 10px 0 6px 48px; font-size: 15px; color: var(--umber); }
+.crew-row button.link { margin-left: 48px; }
+.crew-items { display: grid; gap: 8px; margin: 10px 0 0 48px; padding: 0; list-style: none; }
+.crew-items li { display: grid; }
+.crew-items a { color: var(--ink); }
+@media (max-width: 520px) {
+  .crew-stats, .crew-items { margin-left: 0; }
+  .crew-row button.link { margin-left: 0; }
+}

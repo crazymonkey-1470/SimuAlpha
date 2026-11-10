@@ -89,8 +89,12 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
             {formatDay(item.published_at)} <em>({freshness(item.published_at)})</em>
           </span>
         )}
-        <span>
-          added by {item.added_by_name} · <a href={href('i', item.id)}>link</a>
+        <span className="byline">
+          Added by{' '}
+          <a href={href('crew')} className="byline-name">
+            {item.added_by_name}
+          </a>{' '}
+          · {freshness(item.created_at.slice(0, 10))} · <a href={href('i', item.id)}>link</a>
         </span>
       </p>
 

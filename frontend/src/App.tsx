@@ -16,6 +16,7 @@ import Feed from './pages/Feed';
 import Sources from './pages/Sources';
 import Research from './pages/Research';
 import Quotes from './pages/Quotes';
+import Crew from './pages/Crew';
 import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, RssIcon, SearchIcon } from './components/Icons';
 
 export default function App() {
@@ -83,7 +84,7 @@ function SignedIn({ session }: { session: Session }) {
 }
 
 const TABS: { key: string; label: string; icon: ComponentType<{ size?: number }>; match: (string | undefined)[] }[] = [
-  { key: '', label: 'Home', icon: HomeIcon, match: [undefined] },
+  { key: '', label: 'Home', icon: HomeIcon, match: [undefined, 'crew'] },
   { key: 'feed', label: 'Feed', icon: RssIcon, match: ['feed', 'picks', 'sources'] },
   { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
   { key: 'research', label: 'Grok', icon: SearchIcon, match: ['research'] },
@@ -175,6 +176,8 @@ function Page({ head, arg }: { head?: string; arg?: string }) {
       return <Sources />;
     case 'research':
       return <Research />;
+    case 'crew':
+      return <Crew />;
     case 'quotes':
       return <Quotes key={arg ?? 'bank'} episodeId={arg} />;
     default:

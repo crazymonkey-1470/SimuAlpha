@@ -1,6 +1,6 @@
 import { supabase } from '../supabase';
 import { formatDay, freshness, href, today, useApp, useLoad } from '../lib';
-import type { ItemCard, QuoteCard as Quote } from '../types';
+import type { CrewStat, ItemCard, QuoteCard as Quote } from '../types';
 import QuoteCard from '../components/QuoteCard';
 import ItemList from '../components/ItemList';
 import SearchBox from '../components/SearchBox';
@@ -22,6 +22,7 @@ export default function Home() {
 
   const weekItems = week.data as ItemCard[] | null;
   const next = episodes.find((e) => e.status === 'planning' && (!e.recording_date || e.recording_date >= today()));
+  const board = useLoad<CrewStat[]>(() => supabase.rpc('crew_board', { days: 7 }), []);
   const quote = useLoad<Quote>(
     () =>
       next?.quote_id
@@ -72,6 +73,20 @@ export default function Home() {
             <ArrowIcon size={14} />
           </a>
         </section>
+      )}
+
+      {board.data && (
+        <a className="crew-strip" href={href('crew')}>
+          <span className="eyebrow">Crew board · this week</span>
+          <span className="crew-strip-names">
+            {board.data.map((r) => (
+              <span key={r.member_id ?? 'grok'}>
+                {r.name} <b>{r.added}</b>
+              </span>
+            ))}
+          </span>
+          <ArrowIcon size={14} />
+        </a>
       )}
 
       <SearchBox />
