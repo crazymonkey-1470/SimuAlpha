@@ -1,5 +1,7 @@
 # Producer guide: writing into the True Adam database
 
+> Giving Grok its instructions? Paste [`docs/GROK.md`](GROK.md), the self-contained operating manual.
+
 You write through SQL: the Supabase connector's `execute_sql`, or the SQL editor in the
 dashboard. Both run as the `postgres` role, which **bypasses RLS**, so you need no
 website login. Rows you insert this way are labelled **Producer** on the site.

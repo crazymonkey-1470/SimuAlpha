@@ -55,9 +55,10 @@ function Fresh() {
     let q = supabase
       .from('source_inbox')
       .select('*')
-      .gt('latest_at', new Date(Date.now() - days * 86_400_000).toISOString())
-      .order('latest_at', { ascending: false })
-      .limit(limit);
+      .gt('latest_at', new Date(Date.now() - days * 86_400_000).toISOString());
+    // Over a week or a month there are thousands of stories: fetch the most-covered first, so the window
+    // means something (the newest 120 alone would only reach back a few hours).
+    q = (days > 1 ? q.order('outlet_count', { ascending: false }) : q).order('latest_at', { ascending: false }).limit(limit);
     if (topic) q = q.contains('topics', [topic]);
     return q;
   }, [topic, days, limit]);

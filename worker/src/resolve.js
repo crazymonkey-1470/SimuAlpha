@@ -25,7 +25,15 @@ export async function resolvePodcast(input, fetchJson) {
   const s = String(input ?? '').trim();
   const appleId = s.match(/podcasts\.apple\.com\/.*\bid(\d+)/)?.[1];
   if (/^https?:\/\//i.test(s) && !appleId && !/itunes\.apple\.com\/search/i.test(s)) return { url: s };
-  const term = appleId ? null : decodeURIComponent(s.match(/[?&]term=([^&]+)/)?.[1] ?? s).replace(/\+/g, ' ');
+  const raw = s.match(/[?&]term=([^&]+)/)?.[1];
+  let term = null;
+  if (!appleId) {
+    try {
+      term = raw ? decodeURIComponent(raw.replace(/\+/g, ' ')) : s; // a typed name is used as-is ("100% Fed Up")
+    } catch {
+      term = raw ?? s;
+    }
+  }
   const api = appleId
     ? `https://itunes.apple.com/lookup?id=${appleId}&entity=podcast`
     : `https://itunes.apple.com/search?media=podcast&entity=podcast&limit=5&term=${encodeURIComponent(term)}`;
