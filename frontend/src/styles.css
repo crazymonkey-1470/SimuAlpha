@@ -722,3 +722,4 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
   .crew-stats, .crew-items { margin-left: 0; }
   .crew-row button.link { margin-left: 0; }
 }
+.crew-stats b { font-weight: 600; color: var(--ink); }

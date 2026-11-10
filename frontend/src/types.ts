@@ -280,6 +280,13 @@ export interface CrewStat {
   stars_received: number;
   comments: number;
   stars_given: number;
+  liked: number;
+  passed: number;
+  episodes: number;
+  quotes: number;
+  days_marked: number;
   research: number;
-  last_added: string | null;
+  reads: number;
+  activity: number;
+  last_active: string | null;
 }

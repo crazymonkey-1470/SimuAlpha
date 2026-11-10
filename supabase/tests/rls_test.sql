@@ -96,9 +96,9 @@ select public.add_item(
 ) as art \gset
 
 select tests.eq((select added_by_role::text from public.items where id = :'art'), 'producer', 'SQL insert is labelled producer');
-select tests.eq((select added_by from public.items where id = :'art'), null::uuid, 'SQL insert has no added_by');
+select tests.eq((select added_by from public.items where id = :'art'), :'producer'::uuid, 'SQL insert is credited to the producer');
 select tests.eq((select topics from public.item_cards where id = :'art'), array['news', 'religion'], 'topics come back in tab order');
-select tests.eq((select added_by_name from public.item_cards where id = :'art'), 'Grok', 'item_cards credits rows saved straight into the database to Grok');
+select tests.eq((select added_by_name from public.item_cards where id = :'art'), 'Producer', 'item_cards credits rows saved straight into the database to the producer');
 select tests.eq((select talking_points[2] from public.items where id = :'art'), 'What did your dad model?', 'talking points stored as array');
 
 select public.add_item(title => 'Octopuses have three hearts', item_type => 'fun_fact', status => 'this_week') as ff \gset
@@ -812,17 +812,25 @@ select tests.eq((select maybe from public.crew_availability('2026-12-06', 1)), a
 -- Credit and the crew board
 -- ===========================================================================
 select tests.as_user(null);
-select tests.eq((select added_by_name from public.item_cards where id = :'art'), 'Grok', 'items saved straight into the database are credited to Grok');
+select tests.eq((select added_by_name from public.item_cards where id = :'art'), 'Producer', 'items saved straight into the database are credited to the producer');
 select tests.eq((select added_by_name from public.item_cards where id = :'fred_item'), 'Fred', 'items added on the site keep the person''s name');
 set role authenticated;
 select tests.as_user(:'stew');
+insert into public.quotes (text, author) values ('A board test quote from Stew.', 'Stew');
+insert into public.episodes (title) values ('[board test] Stew''s episode');
 select tests.eq((select count(*) from public.crew_board())::int, (select count(*) from public.profiles)::int + 1, 'the board lists every crew member plus Grok');
-select tests.eq((select added > 0 from public.crew_board() where name = 'Grok'), true, 'Grok''s additions are counted');
+select tests.eq((select added > 0 from public.crew_board() where member_id = :'producer'), true, 'the producer''s database additions are counted for them');
+select tests.eq((select added from public.crew_board() where name = 'Grok'), 0, 'nothing is credited to Grok by default any more');
 select tests.eq((select added from public.crew_board() where member_id = :'freddy') >= 1, true, 'a host''s additions are counted');
 select tests.eq((select sum(added) from public.crew_board())::int, (select count(*) from public.items where added_by is not null or added_by_role = 'producer')::int,
                 'every attributable item is counted once');
 select tests.eq((select added from public.crew_board(0) where name = 'Grok') <= (select added from public.crew_board() where name = 'Grok'), true, 'a shorter period counts no more');
 select tests.eq((select array_agg(added order by added desc) = array_agg(added) from public.crew_board()), true, 'most added first');
+select tests.eq((select liked from public.crew_board() where member_id = :'freddy') >= 0, true, 'Feed likes are counted');
+select tests.eq((select episodes >= 1 and quotes >= 1 from public.crew_board() where member_id = :'stew'), true, 'episodes planned and quotes added are counted');
+delete from public.episodes where title = '[board test] Stew''s episode';
+select tests.eq((select days_marked >= 1 from public.crew_board() where member_id = :'stew'), true, 'days marked on the calendar are counted');
+select tests.eq((select activity >= added from public.crew_board() where member_id = :'stew'), true, 'activity totals everything');
 select tests.as_user(:'rando');
 select tests.eq((select coalesce(sum(added), 0) from public.crew_board())::int, 0, 'non-members see nothing on the board');
 reset role;
