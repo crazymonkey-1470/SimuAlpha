@@ -218,6 +218,7 @@ legend { padding: 0 6px; font-family: var(--display); font-size: 1.3rem; font-we
 @media (min-width: 960px) {
   :root { font-size: 17px; line-height: 1.6; }
   .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
+  .shell.no-topics { grid-template-columns: minmax(0, 1fr); }
   .topbar { grid-column: 1 / -1; min-height: 72px; padding: 0 clamp(16px, 3vw, 40px); gap: 28px; }
   .wordmark { gap: 12px; }
   .wordmark svg { width: 36px; height: 36px; }
