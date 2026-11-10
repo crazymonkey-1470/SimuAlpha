@@ -95,7 +95,7 @@ function Layout() {
   const [head, arg] = useRoute();
   const tabHref = (key: string) => (key ? href(key) : '#/');
   return (
-    <div className="shell">
+    <div className={head === undefined ? 'shell no-topics' : 'shell'}>
       <header className="topbar">
         <a className="wordmark" href="#/" aria-label="True Adam, home">
           <Armillary />
@@ -121,7 +121,8 @@ function Layout() {
           <MenuIcon />
         </a>
       </header>
-      <TopicNav current={head === 't' ? arg : undefined} />
+      {/* Home stays uncluttered; every other page gets the topic bar (sidebar on desktop). */}
+      {head !== undefined && <TopicNav current={head === 't' ? arg : undefined} />}
       <main className="content">
         <Page head={head} arg={arg} />
       </main>
