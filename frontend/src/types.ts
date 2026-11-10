@@ -268,3 +268,18 @@ export const AVAILABILITY_LABEL: Record<AvailabilityStatus, string> = {
   maybe: 'Maybe',
   busy: 'Busy',
 };
+
+/** Row of crew_board(days): one crew member (or Grok, member_id null). */
+export interface CrewStat {
+  member_id: string | null;
+  name: string;
+  added: number;
+  from_feed: number;
+  nominated: number;
+  on_air: number;
+  stars_received: number;
+  comments: number;
+  stars_given: number;
+  research: number;
+  last_added: string | null;
+}
