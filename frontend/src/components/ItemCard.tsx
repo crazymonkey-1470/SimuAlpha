@@ -67,6 +67,7 @@ export default function ItemCardView({ item, onChange, episodeId, openComments =
       <div className="card-top">
         <span className={`badge type-${item.item_type}`}>{typeLabel}</span>
         {item.status !== 'inbox' && <span className={`badge st-${item.status}`}>{STATUS_LABEL[item.status]}</span>}
+        {item.grok_pick && <span className="badge grok-pick">Grok pick</span>}
       </div>
 
       <h3 className="card-title">

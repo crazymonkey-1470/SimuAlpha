@@ -38,6 +38,20 @@ export default function Comments({ itemId, onCountChange }: { itemId: string; on
   }
 
   const comments = (list.data ?? []) as Comment[];
+  // @mentions: first names of the rest of the crew, plus @all. Mentioning someone puts a note in their inbox.
+  const others = [...profiles.values()].filter((p) => p.id !== me.id).map((p) => p.display_name.split(' ')[0]);
+  const known = new Set([...[...profiles.values()].map((p) => p.display_name.split(' ')[0].toLowerCase()), 'all', 'crew', 'everyone']);
+  const mention = (name: string) => setBody((b) => (b.trim() ? b.replace(/\s*$/, ' ') : '') + `@${name} `);
+  const rich = (text: string) =>
+    text.split(/(@[A-Za-z0-9_]+)/g).map((part, i) =>
+      part.startsWith('@') && known.has(part.slice(1).toLowerCase()) ? (
+        <b key={i} className="mention">
+          {part}
+        </b>
+      ) : (
+        part
+      ),
+    );
   const author = (c: Comment) =>
     (c.author_id && profiles.get(c.author_id)?.display_name) || (c.author_role === 'producer' ? 'Producer' : 'Former member');
 
@@ -55,7 +69,7 @@ export default function Comments({ itemId, onCountChange }: { itemId: string; on
               </button>
             )}
           </div>
-          <p>{c.body}</p>
+          <p>{rich(c.body)}</p>
         </div>
       ))}
       <form onSubmit={add} className="comment-form">
@@ -69,6 +83,16 @@ export default function Comments({ itemId, onCountChange }: { itemId: string; on
           Post
         </button>
       </form>
+      {others.length > 0 && (
+        <div className="mention-row">
+          <span className="small">Notify:</span>
+          {[...others, 'all'].map((n) => (
+            <button key={n} type="button" className="chip" onClick={() => mention(n)}>
+              @{n}
+            </button>
+          ))}
+        </div>
+      )}
       {err && <p className="error">{err}</p>}
     </div>
   );

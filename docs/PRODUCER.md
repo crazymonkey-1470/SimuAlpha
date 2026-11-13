@@ -104,6 +104,22 @@ delete from item_topics where item_id = '...' and topic_slug = 'news';
 insert into episodes (title, recording_date) values ('Ep. 12: Men and church', '2026-11-12') returning id;
 insert into item_episodes (item_id, episode_id) values ('<item id>', '<episode id>');
 
+-- Running order for the show sheet (#/show/<episode id>): the items in the order to record them
+select set_running_order('<episode id>', array['<item id>', '<item id>']::uuid[]);
+
+-- After recording: this marks every attached item used, so nobody pitches it again
+update episodes set status = 'recorded', watch_url = 'https://youtu.be/…' where id = '<episode id>';
+
+-- Has the show covered this before? (aired, already in the prep room, or when it hit the news)
+select * from covered_before('Stephen Miller named chief of staff');
+
+-- Listener questions from #/ask, newest first; turn a good one into a prep-room note
+select id, name, location, question, status from listener_questions where status = 'new' order by created_at desc;
+select question_to_item('<question id>');
+
+-- What the next episode still needs, worded for the group chat
+select crew_nudge();
+
 -- Items already used (so you don't resurface them)
 select title, url, updated_at from items where status = 'used' order by updated_at desc;
 ```
@@ -139,6 +155,7 @@ Generated from the migrated schema. `*` = required, no default.
 | contact_status | `guest_contact_status` | `not_contacted`, `reached_out`, `confirmed`, `declined` |
 | added_by | uuid → profiles | null when you insert via SQL; set automatically for website users |
 | added_by_role | `member_role` | default `producer`; forced to the user's role for website inserts |
+| grok_pick | boolean | true when saved through `apply_grok_reply`; shows a "Grok pick" badge |
 | created_at, updated_at | timestamptz | automatic |
 
 ### `item_topics`: many-to-many
@@ -156,14 +173,20 @@ Generated from the migrated schema. `*` = required, no default.
 | recording_date | date | |
 | status | `episode_status` | default `planning`; `planning`, `recorded`, `published` |
 | notes | text | |
+| quote_id / quote_role | uuid → quotes / `quote_role` | quote of the show, `opener` or `closer`; set automatically on insert |
+| watch_url, listen_url | text | after the show; must start with `http://` or `https://` |
+| show_notes | text | after the show; up to 20,000 characters |
 | created_by | uuid → profiles | automatic for website users |
 | created_at, updated_at | timestamptz | automatic |
+
+Changing `status` from `planning` to `recorded` or `published` marks every attached item `used`.
 
 ### `item_episodes`
 | column | type | notes |
 |---|---|---|
 | item_id | uuid → items * | PK part |
 | episode_id | uuid → episodes * | PK part |
+| position | integer | running order on the show sheet; null = after the ordered ones |
 | added_by | uuid → profiles | automatic for website users |
 | created_at | timestamptz | automatic |
 
@@ -215,6 +238,34 @@ Generated from the migrated schema. `*` = required, no default.
 | answered_by | text | label shown on the site, e.g. `Grok` |
 | answered_at, created_at, updated_at | timestamptz | automatic |
 
+### `listener_questions`: from the public Ask page (`#/ask`)
+| column | type | notes |
+|---|---|---|
+| id | uuid | default |
+| name, location | text | optional, up to 80 characters |
+| question | text * | 5–800 characters; links are refused |
+| status | `question_status` | `new` (default), `saved` (sent to the prep room), `dismissed` |
+| item_id | uuid → items | the note it became |
+| sender_hash | text | rate limiting only; hidden from the crew and cleared after a day |
+| created_at | timestamptz | automatic |
+
+Only `submit_question(...)` can add rows (no sign-in needed). It allows 3 questions an hour
+from one sender, 40 an hour and 200 a day in total, and drops exact repeats.
+
+### `notifications`: the bell (inbox) and push messages
+| column | type | notes |
+|---|---|---|
+| member_id | uuid → profiles * | who it's for; each person sees only their own |
+| kind | text * | `mention`, `answer`, `nudge`, `test` |
+| title, body, url | text | `url` is a site link such as `#/i/<item id>` |
+| actor_id | uuid → profiles | who caused it (the commenter) |
+| read_at, pushed_at, push_error | | set by the site and the push sender |
+
+Created automatically: an `@Name` (or `@all`) in a comment notifies those people; an answered
+research request notifies whoever asked; every Wednesday at 23:00 UTC (`weekly-nudge`) each
+person gets what the next episode still needs. `push_subscriptions` holds each phone's push
+address (private to its owner); `push_config` holds the sender settings (SQL only).
+
 ### Views (read-only, respect RLS)
 - `item_cards`: every `items` column plus `topics text[]` (in tab order), `episode_ids uuid[]`, `comment_count int`, `added_by_name text`, `highlighted_by uuid[]`, `highlight_count int`, `research_open int`, `research_done int`.
 - `this_week`: `item_cards` filtered to `status = 'this_week'`.
@@ -224,6 +275,11 @@ Generated from the migrated schema. `*` = required, no default.
 - `add_item(...)` → `uuid` (above).
 - `answer_research(request_id, response, sources default '{}', answered_by default 'Grok')`: answers and closes a request.
 - `normalize_url(text)` → `text`, the duplicate-detection key.
+- `grok_brief(episode default null)` → `jsonb`: everything Grok needs in one object (the next episode and what it still needs, nominated items not yet attached, inbox, open research, availability, news by topic, host tastes, recently covered, house rules, pinned memories, mailbag). The site's **Grok → Run Grok → Brief Grok** copies this with instructions.
+- `apply_grok_reply(reply jsonb, episode default null)` → `jsonb`: saves Grok's JSON reply. Keys (all optional): `items`, `research`, `reads`, `memories`, `quote`, `nominate`, `attach`, `show_notes`. Each part is saved separately; returns `{episode_id, saved, failed, results[]}` with the reason for anything that failed.
+- `covered_before(title, url default null, exclude default null)`: rows of kind `aired`, `prep` or `news`.
+- `set_running_order(episode, items uuid[])`, `question_to_item(question_id)`, `crew_nudge(member default null)`.
+- `create_weekly_nudges(force default false)`: producer only; the Wednesday job calls it.
 
 ## Grok research queue
 
@@ -483,4 +539,8 @@ password; they can change it under ☰ on the site.
 | Star items (★) | as themselves | as themselves | any |
 | Ask Grok, answer or update research | ✓ | ✓ | ✓ |
 | Delete research requests | own only | all | all |
+| Apply Grok's reply, reorder the show sheet, add show notes | ✓ | ✓ | ✓ |
+| Read and sort listener questions | ✓ | ✓ | ✓ |
+| Delete listener questions, nudge everyone's inbox | ✗ | ✓ | ✓ |
+| See notifications and push settings | own only | own only | all |
 | Change roles / allow-list | ✗ | ✗ | ✓ |

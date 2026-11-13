@@ -4,8 +4,10 @@ import { useLoad } from '../lib';
 import type { MemoryCard, ResearchRequest, ResearchStatus } from '../types';
 import { MemoryForm, MemoryRow } from '../components/Memory';
 import { RESEARCH_SELECT, ResearchCard, ResearchForm } from '../components/Research';
+import GrokDesk from '../components/GrokDesk';
 
 const TABS: { key: string; label: string; statuses: ResearchStatus[] | null }[] = [
+  { key: 'desk', label: 'Run Grok', statuses: null },
   { key: 'open', label: 'Open', statuses: ['open', 'in_progress'] },
   { key: 'done', label: 'Answered', statuses: ['done'] },
   { key: 'all', label: 'All', statuses: null },
@@ -18,12 +20,13 @@ export default function Research() {
   const statuses = TABS.find((t) => t.key === tab)!.statuses;
 
   const res = useLoad(() => {
-    if (tab === 'memory') return Promise.resolve({ data: [], error: null });
+    if (tab === 'memory' || tab === 'desk') return Promise.resolve({ data: [], error: null });
     let q = supabase.from('research_requests').select(RESEARCH_SELECT);
     if (statuses) q = q.in('status', statuses);
     return q.order(tab === 'done' ? 'answered_at' : 'created_at', { ascending: false }).limit(200);
   }, [tab]);
   const list = (res.data ?? []) as ResearchRequest[];
+  const special = tab === 'memory' || tab === 'desk';
 
   return (
     <>
@@ -39,7 +42,7 @@ export default function Research() {
       </div>
       <p className="hint">
         Leave Grok a job: deeper research, stats, fact checks, counterpoints. Answers show up here and on the
-        article.
+        article. <b>Run Grok</b> does the daily run without the database editor.
       </p>
 
       {asking && (
@@ -62,9 +65,10 @@ export default function Research() {
       </div>
 
       {tab === 'memory' && <MemoryTab />}
-      {tab !== 'memory' && res.error && <p className="error">{res.error}</p>}
-      {res.loading && !res.data && <p className="muted">Loading…</p>}
-      {tab !== 'memory' && res.data && list.length === 0 && (
+      {tab === 'desk' && <GrokDesk />}
+      {!special && res.error && <p className="error">{res.error}</p>}
+      {!special && res.loading && !res.data && <p className="muted">Loading…</p>}
+      {!special && res.data && list.length === 0 && (
         <p className="empty">{tab === 'open' ? 'Nothing waiting on Grok.' : 'Nothing here yet.'}</p>
       )}
       <div className="list">

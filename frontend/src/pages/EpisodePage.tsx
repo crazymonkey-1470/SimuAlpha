@@ -1,11 +1,42 @@
 import { useEffect, useState } from 'react';
 import { errorText, supabase } from '../supabase';
-import { navigate, useApp, useLoad } from '../lib';
+import { href, navigate, useApp, useLoad } from '../lib';
 import { EPISODE_STATUS_LABEL, ITEM_TYPES, STATUS_LABEL, type EpisodeStatus, type ItemCard } from '../types';
 import ItemList from '../components/ItemList';
 import { CheckIcon } from '../components/Icons';
 import ShowQuote from '../components/ShowQuote';
 import DayAvailability from '../components/DayAvailability';
+import { ApplyGrokReply, BriefGrokButton } from '../components/GrokDesk';
+
+/** Accepts "youtu.be/x" or a full link; anything else is left for the database to explain. */
+const link = (raw: string) => {
+  const u = raw.trim();
+  if (!u) return null;
+  return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+};
+
+/** An all-day calendar entry for the recording date: a downloadable .ics and a Google Calendar link. */
+export function calendarLinks(title: string, day: string, episodeId: string) {
+  const start = day.replace(/-/g, '');
+  const [y, m, d] = day.split('-').map(Number);
+  const endDate = new Date(Date.UTC(y, m - 1, d + 1));
+  const end = endDate.toISOString().slice(0, 10).replace(/-/g, '');
+  const url = `${location.origin}${location.pathname}#/e/${episodeId}`;
+  const esc = (t: string) => t.replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\r?\n/g, '\\n');
+  const summary = `Record: ${title}`;
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//True Adam//Prep Room//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT', `UID:${episodeId}@true-adam-prep`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    `DTSTART;VALUE=DATE:${start}`, `DTEND;VALUE=DATE:${end}`, `SUMMARY:${esc(summary)}`,
+    `DESCRIPTION:${esc(`True Adam Podcast recording. Episode plan: ${url}`)}`, `URL:${url}`, 'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  return {
+    file: 'true-adam-recording.ics',
+    ics: 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics),
+    google: 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(summary)
+      + `&dates=${start}/${end}&details=` + encodeURIComponent(`Episode plan: ${url}`),
+  };
+}
 
 export default function EpisodePage({ id }: { id: string }) {
   const { episodes, reloadEpisodes, me } = useApp();
@@ -31,7 +62,9 @@ export default function EpisodePage({ id }: { id: string }) {
     pool.reload();
   };
 
-  const [draft, setDraft] = useState({ title: '', recording_date: '', status: 'planning' as EpisodeStatus, notes: '' });
+  const [draft, setDraft] = useState({
+    title: '', recording_date: '', status: 'planning' as EpisodeStatus, notes: '', watch_url: '', listen_url: '', show_notes: '',
+  });
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -39,7 +72,10 @@ export default function EpisodePage({ id }: { id: string }) {
 
   useEffect(() => {
     if (ep && !dirty)
-      setDraft({ title: ep.title, recording_date: ep.recording_date ?? '', status: ep.status, notes: ep.notes ?? '' });
+      setDraft({
+        title: ep.title, recording_date: ep.recording_date ?? '', status: ep.status, notes: ep.notes ?? '',
+        watch_url: ep.watch_url ?? '', listen_url: ep.listen_url ?? '', show_notes: ep.show_notes ?? '',
+      });
   }, [ep, dirty]);
 
   if (!ep) return <p className="empty">Episode not found.</p>;
@@ -73,13 +109,20 @@ export default function EpisodePage({ id }: { id: string }) {
           recording_date: draft.recording_date || null,
           status: draft.status,
           notes: draft.notes.trim() || null,
+          watch_url: link(draft.watch_url),
+          listen_url: link(draft.listen_url),
+          show_notes: draft.show_notes.trim() || null,
         })
         .eq('id', id),
       () => {
         setDirty(false);
         reloadEpisodes();
+        reload(); // recording an episode marks its items used
       },
     );
+
+  const aired = draft.status !== 'planning';
+  const cal = ep.recording_date ? calendarLinks(ep.title, ep.recording_date, id) : null;
 
   const edit = <K extends keyof typeof draft>(k: K, v: (typeof draft)[K]) => {
     setDraft((d) => ({ ...d, [k]: v }));
@@ -129,10 +172,56 @@ export default function EpisodePage({ id }: { id: string }) {
           Notes
           <textarea rows={3} value={draft.notes} onChange={(e) => edit('notes', e.target.value)} placeholder="Theme, run of show, guest logistics…" />
         </label>
+        {aired && (
+          <fieldset className="after-show">
+            <legend>After the show</legend>
+            <div className="row">
+              <label>
+                Watch link (YouTube)
+                <input inputMode="url" autoCapitalize="none" value={draft.watch_url} onChange={(e) => edit('watch_url', e.target.value)} placeholder="https://youtu.be/…" />
+              </label>
+              <label>
+                Listen link (Spotify, Apple)
+                <input inputMode="url" autoCapitalize="none" value={draft.listen_url} onChange={(e) => edit('listen_url', e.target.value)} placeholder="https://…" />
+              </label>
+            </div>
+            <label>
+              Show notes
+              <textarea rows={6} value={draft.show_notes} onChange={(e) => edit('show_notes', e.target.value)} placeholder="Episode description, stories with links, clip ideas…" />
+            </label>
+            <p className="small">
+              Grok can draft these from the episode’s items: copy the brief, paste it into Grok, then paste its reply below.
+            </p>
+            <div className="actions">
+              <BriefGrokButton episodeId={id} showNotes label="Brief Grok for show notes" />
+            </div>
+            <ApplyGrokReply
+              episodeId={id}
+              placeholder="Paste Grok’s show-notes reply here"
+              onApplied={() => {
+                setDirty(false);
+                reloadEpisodes();
+              }}
+            />
+          </fieldset>
+        )}
         <div className="actions">
           <button className="primary" disabled={!dirty || busy} onClick={save}>
             Save
           </button>
+          <a className="button" href={href('show', id)}>
+            Show sheet
+          </a>
+          {cal && (
+            <>
+              <a className="button" href={cal.ics} download={cal.file}>
+                Add to calendar
+              </a>
+              <a className="button" href={cal.google} target="_blank" rel="noopener noreferrer">
+                Google Calendar
+              </a>
+            </>
+          )}
           {items.length > 0 && (
             <button disabled={busy} onClick={markAllUsed}>
               <CheckIcon size={16} />

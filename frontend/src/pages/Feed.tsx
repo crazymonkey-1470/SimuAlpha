@@ -4,11 +4,13 @@ import { href, useApp, useLoad } from '../lib';
 import type { SourceStory } from '../types';
 import StoryCard from '../components/StoryCard';
 import Picks from './Picks';
+import Mailbag from './Mailbag';
 
 const SEGMENTS = [
   { key: 'fresh', label: 'Fresh' },
   { key: 'starred', label: 'Starred' },
   { key: 'pitches', label: 'Pitches' },
+  { key: 'mailbag', label: 'Mailbag' },
 ] as const;
 type Segment = (typeof SEGMENTS)[number]['key'];
 
@@ -34,6 +36,7 @@ export default function Feed({ initial = 'fresh' }: { initial?: Segment }) {
       {seg === 'fresh' && <Fresh />}
       {seg === 'starred' && <Picks embedded show="stars" />}
       {seg === 'pitches' && <Picks embedded show="pitches" />}
+      {seg === 'mailbag' && <Mailbag />}
     </>
   );
 }

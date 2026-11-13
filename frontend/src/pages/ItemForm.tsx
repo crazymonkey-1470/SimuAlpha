@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { errorText, supabase } from '../supabase';
-import { goBack, href, navigate, useApp } from '../lib';
-import { CONTACT_LABEL, ITEM_TYPES, type ContactStatus, type ItemCard, type ItemStatus, type ItemType } from '../types';
+import { formatDay, goBack, href, navigate, useApp } from '../lib';
+import { CONTACT_LABEL, ITEM_TYPES, type ContactStatus, type CoveredRow, type ItemCard, type ItemStatus, type ItemType } from '../types';
 
 interface FormState {
   item_type: ItemType;
@@ -85,6 +85,23 @@ export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTop
         setForm(fromItem(data as ItemCard));
       });
   }, [id]);
+
+  // "Covered before?": similar items already in the prep room or aired, and when the story first hit the news.
+  const [covered, setCovered] = useState<CoveredRow[]>([]);
+  const title = form?.title ?? '';
+  const link = form?.url ?? '';
+  useEffect(() => {
+    if (title.trim().length < 12 && !link.trim()) return setCovered([]);
+    let live = true;
+    const timer = window.setTimeout(async () => {
+      const { data } = await supabase.rpc('covered_before', { title: title.trim(), url: cleanUrl(link), exclude: id ?? null });
+      if (live) setCovered((data ?? []) as CoveredRow[]);
+    }, 700);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [title, link, id]);
 
   if (!form) return err ? <p className="error">{err.text}</p> : <p className="muted">Loading…</p>;
 
@@ -265,6 +282,27 @@ export default function ItemForm({ id, defaultTopic }: { id?: string; defaultTop
           />
           Nominate for this week
         </label>
+      )}
+
+      {covered.length > 0 && (
+        <div className={`covered ${covered.some((c) => c.kind !== 'news') ? 'warn-box' : ''}`} role="status">
+          <b>{covered.some((c) => c.kind === 'aired') ? 'You may have covered this already' : covered.some((c) => c.kind === 'prep') ? 'Something like this is already in the prep room' : 'This story in the news'}</b>
+          <ul>
+            {covered.map((c) => (
+              <li key={c.kind + c.id}>
+                {c.kind === 'news' ? (
+                  c.link ? <a href={c.link} target="_blank" rel="noopener noreferrer">{c.title}</a> : c.title
+                ) : (
+                  <a href={href('i', c.id)}>{c.title}</a>
+                )}
+                <span className="muted">
+                  {' '}· {c.detail}
+                  {c.kind !== 'news' ? ` · ${formatDay(c.seen)}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {err && (
