@@ -837,6 +837,172 @@ reset role;
 select tests.as_user(null);
 
 -- ===========================================================================
+-- Grok desk, show sheet, after the show, covered before
+-- ===========================================================================
+set role authenticated;
+select tests.as_user(:'stew');
+insert into public.episodes (title, recording_date) values ('[desk] Next episode', current_date + 5) returning id as desk_ep \gset
+insert into public.research_requests (kind, request) values ('stats', '[desk] How many men attend?') returning id as desk_rq \gset
+select public.apply_grok_reply(replace($j${
+  "items": [
+    {"title": "[desk] Pick one", "url": "https://desk.example.org/one", "source": "Desk", "summary": "A summary.",
+     "talking_points": ["First question?", "Second question?"], "topics": ["religion"], "status": "this_week", "attach": true},
+    {"title": "[desk] Fun fact", "type": "fun_fact", "summary": "True and sourced."},
+    {"title": "[desk] Bad topic", "topics": ["finance"]},
+    {"title": "[desk] Same link again", "url": "https://desk.example.org/one?utm_source=x", "status": "this_week", "attach": true}
+  ],
+  "research": [
+    {"id": "RQID", "answer": "About 42% monthly.", "sources": ["https://src.example.org/study"]},
+    {"id": "00000000-0000-0000-0000-000000000000", "answer": "Nobody asked this."}
+  ],
+  "reads": [{"url": "https://desk.example.org/one", "summary": "Verified against the study.", "key_points": ["42%"],
+             "sources": ["https://src.example.org/study"], "verdict": "solid", "title": "Pick one"}],
+  "memories": [
+    {"content": "[desk] Stew wants the original study linked every time.", "kind": "preference", "about": "Stew", "importance": 7},
+    {"content": "[desk] A memory with a bad kind.", "kind": "nonsense"}
+  ],
+  "quote": {"text": "Iron sharpeneth iron; so a man sharpeneth the countenance of his friend.", "author": "Proverbs 27:17", "role": "opener"},
+  "nominate": ["[desk] Fun fact", "no such item anywhere"],
+  "attach": ["https://desk.example.org/one"],
+  "show_notes": {"description": "What we talked about.", "notes": "Timestamps go here.", "clips": ["Clip one", "Clip two"]}
+}$j$, 'RQID', :'desk_rq')::jsonb, :'desk_ep') as desk_res \gset
+select tests.eq((:'desk_res'::jsonb ->> 'saved') || '/' || (:'desk_res'::jsonb ->> 'failed'), '10/4', 'apply_grok_reply saves the good parts and reports the bad ones');
+select tests.eq((select count(*) from jsonb_array_elements(:'desk_res'::jsonb -> 'results') r where r ->> 'error' like 'Unknown topic slug%')::int, 1, 'a bad part carries its reason');
+select id as desk_item from public.items where title = '[desk] Pick one' \gset
+select tests.eq((select grok_pick::text || '/' || (added_by = :'stew')::text || '/' || status from public.items where id = :'desk_item'), 'true/true/this_week',
+                'a pick is marked as Grok''s, credited to whoever applied it, and nominated');
+select tests.eq((select count(*) from public.items where title = '[desk] Same link again')::int, 0, 'a link already saved is not added twice');
+select tests.eq((select count(*) from public.item_episodes where episode_id = :'desk_ep' and item_id = :'desk_item')::int, 1, 'attach puts the pick on the episode');
+select tests.eq((select status::text || '/' || answered_by || '/' || sources[1] from public.research_requests where id = :'desk_rq'), 'done/Grok/https://src.example.org/study', 'research is answered as Grok with sources');
+select tests.eq((select verdict from public.get_read('https://desk.example.org/one')), 'solid', 'verified reads are saved');
+select tests.eq((select source || '/' || (about_member = :'stew')::text from public.memories where content like '[desk] Stew wants%'), 'grok/true', 'memories are stored as Grok''s, about the named member');
+select tests.eq((select q.author || '/' || e.quote_role from public.episodes e join public.quotes q on q.id = e.quote_id where e.id = :'desk_ep'), 'Proverbs 27:17/opener', 'a quote already in the bank is set on the episode');
+select tests.eq((select status::text from public.items where title = '[desk] Fun fact'), 'this_week', 'nominate works by title');
+select tests.eq((select show_notes like 'What we talked about.%Clip ideas:%- Clip two' from public.episodes where id = :'desk_ep'), true, 'show notes are saved on the episode');
+select public.add_item(title => '[desk] Added by hand afterwards') as desk_hand \gset
+select tests.eq((select grok_pick from public.items where id = :'desk_hand'), false, 'items added afterwards are not marked as Grok picks');
+select tests.throws($$select public.apply_grok_reply('[1,2]'::jsonb)$$, '22023', 'a reply that is not an object is refused');
+select tests.eq((public.grok_brief(:'desk_ep') -> 'episode' ->> 'title') || '/' || jsonb_array_length(public.grok_brief(:'desk_ep') -> 'episode' -> 'items'), '[desk] Next episode/1', 'grok_brief describes the episode and its items');
+select tests.eq((public.grok_brief(:'desk_ep') -> 'episode' -> 'still_needs') @> '["a fun fact", "a guest idea"]'::jsonb, true, 'grok_brief lists what the episode still needs');
+select tests.eq(public.grok_brief(:'desk_ep') ?& array['news', 'hosts', 'research', 'availability', 'crew', 'inbox'], true, 'grok_brief carries news, hosts, research, availability, crew and inbox');
+insert into public.item_episodes (item_id, episode_id) select id, :'desk_ep' from public.items where title = '[desk] Fun fact';
+select public.set_running_order(:'desk_ep', array[(select id from public.items where title = '[desk] Fun fact'), :'desk_item'::uuid]);
+select tests.eq((select string_agg(i.title, ' > ' order by ie.position) from public.item_episodes ie join public.items i on i.id = ie.item_id where ie.episode_id = :'desk_ep'),
+                '[desk] Fun fact > [desk] Pick one', 'set_running_order stores the show-sheet order');
+update public.episodes set watch_url = 'https://youtu.be/desk', status = 'recorded' where id = :'desk_ep';
+select tests.eq((select string_agg(distinct status::text, ',') from public.items where title in ('[desk] Pick one', '[desk] Fun fact')), 'used', 'recording an episode marks its items used');
+select tests.throws($$update public.episodes set watch_url = 'not a link' where title = '[desk] Next episode'$$, '23514', 'episode links must be links');
+select tests.eq((select kind || '/' || detail from public.covered_before('[desk] Pick one!') order by similarity desc limit 1), 'aired/Covered in [desk] Next episode', 'covered_before finds what already aired');
+select tests.eq((select count(*) from public.covered_before('Something else entirely', 'https://desk.example.org/one?utm_source=y') where kind = 'aired')::int, 1, 'covered_before matches by link too');
+select tests.eq((select count(*) from public.covered_before('Survey finds young men returning to church faster than women') where kind = 'news')::int >= 1, true, 'covered_before shows when a story was in the news');
+select tests.eq((select count(*) from public.covered_before('Zebra crossing repainted in a small Welsh village'))::int, 0, 'nothing is flagged for a new story');
+select tests.as_user(:'rando');
+select tests.throws($$select public.apply_grok_reply('{"items":[{"title":"x"}]}'::jsonb)$$, '42501', 'non-members cannot apply a Grok reply');
+select tests.eq(public.grok_brief() -> 'episode', 'null'::jsonb, 'non-members get an empty brief');
+reset role;
+set role anon;
+select tests.throws($$select public.grok_brief()$$, '42501', 'anon cannot read the brief');
+reset role;
+select tests.as_user(null);
+select tests.eq((public.apply_grok_reply('{"items":[{"title":"[desk] From an SQL session"}]}'::jsonb) ->> 'saved')::int, 1, 'SQL sessions (the producer) can apply a reply');
+
+-- ===========================================================================
+-- Mailbag, mentions, inbox, nudges, push
+-- ===========================================================================
+set role anon;
+select tests.eq(public.submit_question('How do you three stay consistent with the gym?', 'Dave', 'Ohio'), true, 'the public can send a question');
+select tests.eq(public.submit_question('Buy cheap watches now please', 'Bot', null, 'http://spam.example'), true, 'the honeypot swallows bots quietly');
+select tests.throws($$select public.submit_question('hi')$$, '22023', 'too-short questions are refused');
+select tests.throws($$select public.submit_question('Check out https://spam.example.org today')$$, '22023', 'links are refused');
+select tests.eq(public.submit_question('How do you three stay consistent with the gym?'), true, 'the same question again is accepted but not stored twice');
+select tests.throws('select count(*) from public.listener_questions', '42501', 'the public cannot read the mailbag');
+reset role;
+select tests.as_user(null);
+select tests.eq((select count(*) || '/' || max(name) || '/' || max(location) from public.listener_questions), '1/Dave/Ohio', 'one question stored, honeypot and duplicate dropped');
+set role authenticated;
+select tests.as_user(:'stew');
+select id as lq from public.listener_questions limit 1 \gset
+select tests.eq((select count(*) from public.listener_questions where status = 'new')::int, 1, 'crew see new questions');
+select tests.throws('select sender_hash from public.listener_questions', '42501', 'crew cannot read the rate-limit hash');
+select public.question_to_item(:'lq') as lq_item \gset
+select tests.eq((select item_type::text || '/' || status || '/' || source || '/' || (title like 'Listener question: How do you three%')::text from public.items where id = :'lq_item'),
+                'note/inbox/Listener: Dave, Ohio/true', 'a question becomes a note in the inbox');
+select tests.eq((select status::text from public.listener_questions where id = :'lq'), 'saved', 'the question is marked saved');
+select tests.eq(public.question_to_item(:'lq')::text, :'lq_item', 'saving it twice reuses the item');
+select tests.eq(jsonb_typeof(public.grok_brief() -> 'mailbag'), 'array', 'the brief carries the mailbag');
+
+-- Mentions
+insert into public.comments (item_id, body) values (:'lq_item', 'Good one. @Fred what do you think? cc @mike');
+reset role;
+select tests.as_user(null);
+select tests.eq((select string_agg(p.display_name, ',' order by p.display_name) from public.notifications n join public.profiles p on p.id = n.member_id where n.kind = 'mention'),
+                'Fred,Mike', '@mentions notify the people named (any letter case), not the author');
+select tests.eq((select title || '|' || url from public.notifications where member_id = :'mike' and kind = 'mention'), 'Stew mentioned you|#/i/' || :'lq_item', 'the note says who and links to the item');
+set role authenticated;
+select tests.as_user(:'stew');
+insert into public.comments (item_id, body) values (:'lq_item', 'Heads up @all, and email me at stew@example.com');
+select tests.eq((select count(*) from public.notifications)::int, 0, 'members only see their own inbox');
+select tests.as_user(:'mike');
+select tests.eq((select count(*) from public.notifications)::int, 2, '@all reaches everyone else; an email address is not a mention');
+update public.notifications set read_at = now() where read_at is null;
+select tests.eq((select count(*) from public.notifications where read_at is null)::int, 0, 'members can mark their inbox read');
+select tests.throws($$update public.notifications set title = 'x'$$, '42501', 'members cannot rewrite notifications');
+select tests.throws($$insert into public.notifications (member_id, kind, title) values ('33333333-3333-3333-3333-333333333333', 'test', 'x')$$, '42501', 'members cannot create notifications directly');
+
+-- Research answers notify the asker
+select tests.as_user(:'mike');
+insert into public.research_requests (kind, request) values ('fact_check', '[inbox] Is the stat real?') returning id as rq_inbox \gset
+select tests.as_user(:'stew');
+select public.answer_research(:'rq_inbox', 'Yes, per the original study.', array['https://src.example.org']);
+select tests.as_user(:'mike');
+select tests.eq((select title || '|' || url from public.notifications where kind = 'answer'), 'Grok answered your question|#/research', 'the asker hears when their question is answered');
+
+-- Nudges
+select tests.eq((public.crew_nudge(:'mike') ->> 'body') like '%You haven''t marked which days you''re free%', true, 'a personal nudge mentions unmarked days');
+select tests.eq((public.crew_nudge() ->> 'body') like '%Still to mark their free days:%', true, 'the group nudge names who has not marked days');
+select tests.eq(jsonb_array_length(public.crew_nudge() -> 'lines') >= 2, true, 'the nudge has lines for sharing');
+select tests.throws('select public.create_weekly_nudges()', '42501', 'hosts cannot send nudges');
+select tests.as_user(:'producer');
+select tests.eq(public.create_weekly_nudges(), (select count(*) from public.profiles)::int, 'the producer can send this week''s nudge to everyone');
+select tests.eq(public.create_weekly_nudges(), 0, 'a second run the same week sends nothing');
+select tests.eq(public.create_weekly_nudges(true), (select count(*) from public.profiles)::int, 'unless forced');
+
+-- Push
+select tests.as_user(:'mike');
+select tests.eq(public.push_public_key(), null::text, 'no public key until push is set up');
+select public.save_push_subscription('https://push.example.org/sub/abc', 'BPubKeyBPubKeyBPubKeyBPubKeyBPubKey', 'authauthauth', 'iPhone');
+select tests.eq((select count(*) from public.push_subscriptions)::int, 1, 'a member saves their phone');
+select tests.throws('select p256dh from public.push_subscriptions', '42501', 'subscription keys are not readable from the site');
+select tests.as_user(:'stew');
+select tests.eq((select count(*) from public.push_subscriptions)::int, 0, 'members only see their own phones');
+select public.save_push_subscription('https://push.example.org/sub/abc', 'BPubKeyBPubKeyBPubKeyBPubKeyBPubKey', 'authauthauth', 'iPhone');
+select tests.eq((select count(*) from public.push_subscriptions)::int, 1, 'signing in on the same phone moves it to you');
+select tests.throws('select * from public.push_config', '42501', 'sender settings are not readable from the site');
+reset role;
+select tests.as_user(null);
+update public.push_config set vapid_public = 'BTestPublicKey', sender_url = 'https://fn.example.org/send-push', sender_secret = 'test-secret-123';
+set role anon;
+select tests.throws($$select * from public.push_outbox('wrong')$$, '28000', 'the outbox needs the sender secret');
+select tests.throws($$select * from public.push_outbox('')$$, '28000', 'an empty secret is refused');
+select tests.eq((select count(*) from public.push_outbox('test-secret-123'))::int >= 1, true, 'the sender sees notifications waiting for subscribed phones');
+select (select notification_id from public.push_outbox('test-secret-123') limit 1) as po_n, (select subscription_id from public.push_outbox('test-secret-123') limit 1) as po_s \gset
+select tests.eq(public.push_result('test-secret-123', jsonb_build_array(jsonb_build_object('notification_id', :'po_n', 'subscription_id', :'po_s', 'status', 201))), 1, 'a delivered push is recorded');
+select tests.eq((select count(*) from public.push_outbox('test-secret-123', :'po_n'))::int, 0, 'and leaves the outbox');
+select (select notification_id from public.push_outbox('test-secret-123') limit 1) as po_n2 \gset
+select public.push_result('test-secret-123', jsonb_build_array(jsonb_build_object('notification_id', :'po_n2', 'subscription_id', :'po_s', 'status', 410)));
+reset role;
+select tests.as_user(null);
+select tests.eq((select count(*) from public.push_subscriptions)::int, 0, 'a phone that unsubscribed (410) is forgotten');
+set role authenticated;
+select tests.as_user(:'mike');
+select tests.eq(public.push_public_key(), 'BTestPublicKey', 'members get the public key once push is set up');
+select public.send_test_notification();
+select tests.eq((select count(*) from public.notifications where kind = 'test')::int, 1, 'a member can send themselves a test');
+reset role;
+select tests.as_user(null);
+update public.push_config set vapid_public = null, sender_url = null, sender_secret = null;
+
+-- ===========================================================================
 -- Revoking access
 -- ===========================================================================
 select tests.as_user(null);

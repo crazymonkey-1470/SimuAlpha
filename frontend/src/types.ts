@@ -37,6 +37,8 @@ export interface Item {
   added_by_role: Role;
   created_at: string;
   updated_at: string;
+  /** Came in through a Grok reply (credit stays with whoever applied it). */
+  grok_pick: boolean;
 }
 
 /** Row of the item_cards view. */
@@ -61,6 +63,9 @@ export interface Episode {
   notes: string | null;
   quote_id: string | null;
   quote_role: QuoteRole;
+  watch_url: string | null;
+  listen_url: string | null;
+  show_notes: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -289,4 +294,53 @@ export interface CrewStat {
   reads: number;
   activity: number;
   last_active: string | null;
+}
+
+/** One line of apply_grok_reply()'s report. */
+export interface GrokResult {
+  kind: 'item' | 'research' | 'read' | 'memory' | 'quote' | 'nominate' | 'attach' | 'show_notes';
+  ok: boolean;
+  label: string | null;
+  id?: string;
+  note?: string;
+  error?: string;
+}
+
+export interface GrokApplyReport {
+  episode_id: string | null;
+  saved: number;
+  failed: number;
+  results: GrokResult[];
+}
+
+/** Row of covered_before(). */
+export interface CoveredRow {
+  kind: 'aired' | 'prep' | 'news';
+  id: string;
+  title: string;
+  detail: string;
+  seen: string;
+  similarity: number;
+  link: string | null;
+}
+
+export interface ListenerQuestion {
+  id: string;
+  name: string | null;
+  location: string | null;
+  question: string;
+  status: 'new' | 'saved' | 'dismissed';
+  item_id: string | null;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  member_id: string;
+  kind: 'mention' | 'answer' | 'nudge' | 'test';
+  title: string;
+  body: string | null;
+  url: string | null;
+  created_at: string;
+  read_at: string | null;
 }

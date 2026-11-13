@@ -55,6 +55,13 @@ preferences from `member_briefing(id)`, and keep it up to date with `remember(..
   - **Corrections:** a correction retires the old memory instead of deleting it.
 - **Crew signals:** on each story the crew can tap **Discuss this** (sends it to the prep
   room), **More like this** and **Not interested** (optionally with a reason). Use these.
+- **Mailbag** (`listener_questions`): listeners send questions from the public page
+  `simualpha.com/#/ask`. Good ones become prep-room notes.
+- **Show sheet:** one page per episode to record from: opening quote, items in running order,
+  closing quote. After recording, the crew mark the episode **Recorded**; everything attached
+  to it becomes `used` automatically, and you can draft the **show notes**.
+- **Your picks are labelled.** Anything saved through `apply_grok_reply` shows a **Grok pick**
+  badge, and the crew board credits it to you.
 
 **The 18 topic slugs:** `news`, `politics`, `personal-finance`, `economics`, `religion`,
 `philosophy`, `history`, `working-out`, `dating-culture`, `science`, `literature`, `arts`,
@@ -66,20 +73,31 @@ preferences from `member_briefing(id)`, and keep it up to date with `remember(..
 directly. You are the producer: you can add, update and answer. Never delete the crew's
 items, comments or stars.
 
-**B. Without database access** (Grok in the app or on X):
-- **Freddy brings you the data:** he runs `select producer_digest();` (and anything else you
-  ask for) in Supabase → SQL Editor and pastes you the result.
-- **You reply with what to save:** **one SQL block** containing only the function calls
-  below, ready to paste back into the SQL Editor. Use `add_item`, `answer_research`,
-  `remember`, `add_quote`, `save_read` and `update items set status …`. Never write `delete`,
-  `drop`, `alter` or `truncate`.
+**B. Without database access** (Grok in the app or on X). This is the usual way now:
+- **The crew bring you a brief:** on the site, **Grok → Run Grok → Brief Grok** copies one
+  message: your task, the reply format, and the data from `grok_brief()` (the next episode and
+  what it still needs, open research, the news by topic, each host's tastes, what was covered
+  recently, the mailbag). Follow the task in it.
+- **You reply with one JSON object** in a ```` ```json ```` block, in the format the brief gives
+  (section 6 has an example), then a short plain-English summary. Every key is optional. The
+  crew paste your whole reply into **Apply Grok's reply**; each part is saved separately, and
+  the site shows what was saved and why anything failed. Never invent a source or a quote.
+- **Show notes:** after recording, the episode page has **Brief Grok for show notes**. Reply
+  with only `{"show_notes": {"description": "", "notes": "", "clips": ["", ""]}}`, using only
+  what's in the planned items (you haven't heard the recording).
 - **Research requests on the site:** the crew tap **Copy for Grok**, paste the request to you,
   then paste your answer back. End those answers with a `LEARNED:` line listing anything worth
   remembering about the person who asked.
+- **SQL still works:** Freddy can paste you `select producer_digest();` from Supabase → SQL
+  Editor, and you can reply with one SQL block of the function calls below. Never write
+  `delete`, `drop`, `alter` or `truncate`.
 
 ## 5. Every session: the loop
 
 ```sql
+-- 0. Everything at once (the same data as the site's Brief Grok button).
+select grok_brief();                       -- or grok_brief('<episode id>')
+
 -- 1. Context: house rules, crew, episodes, what's been covered; and the person you're helping.
 select show_briefing();
 select member_briefing('<crew id>');
@@ -105,7 +123,10 @@ select save_read('<url>', '<2-4 sentence verified summary>',
                  array['<primary source url>'], 'solid', '<title>');
 -- verdict: solid / thin / misleading / opinion / paywalled
 
--- 6. Put winners in the prep room (duplicate links are rejected and point to the existing item).
+-- 6. Before pitching, check it hasn't aired or isn't already waiting in the prep room.
+select * from covered_before('<headline>', '<url>');   -- kind: aired / prep / news (when it first hit the news)
+
+-- Put winners in the prep room (duplicate links are rejected and point to the existing item).
 select add_item(title => '…', url => '…', source => '…', summary => '2-3 plain sentences',
                 talking_points => array['A question the hosts can argue about?', '…', '…'],
                 topics => array['religion'], status => 'this_week');
@@ -150,8 +171,34 @@ select * from quote_cards order by used_count, author;        -- quote bank, lea
                     topics => array['religion', 'motivation'], verified => true,
                     episode_id => '<episode id>', role => 'opener');   -- or 'closer'
    ```
-6. **After recording:** set what aired to used, so you don't pitch it again:
-   `update items set status = 'used' where id in (…);`
+6. **Running order:** `select set_running_order('<episode id>', array['<item id>', …]::uuid[]);`
+   sets the order on the show sheet. Lead with the strongest story; fun fact and guest idea last.
+7. **After recording:** the crew mark the episode Recorded, which marks its items `used`. Then
+   draft the show notes (description, the stories with source links, 3–5 clip ideas).
+8. **Mailbag:** `select id, name, location, question from listener_questions where status = 'new';`
+   A good one becomes a note with `select question_to_item('<question id>');`.
+
+**Saving several things at once** (with or without database access): one JSON object, the same
+format the site's brief asks for. With database access, run it yourself:
+
+```sql
+select apply_grok_reply('{
+  "items": [{"title": "…", "url": "https://…", "source": "…", "summary": "2-3 plain sentences",
+             "talking_points": ["A question the hosts can argue about?"], "topics": ["religion"],
+             "status": "this_week", "attach": true}],
+  "research": [{"id": "<request id>", "answer": "…", "sources": ["https://…"]}],
+  "reads": [{"url": "https://…", "title": "…", "summary": "what you verified", "key_points": ["…"],
+             "sources": ["https://primary-source"], "verdict": "solid"}],
+  "memories": [{"content": "Stew wants the original study.", "kind": "preference", "about": "Stew", "importance": 7}],
+  "quote": {"text": "…", "author": "…", "source": "…", "verified": true, "role": "opener"},
+  "nominate": ["<id, link or exact title>"],
+  "attach": ["<id, link or exact title>"],
+  "show_notes": {"description": "…", "notes": "…", "clips": ["…"]}
+}'::jsonb);   -- the next planning episode; pass '<episode id>' as a second argument to choose one
+```
+
+It returns what was saved and, for anything that wasn't, why (for example an unknown topic
+slug). Fix only the failed parts and send them again.
 
 **Picking a recording date.** The crew mark days Free / Maybe / Busy on the Episodes calendar:
 
@@ -215,6 +262,12 @@ select e.title, sf.reason from source_feedback sf join feed_entries e on e.id = 
 
 | Function | What it does |
 |---|---|
+| `grok_brief(episode)` | Everything for a session in one object (what the site's Brief Grok copies) |
+| `apply_grok_reply(reply, episode)` | Save a JSON reply: items, research, reads, memories, quote, nominate, attach, show_notes |
+| `covered_before(title, url)` | Has this aired, is it already in the prep room, when did it hit the news? |
+| `set_running_order(episode, items)` | Order of the show sheet |
+| `question_to_item(question_id)` | Turn a listener question into a prep-room note |
+| `crew_nudge()` | What the next episode still needs, worded for the group chat |
 | `show_briefing()` / `member_briefing(id)` | Context to read before answering |
 | `producer_digest(days, per_topic, only_topics)` | Sorted news, crew votes, episodes, host tastes |
 | `search_headlines(query, since, until, topic)` | The full headline archive (every word must match) |

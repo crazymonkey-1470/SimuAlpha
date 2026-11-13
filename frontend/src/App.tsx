@@ -17,10 +17,15 @@ import Sources from './pages/Sources';
 import Research from './pages/Research';
 import Quotes from './pages/Quotes';
 import Crew from './pages/Crew';
-import { Armillary, HomeIcon, MenuIcon, MicIcon, PlusIcon, RssIcon, SearchIcon } from './components/Icons';
+import ShowSheet from './pages/ShowSheet';
+import Inbox from './pages/Inbox';
+import Ask from './pages/Ask';
+import { registerPushWorker } from './components/PushSettings';
+import { Armillary, BellIcon, HomeIcon, MenuIcon, MicIcon, PlusIcon, RssIcon, SearchIcon } from './components/Icons';
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [head] = useRoute();
 
   useEffect(() => {
     if (configError) return;
@@ -30,6 +35,7 @@ export default function App() {
   }, []);
 
   if (configError) return <Centered title="Not configured">{configError}</Centered>;
+  if (head === 'ask') return <Ask />; // the public "Ask the show" page needs no sign-in
   if (session === undefined) return <Centered title="Loading…" />;
   if (!session) return <Login />;
   return <SignedIn key={session.user.id} session={session} />;
@@ -84,18 +90,25 @@ function SignedIn({ session }: { session: Session }) {
 }
 
 const TABS: { key: string; label: string; icon: ComponentType<{ size?: number }>; match: (string | undefined)[] }[] = [
-  { key: '', label: 'Home', icon: HomeIcon, match: [undefined, 'crew'] },
-  { key: 'feed', label: 'Feed', icon: RssIcon, match: ['feed', 'picks', 'sources'] },
+  { key: '', label: 'Home', icon: HomeIcon, match: [undefined, 'crew', 'inbox'] },
+  { key: 'feed', label: 'Feed', icon: RssIcon, match: ['feed', 'picks', 'sources', 'mailbag'] },
   { key: 'add', label: 'Add', icon: PlusIcon, match: ['add'] },
   { key: 'research', label: 'Grok', icon: SearchIcon, match: ['research'] },
-  { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e', 'quotes'] },
+  { key: 'episodes', label: 'Episodes', icon: MicIcon, match: ['episodes', 'e', 'quotes', 'show'] },
 ];
 
 function Layout() {
   const [head, arg] = useRoute();
   const tabHref = (key: string) => (key ? href(key) : '#/');
+  // Unread notes for the bell; re-counted whenever you move to another page.
+  const unread = useLoad(
+    () => supabase.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null).then((r) => ({ data: r.count ?? 0, error: r.error })),
+    [head, arg],
+  );
+  useEffect(registerPushWorker, []);
+  const bare = head === undefined || head === 'show'; // Home and the show sheet: no topic bar
   return (
-    <div className={head === undefined ? 'shell no-topics' : 'shell'}>
+    <div className={bare ? 'shell no-topics' : 'shell'}>
       <header className="topbar">
         <a className="wordmark" href="#/" aria-label="True Adam, home">
           <Armillary />
@@ -117,14 +130,22 @@ function Layout() {
             </a>
           ))}
         </nav>
+        <a
+          href={href('inbox')}
+          className={'account-link bell ' + (head === 'inbox' ? 'active' : '')}
+          aria-label={unread.data ? `Inbox, ${unread.data} new` : 'Inbox'}
+        >
+          <BellIcon />
+          {!!unread.data && <span className="bell-count">{unread.data > 9 ? '9+' : unread.data}</span>}
+        </a>
         <a href={href('account')} className={'account-link ' + (head === 'account' ? 'active' : '')} aria-label="Account">
           <MenuIcon />
         </a>
       </header>
-      {/* Home stays uncluttered; every other page gets the topic bar (sidebar on desktop). */}
-      {head !== undefined && <TopicNav current={head === 't' ? arg : undefined} />}
+      {/* Home and the show sheet stay uncluttered; every other page gets the topic bar (sidebar on desktop). */}
+      {!bare && <TopicNav current={head === 't' ? arg : undefined} />}
       <main className="content">
-        <Page head={head} arg={arg} />
+        <Page head={head} arg={arg} onInboxRead={unread.reload} />
       </main>
       <nav className="tabbar" aria-label="Main">
         {TABS.map((t) => (
@@ -149,7 +170,7 @@ function Layout() {
   );
 }
 
-function Page({ head, arg }: { head?: string; arg?: string }) {
+function Page({ head, arg, onInboxRead }: { head?: string; arg?: string; onInboxRead: () => void }) {
   switch (head) {
     case undefined:
       return <Home />;
@@ -179,6 +200,12 @@ function Page({ head, arg }: { head?: string; arg?: string }) {
       return <Research />;
     case 'crew':
       return <Crew />;
+    case 'show':
+      return <ShowSheet key={arg} id={arg ?? ''} />;
+    case 'inbox':
+      return <Inbox onRead={onInboxRead} />;
+    case 'mailbag':
+      return <Feed key="mailbag" initial="mailbag" />;
     case 'quotes':
       return <Quotes key={arg ?? 'bank'} episodeId={arg} />;
     default:

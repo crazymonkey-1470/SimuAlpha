@@ -125,6 +125,13 @@ export const BackIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const BellIcon = (p: IconProps) => (
+  <Svg strokeWidth={1.7} {...p}>
+    <path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7 2.5 7h-17S6 15 6 9Z" />
+    <path d="M10 20a2 2 0 0 0 4 0" />
+  </Svg>
+);
+
 export const RssIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M5 5a14 14 0 0 1 14 14" />

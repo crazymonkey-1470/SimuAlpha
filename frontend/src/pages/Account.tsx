@@ -3,6 +3,7 @@ import { errorText, supabase } from '../supabase';
 import { useApp, useLoad } from '../lib';
 import type { MemoryCard } from '../types';
 import { MemoryForm, MemoryRow } from '../components/Memory';
+import PushSettings from '../components/PushSettings';
 
 export default function Account() {
   const { me, session, reloadProfiles } = useApp();
@@ -59,6 +60,8 @@ export default function Account() {
         <button disabled={password.length < 8}>Change password</button>
       </form>
       {msg && <p className={msg.ok ? 'success' : 'error'}>{msg.text}</p>}
+
+      <PushSettings />
 
       <section className="memory-section">
         <h2>

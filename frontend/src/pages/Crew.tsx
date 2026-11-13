@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { supabase } from '../supabase';
-import { formatTimestamp, freshness, href, roman, useApp, useLoad } from '../lib';
+import { errorText, supabase } from '../supabase';
+import { copyText, formatTimestamp, freshness, href, roman, useApp, useLoad } from '../lib';
 import { ITEM_TYPES, STATUS_LABEL, type CrewStat, type ItemCard } from '../types';
 
 /** The non-zero numbers worth showing for one row, in reading order. */
@@ -40,7 +40,37 @@ export default function Crew() {
   const [days, setDays] = useState(7);
   const board = useLoad<CrewStat[]>(() => supabase.rpc('crew_board', { days: days || null }), [days]);
   const [open, setOpen] = useState<string | null>(null);
+  const [nudge, setNudge] = useState<{ ok: boolean; text: string } | null>(null);
+  const [nudging, setNudging] = useState(false);
   const rows = board.data ?? [];
+
+  /** Share "what the next episode needs" to the group chat (share sheet on phones, clipboard elsewhere). */
+  async function shareNudge() {
+    setNudging(true);
+    setNudge(null);
+    const { data, error } = await supabase.rpc('crew_nudge', { member: null });
+    setNudging(false);
+    if (error) return setNudge({ ok: false, text: errorText(error) });
+    const n = data as { title: string; body: string; url: string };
+    const text = `${n.title}: ${n.body}\n${location.origin}${location.pathname}${n.url}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+        return setNudge({ ok: true, text: 'Shared.' });
+      }
+    } catch {
+      /* share sheet closed: fall back to copying */
+    }
+    setNudge((await copyText(text)) ? { ok: true, text: 'Copied. Paste it into the group chat.' } : { ok: false, text });
+  }
+
+  async function nudgeInboxes() {
+    if (!confirm('Send this week’s nudge to everyone’s inbox (and their phones, if they turned notifications on)?')) return;
+    setNudging(true);
+    const { data, error } = await supabase.rpc('create_weekly_nudges', { force: true });
+    setNudging(false);
+    setNudge(error ? { ok: false, text: errorText(error) } : { ok: true, text: `Sent to ${data} ${data === 1 ? 'inbox' : 'inboxes'}.` });
+  }
   const leader = rows[0]?.added ? rows[0] : null;
 
   return (
@@ -61,6 +91,17 @@ export default function Crew() {
           </button>
         ))}
       </div>
+      <div className="actions nudge-actions">
+        <button disabled={nudging} onClick={shareNudge}>
+          Nudge the group chat
+        </button>
+        {me.role === 'producer' && (
+          <button disabled={nudging} onClick={nudgeInboxes}>
+            Nudge everyone’s inbox
+          </button>
+        )}
+      </div>
+      {nudge && <p className={nudge.ok ? 'success' : 'error'}>{nudge.text}</p>}
       {board.error && <p className="error">{board.error}</p>}
       {board.loading && !board.data && <p className="muted">Loading…</p>}
       {leader && (

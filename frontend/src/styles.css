@@ -723,3 +723,103 @@ button.star.starred { background: var(--gold-pale); border-color: var(--gold); c
   .crew-row button.link { margin-left: 0; }
 }
 .crew-stats b { font-weight: 600; color: var(--ink); }
+
+/* Grok desk */
+.badge.grok-pick { color: var(--lapis); border-color: var(--lapis-line); background: var(--lapis-pale); }
+.grok-steps { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.grok-steps > li { counter-increment: step; padding: 14px 16px; border: 1px solid var(--line); background: var(--vellum); }
+.grok-steps h3 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 4px; font-family: var(--display); font-size: 22px; font-weight: 600; }
+.grok-steps h3::before { content: counter(step, upper-roman) '.'; font-style: italic; color: var(--vermilion); }
+.grok-steps .small { margin: 0 0 10px; }
+.grok-apply { display: grid; gap: 8px; }
+.grok-apply textarea, .grok-manual { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.45; }
+.grok-manual { margin-top: 8px; }
+.grok-report ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 15px; }
+.grok-report li { padding-left: 22px; position: relative; overflow-wrap: anywhere; }
+.grok-report li::before { position: absolute; left: 0; font-weight: 700; }
+.grok-report li.ok::before { content: '✓'; color: var(--verte); }
+.grok-report li.failed::before { content: '✗'; color: var(--vermilion); }
+.grok-report li b { font-family: var(--caps); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+.grok-report .why { color: var(--vermilion); }
+
+/* Episode: after the show, open days, covered before */
+.after-show { margin: 4px 0 14px; padding: 12px 14px 14px; border: 1px solid var(--line); background: var(--vellum); min-width: 0; }
+.after-show legend { padding: 0 8px; font-family: var(--caps); font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--vermilion); }
+.open-days { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; margin-bottom: 0; font-size: 15px; }
+.open-days .chip { min-height: 36px; }
+.covered { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--line); background: var(--vellum); font-size: 15px; }
+.covered.warn-box { border-color: #dfc49a; background: var(--ochre-pale); }
+.covered b { font-family: var(--caps); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ochre); }
+.covered ul { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.covered a { color: var(--ink); }
+
+/* Show sheet */
+.sheet { font-size: 19px; }
+.sheet-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.sheet-tools .back-link { margin: 0; }
+.sheet-head { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid var(--gold); }
+.sheet-head h1 { margin: 4px 0; }
+.sheet-notes { margin: 8px 0 0; white-space: pre-wrap; }
+.sheet-list { display: grid; gap: 18px; margin: 0 0 18px; padding: 0; list-style: none; }
+.sheet-item { padding: 16px 18px; border: 1px solid var(--line); background: var(--vellum); break-inside: avoid; }
+.sheet-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sheet-item h2 { margin: 2px 0 4px; font-size: 28px; line-height: 1.15; }
+.sheet-item h2::after { display: none; }
+.sheet-by { margin: 0 0 8px; font-size: 16px; color: var(--umber); }
+.sheet-summary { margin: 0 0 10px; }
+.sheet-move { display: inline-flex; gap: 6px; }
+.sheet-move button { min-width: 44px; min-height: 40px; padding: 0 10px; font-size: 18px; }
+.sheet-quote { margin: 0 0 18px; padding: 16px 18px; border: 1px solid var(--gold); background: var(--gold-pale); break-inside: avoid; }
+.sheet-quote blockquote { margin: 6px 0 8px; font-size: 24px; }
+.sheet .points li { font-size: 19px; }
+
+/* Public "Ask the show" page and the mailbag */
+.ask-page { max-width: 560px; }
+.ask-page h2 { justify-content: center; }
+.ask-page h2::after { display: none; }
+.ask-form { text-align: left; }
+.ask-form label { display: grid; gap: 4px; }
+.hp { position: absolute !important; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.share-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line); background: var(--vellum); }
+.share-link code { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.question-text { margin: 0 0 8px; font-family: var(--display); font-size: 21px; line-height: 1.3; }
+.card.question.st-dismissed { opacity: 0.6; }
+
+/* Inbox, bell, mentions, notifications */
+.account-link.bell { position: relative; margin-left: auto; }
+.bell-count {
+  position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  background: var(--vermilion); color: #fff; font-family: var(--body); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+a.card.note { display: block; color: var(--ink); text-decoration: none; }
+.card.note.new { border-color: var(--gold); }
+.note-title { display: block; font-family: var(--display); font-size: 21px; font-weight: 600; line-height: 1.25; }
+.note-body { margin: 4px 0 6px; font-size: 16px; }
+.badge.nk-mention { color: var(--lapis); border-color: var(--lapis-line); background: var(--lapis-pale); }
+.badge.nk-nudge { color: var(--gold-text); border-color: var(--gold); background: var(--gold-pale); }
+.badge.nk-answer { color: var(--verte); border-color: var(--verte-line); background: var(--verte-pale); }
+.mention { color: var(--lapis); font-weight: 600; }
+.mention-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.mention-row .chip { min-height: 36px; }
+.push-settings { margin: 22px 0 8px; }
+.nudge-actions { margin: 0 0 12px; }
+
+@media (min-width: 960px) {
+  .account-link.bell { margin-left: 8px; border: 1px solid var(--line); }
+  .account-link.bell + .account-link { margin-left: 4px; }
+}
+
+@media print {
+  .topbar, .tabbar, .topics, .no-print, .mainnav { display: none !important; }
+  html, body, .shell, .content { background: #fff !important; }
+  .shell { display: block !important; min-height: 0 !important; }
+  .content { padding: 0 !important; animation: none !important; }
+  .content > * { max-width: none !important; }
+  .sheet { font-size: 13pt; color: #000; }
+  .sheet-item, .sheet-quote { border: 1px solid #999; background: #fff; box-shadow: none; }
+  .sheet-item h2 { font-size: 18pt; }
+  .sheet a { color: #000; text-decoration: none; }
+}
+.ask-page .lozenge-rule { margin: 8px auto 14px; }
+.ask-page > svg { width: 44px; height: 44px; color: var(--gold); }
+.ask-page .wordmark-hero { margin: 6px 0 0; }

@@ -53,6 +53,9 @@ export default function Login() {
           {err && <p className="error">{err}</p>}
         </form>
         <p className="muted small login-help">No account or forgot your password? Ask the producer.</p>
+        <p className="muted small login-help">
+          A listener with a question for the show? <a href="#/ask">Ask it here</a>.
+        </p>
       </div>
     </div>
   );

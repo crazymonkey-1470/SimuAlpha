@@ -47,6 +47,11 @@ export default function Episodes() {
     () => supabase.from('availability').select('member_id, day, status, note').gte('day', from).lte('day', to),
     [from, to],
   );
+  const ahead = useLoad<{ day: string; everyone_free: boolean; episodes: string[] }[]>(
+    () => supabase.rpc('crew_availability', { from_day: now, days: 60 }),
+    [now, avail.data, episodes],
+  );
+  const openDays = (ahead.data ?? []).filter((d) => d.everyone_free && d.episodes.length === 0).slice(0, 3);
   const links = useLoad(() => supabase.from('item_episodes').select('episode_id'), [episodes]);
   const counts = new Map<string, number>();
   for (const l of (links.data ?? []) as { episode_id: string }[]) counts.set(l.episode_id, (counts.get(l.episode_id) ?? 0) + 1);
@@ -167,6 +172,22 @@ export default function Episodes() {
         <span><i className="dot unset" /> Not set</span>
         <span><i className="swatch all-free" /> Everyone free</span>
       </p>
+      {ahead.data && (
+        <p className="open-days">
+          {openDays.length > 0 ? (
+            <>
+              <span>Next {openDays.length === 1 ? 'day' : 'days'} everyone’s free:</span>
+              {openDays.map((d) => (
+                <button key={d.day} className="chip on" onClick={() => pick(d.day)}>
+                  {localDate(d.day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                </button>
+              ))}
+            </>
+          ) : (
+            <span className="muted">No open day yet when everyone is marked free. Tap your days so the crew can pick one.</span>
+          )}
+        </p>
+      )}
       {avail.error && <p className="error">{avail.error}</p>}
 
       <DayPanel
